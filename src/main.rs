@@ -26,7 +26,11 @@ impl Game {
     fn launch(&self, enable_battleye: bool, args: &[&str]) -> std::io::Result<Child> {
         let mut exe_path = self.root.clone();
         exe_path.extend(["ConanSandbox", "Binaries", "Win64"]);
-        exe_path.push(if enable_battleye { "ConanSandbox_BE.exe" } else { "ConanSandbox.exe" });
+        exe_path.push(if enable_battleye {
+            "ConanSandbox_BE.exe"
+        } else {
+            "ConanSandbox.exe"
+        });
 
         let mut cmd = Command::new(exe_path);
         cmd.args(args);
@@ -90,7 +94,9 @@ fn main() {
     let _coop_btn = make_button("Co-op", not_implemented);
     let _mods_btn = make_button("Mods", not_implemented);
     let _settings_btn = make_button("Settings", not_implemented);
-    let _exit_btn = make_button("Exit", |_| { app::quit(); });
+    let _exit_btn = make_button("Exit", |_| {
+        app::quit();
+    });
 
     vpack.end();
     vpack.auto_layout();
