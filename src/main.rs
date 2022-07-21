@@ -5,7 +5,7 @@ use fltk::app::{self, App};
 use fltk::button::Button;
 use fltk::dialog;
 use fltk::enums::FrameType;
-use fltk::group::{Pack, PackType};
+use fltk::group::Column;
 use fltk::prelude::*;
 use fltk::window::Window;
 use steamlocate::SteamDir;
@@ -74,9 +74,9 @@ fn main() {
     let mut main_win = Window::default().with_size(400, 300);
     main_win.set_label("BUGLE");
 
-    let mut vpack = Pack::default_fill();
-    vpack.set_type(PackType::Vertical);
-    vpack.set_spacing(10);
+    let mut vpack = Column::default_fill();
+    vpack.set_margin(10);
+    vpack.set_pad(10);
 
     let _continue_btn = {
         let game = game.clone();
@@ -99,7 +99,6 @@ fn main() {
     });
 
     vpack.end();
-    vpack.auto_layout();
 
     main_win.end();
     main_win.show();
