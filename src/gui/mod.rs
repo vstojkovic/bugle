@@ -8,8 +8,10 @@ use fltk::text::TextDisplay;
 use fltk::window::Window;
 
 mod main_menu;
+mod server_browser;
 
 use main_menu::MainMenu;
+use server_browser::ServerBrowser;
 
 pub struct LauncherWindow {
     window: Window,
@@ -32,16 +34,11 @@ impl LauncherWindow {
             .center_of_parent();
         welcome_group.end();
 
-        let mut online_group = Group::default_fill();
-        let _placeholder = TextDisplay::default()
-            .with_label("Server Browser Placeholder")
-            .center_of_parent();
-        online_group.end();
-        online_group.hide();
+        let server_browser = ServerBrowser::new();
 
         content_group.end();
 
-        main_group.set_size(&_main_menu.group.as_group().unwrap(), 300);
+        main_group.set_size(&_main_menu.group.as_group().unwrap(), 200);
         main_group.end();
 
         window.end();
@@ -51,9 +48,11 @@ impl LauncherWindow {
         _main_menu.set_on_continue(on_continue);
         {
             let active_content_group = active_content_group.clone();
+            let mut server_browser_group = server_browser.group.clone();
             _main_menu.set_on_online(move || {
                 active_content_group.borrow_mut().hide();
-                online_group.show();
+                server_browser_group.show();
+                active_content_group.replace(server_browser_group.clone());
             });
         }
 

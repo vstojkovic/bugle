@@ -34,6 +34,7 @@ name = "bugle"
 version = "0.1.0"
 dependencies = [
  "fltk",
+ "fltk-table",
  "steamlocate",
 ]
 
@@ -146,6 +147,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cad0d5dac441caee8f153304bd0dbaf677e8a9a7d1b201471cf9e851e1c781c6"
 dependencies = [
  "cmake",
+]
+
+[[package]]
+name = "fltk-table"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bef371756e95f36df13b16cfb20ddf2c097ef9d711b794939f508b1eceba63fd"
+dependencies = [
+ "fltk",
 ]
 
 [[package]]
