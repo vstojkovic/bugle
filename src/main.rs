@@ -6,6 +6,7 @@ use fltk::dialog;
 use steamlocate::SteamDir;
 
 mod gui;
+mod servers;
 
 use gui::LauncherWindow;
 
@@ -41,7 +42,8 @@ impl Game {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let launcher = App::default();
 
     let game = std::rc::Rc::new({
