@@ -44,7 +44,7 @@ impl MainMenu {
 
     pub(super) fn set_on_continue(
         &mut self,
-        on_continue: impl Fn() -> std::io::Result<()> + 'static,
+        on_continue: impl Fn() -> anyhow::Result<()> + 'static,
     ) {
         self.continue_btn.set_callback(move |_| {
             if let Err(err) = on_continue() {

@@ -10,15 +10,27 @@ use fltk::window::Window;
 mod main_menu;
 mod server_browser;
 
-use main_menu::MainMenu;
-use server_browser::ServerBrowser;
+use self::main_menu::MainMenu;
+use self::server_browser::{ServerBrowser, ServerBrowserAction};
+
+pub enum Action {
+    Continue,
+    ServerBrowser(ServerBrowserAction),
+}
 
 pub struct LauncherWindow {
     window: Window,
 }
 
+pub trait ActionHandler: Fn(Action) -> anyhow::Result<()> {}
+impl<F: Fn(Action) -> anyhow::Result<()>> ActionHandler for F {}
+
+type CleanupFn = Box<dyn FnMut() -> Option<Action>>;
+
 impl LauncherWindow {
-    pub fn new(on_continue: impl Fn() -> std::io::Result<()> + 'static) -> Self {
+    pub fn new(on_action: impl ActionHandler + 'static) -> Self {
+        let on_action: Rc<dyn ActionHandler> = Rc::new(on_action);
+
         let mut window = Window::default().with_size(1280, 760);
         window.set_label("BUGLE");
 
@@ -28,13 +40,13 @@ impl LauncherWindow {
 
         let content_group = Group::default_fill();
 
-        let welcome_group = Group::default_fill();
+        let mut welcome_group = Group::default_fill();
         let _welcome_text = TextDisplay::default()
             .with_label("Welcome to BUGLE: Butt-Ugly Game Launcher For Exiles")
             .center_of_parent();
         welcome_group.end();
 
-        let server_browser = ServerBrowser::new();
+        let mut server_browser = ServerBrowser::new(on_action.clone());
 
         content_group.end();
 
@@ -43,16 +55,22 @@ impl LauncherWindow {
 
         window.end();
 
-        let active_content_group = Rc::new(RefCell::new(welcome_group));
+        let active_content_cleanup_fn: Rc<RefCell<CleanupFn>> =
+            Rc::new(RefCell::new(Box::new(move || {
+                welcome_group.hide();
+                None
+            })));
 
-        _main_menu.set_on_continue(on_continue);
         {
-            let active_content_group = active_content_group.clone();
-            let mut server_browser_group = server_browser.group.clone();
+            let on_action = on_action.clone();
+            _main_menu.set_on_continue(move || on_action(Action::Continue));
+        }
+
+        {
+            let old_cleanup = active_content_cleanup_fn.clone();
+            let on_action = on_action.clone();
             _main_menu.set_on_online(move || {
-                active_content_group.borrow_mut().hide();
-                server_browser_group.show();
-                active_content_group.replace(server_browser_group.clone());
+                switch_content(&old_cleanup, &on_action, || server_browser.show());
             });
         }
 
@@ -66,4 +84,17 @@ impl LauncherWindow {
 
 fn alert_not_implemented(_: &mut impl WidgetExt) {
     dialog::alert_default("This feature is not yet implemented in the current release.");
+}
+
+fn switch_content(
+    old_cleanup_fn: &Rc<RefCell<CleanupFn>>,
+    on_action: &Rc<dyn ActionHandler>,
+    mut show_new_content_fn: impl FnMut() -> CleanupFn,
+) {
+    if let Some(cleanup_action) = old_cleanup_fn.borrow_mut()() {
+        if let Err(err) = on_action(cleanup_action) {
+            dialog::alert_default(&format!("{}", err)); // FIXME
+        }
+    };
+    let _ = old_cleanup_fn.replace(show_new_content_fn());
 }

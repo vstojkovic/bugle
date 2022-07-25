@@ -8,7 +8,7 @@ use steamlocate::SteamDir;
 mod gui;
 mod servers;
 
-use gui::LauncherWindow;
+use gui::{Action, LauncherWindow};
 
 struct Game {
     root: PathBuf,
@@ -59,16 +59,19 @@ async fn main() {
         }
     });
 
-    let on_continue = {
+    let on_action = {
         let game = game.clone();
-        move || {
-            let _ = game.launch(true, &["-continuesession"])?;
-            app::quit();
-            Ok(())
+        move |action| match action {
+            Action::Continue => {
+                let _ = game.launch(true, &["-continuesession"])?;
+                app::quit();
+                Ok(())
+            }
+            Action::ServerBrowser(_) => anyhow::bail!("Implementation in progress"),
         }
     };
 
-    let mut main_win = LauncherWindow::new(on_continue);
+    let mut main_win = LauncherWindow::new(on_action);
     main_win.show();
 
     launcher.run().unwrap();
