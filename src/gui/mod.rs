@@ -11,21 +11,28 @@ mod main_menu;
 mod server_browser;
 
 use self::main_menu::MainMenu;
-use self::server_browser::{ServerBrowser, ServerBrowserAction};
+use self::server_browser::ServerBrowser;
+
+pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 
 pub enum Action {
     Continue,
     ServerBrowser(ServerBrowserAction),
 }
 
+pub enum Update {
+    ServerBrowser(ServerBrowserUpdate)
+}
+
 pub struct LauncherWindow {
     window: Window,
+    server_browser: Rc<RefCell<ServerBrowser>>,
 }
 
 pub trait ActionHandler: Fn(Action) -> anyhow::Result<()> {}
 impl<F: Fn(Action) -> anyhow::Result<()>> ActionHandler for F {}
 
-type CleanupFn = Box<dyn FnMut() -> Option<Action>>;
+type CleanupFn = Box<dyn FnMut()>;
 
 impl LauncherWindow {
     pub fn new(on_action: impl ActionHandler + 'static) -> Self {
@@ -46,7 +53,7 @@ impl LauncherWindow {
             .center_of_parent();
         welcome_group.end();
 
-        let mut server_browser = ServerBrowser::new(on_action.clone());
+        let server_browser = Rc::new(RefCell::new(ServerBrowser::new(on_action.clone())));
 
         content_group.end();
 
@@ -58,7 +65,6 @@ impl LauncherWindow {
         let active_content_cleanup_fn: Rc<RefCell<CleanupFn>> =
             Rc::new(RefCell::new(Box::new(move || {
                 welcome_group.hide();
-                None
             })));
 
         {
@@ -68,17 +74,23 @@ impl LauncherWindow {
 
         {
             let old_cleanup = active_content_cleanup_fn.clone();
-            let on_action = on_action.clone();
+            let server_browser = server_browser.clone();
             _main_menu.set_on_online(move || {
-                switch_content(&old_cleanup, &on_action, || server_browser.show());
+                switch_content(&old_cleanup, || server_browser.borrow_mut().show());
             });
         }
 
-        Self { window }
+        Self { window, server_browser }
     }
 
     pub fn show(&mut self) {
         self.window.show();
+    }
+
+    pub fn handle_update(&mut self, update: Update) {
+        match update {
+            Update::ServerBrowser(update) => self.server_browser.borrow_mut().handle_update(update),
+        }
     }
 }
 
@@ -86,15 +98,14 @@ fn alert_not_implemented(_: &mut impl WidgetExt) {
     dialog::alert_default("This feature is not yet implemented in the current release.");
 }
 
+fn alert_error(message: &str, err: &anyhow::Error) {
+    dialog::alert_default(&format!("{}\n{}", message, err));
+}
+
 fn switch_content(
     old_cleanup_fn: &Rc<RefCell<CleanupFn>>,
-    on_action: &Rc<dyn ActionHandler>,
     mut show_new_content_fn: impl FnMut() -> CleanupFn,
 ) {
-    if let Some(cleanup_action) = old_cleanup_fn.borrow_mut()() {
-        if let Err(err) = on_action(cleanup_action) {
-            dialog::alert_default(&format!("{}", err)); // FIXME
-        }
-    };
+    old_cleanup_fn.borrow_mut()();
     let _ = old_cleanup_fn.replace(show_new_content_fn());
 }

@@ -4,7 +4,7 @@ use reqwest::{Client, Result};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 
-#[derive(Debug, Deserialize_repr)]
+#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Region {
     EU,
@@ -15,8 +15,18 @@ pub enum Region {
     Japan,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Ownership {
+    Private,
+    Official,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct Server {
+    #[serde(rename = "serverUID")]
+    pub id: String,
+
     #[serde(rename = "Name")]
     pub name: Option<String>,
 
@@ -25,6 +35,9 @@ pub struct Server {
 
     #[serde(rename = "private")]
     pub password_protected: bool,
+
+    #[serde(rename = "CSF")]
+    pub ownership: Ownership,
 
     #[serde(rename = "S05")]
     pub battleye_required: bool,
@@ -35,8 +48,20 @@ pub struct Server {
     #[serde(rename = "maxplayers")]
     pub max_players: usize,
 
+    #[serde(rename = "S0")]
+    pub pvp_enabled: bool,
+
+    #[serde(rename = "S30")]
+    info_30: u8, // 1 = PVE-C, don't know what other values mean
+
     #[serde(rename = "buildId")]
     pub build_id: u64,
+}
+
+impl Server {
+    pub fn is_conflict(&self) -> bool {
+        self.info_30 == 1
+    }
 }
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";

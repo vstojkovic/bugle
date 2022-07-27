@@ -8,7 +8,7 @@ use steamlocate::SteamDir;
 mod gui;
 mod servers;
 
-use gui::{Action, LauncherWindow};
+use gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
 
 struct Game {
     root: PathBuf,
@@ -59,6 +59,8 @@ async fn main() {
         }
     });
 
+    let (tx, rx) = app::channel();
+
     let on_action = {
         let game = game.clone();
         move |action| match action {
@@ -67,12 +69,23 @@ async fn main() {
                 app::quit();
                 Ok(())
             }
-            Action::ServerBrowser(_) => anyhow::bail!("Implementation in progress"),
+            Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let server_list = servers::fetch_server_list().await.map_err(anyhow::Error::msg);
+                    tx.send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(server_list)));
+                });
+                Ok(())
+            }
         }
     };
 
     let mut main_win = LauncherWindow::new(on_action);
     main_win.show();
 
-    launcher.run().unwrap();
+    while launcher.wait() {
+        if let Some(update) = rx.recv() {
+            main_win.handle_update(update);
+        }
+    }
 }
