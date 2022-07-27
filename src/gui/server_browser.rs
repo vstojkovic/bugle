@@ -5,7 +5,7 @@ use fltk::group::Group;
 use fltk::prelude::*;
 use fltk_table::{SmartTable, TableOpts};
 
-use crate::servers::{Region, Server};
+use crate::servers::{Region, Server, Kind};
 
 use super::{Action, ActionHandler, CleanupFn};
 
@@ -129,9 +129,9 @@ fn make_server_row(server: Server) -> Vec<String> {
 fn mode_name(server: &Server) -> &str {
     match server.pvp_enabled {
         false => "PVE",
-        true => match server.is_conflict() {
-            false => "PVP",
-            true => "PVE-C",
+        true => match server.kind {
+            Kind::Conflict => "PVE-C",
+            Kind::Other => "PVP",
         },
     }
 }

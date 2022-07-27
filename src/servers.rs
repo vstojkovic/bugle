@@ -22,6 +22,14 @@ pub enum Ownership {
     Official,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Kind {
+    Conflict,
+    #[serde(other)]
+    Other,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Server {
     #[serde(rename = "serverUID")]
@@ -52,16 +60,10 @@ pub struct Server {
     pub pvp_enabled: bool,
 
     #[serde(rename = "S30")]
-    info_30: u8, // 1 = PVE-C, don't know what other values mean
+    pub kind: Kind,
 
     #[serde(rename = "buildId")]
     pub build_id: u64,
-}
-
-impl Server {
-    pub fn is_conflict(&self) -> bool {
-        self.info_30 == 1
-    }
 }
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
