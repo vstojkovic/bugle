@@ -26,11 +26,7 @@ impl Game {
     fn launch(&self, enable_battleye: bool, args: &[&str]) -> std::io::Result<Child> {
         let mut exe_path = self.root.clone();
         exe_path.extend(["ConanSandbox", "Binaries", "Win64"]);
-        exe_path.push(if enable_battleye {
-            "ConanSandbox_BE.exe"
-        } else {
-            "ConanSandbox.exe"
-        });
+        exe_path.push(if enable_battleye { "ConanSandbox_BE.exe" } else { "ConanSandbox.exe" });
 
         let mut cmd = Command::new(exe_path);
         cmd.args(args);
@@ -72,8 +68,12 @@ async fn main() {
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let server_list = servers::fetch_server_list().await.map_err(anyhow::Error::msg);
-                    tx.send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(server_list)));
+                    let server_list = servers::fetch_server_list()
+                        .await
+                        .map_err(anyhow::Error::msg);
+                    tx.send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
+                        server_list,
+                    )));
                 });
                 Ok(())
             }

@@ -21,7 +21,7 @@ pub enum Action {
 }
 
 pub enum Update {
-    ServerBrowser(ServerBrowserUpdate)
+    ServerBrowser(ServerBrowserUpdate),
 }
 
 pub struct LauncherWindow {
@@ -80,7 +80,10 @@ impl LauncherWindow {
             });
         }
 
-        Self { window, server_browser }
+        Self {
+            window,
+            server_browser,
+        }
     }
 
     pub fn show(&mut self) {

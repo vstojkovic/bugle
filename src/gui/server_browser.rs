@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use anyhow::Result;
 use fltk::group::Group;
-use fltk::{prelude::*};
+use fltk::prelude::*;
 use fltk_table::{SmartTable, TableOpts};
 
-use crate::servers::{Server, Region};
+use crate::servers::{Region, Server};
 
 use super::{Action, ActionHandler, CleanupFn};
 
@@ -43,7 +43,11 @@ impl ServerBrowser {
         group.end();
         group.hide();
 
-        Self { group, on_action, server_list }
+        Self {
+            group,
+            on_action,
+            server_list,
+        }
     }
 
     pub(super) fn show(&mut self) -> CleanupFn {
@@ -61,12 +65,10 @@ impl ServerBrowser {
 
     pub(super) fn handle_update(&mut self, update: ServerBrowserUpdate) {
         match update {
-            ServerBrowserUpdate::PopulateServers(servers) => {
-                match servers {
-                    Ok(server_list) => self.populate_servers(server_list),
-                    Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
-                }
-            }
+            ServerBrowserUpdate::PopulateServers(servers) => match servers {
+                Ok(server_list) => self.populate_servers(server_list),
+                Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
+            },
         }
     }
 
@@ -117,8 +119,8 @@ fn make_server_row(server: Server) -> Vec<String> {
         mode_name,
         region_name(&server.region).to_string(),
         format!("??/{}", server.max_players), // TODO: Current players
-        "????".to_string(), // TODO: Age
-        "????".to_string(), // TODO: Ping
+        "????".to_string(),                   // TODO: Age
+        "????".to_string(),                   // TODO: Ping
         (if server.battleye_required { GLYPH_YES } else { GLYPH_NO }).to_string(),
         "??".to_string(), // TODO: Level
     ]
@@ -130,7 +132,7 @@ fn mode_name(server: &Server) -> &str {
         true => match server.is_conflict() {
             false => "PVP",
             true => "PVE-C",
-        }
+        },
     }
 }
 
