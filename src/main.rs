@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
 
 use fltk::app::{self, App};
 use fltk::dialog;
+use servers::ServerList;
 use steamlocate::SteamDir;
 
 mod gui;
@@ -38,6 +40,11 @@ impl Game {
     }
 }
 
+struct ServerBrowserData {
+    all_servers: ServerList,
+    sorted_servers: ServerList,
+}
+
 #[tokio::main]
 async fn main() {
     let launcher = App::default();
@@ -59,22 +66,47 @@ async fn main() {
 
     let on_action = {
         let game = game.clone();
+        let server_browser_data: Arc<Mutex<Option<ServerBrowserData>>> = Arc::new(Mutex::new(None));
         move |action| match action {
             Action::Continue => {
                 let _ = game.launch(true, &["-continuesession"])?;
                 app::quit();
                 Ok(())
             }
-            Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
+            Action::ServerBrowser(ServerBrowserAction::LoadServers(sort_criteria)) => {
                 let tx = tx.clone();
+                let server_browser_data = server_browser_data.clone();
                 tokio::spawn(async move {
                     let server_list = servers::fetch_server_list()
                         .await
-                        .map_err(anyhow::Error::msg);
+                        .map_err(anyhow::Error::msg)
+                        .map(|all_servers| {
+                            let sorted_servers = all_servers.sorted(sort_criteria);
+                            let mut data = server_browser_data.lock().unwrap();
+                            *data = Some(ServerBrowserData {
+                                all_servers,
+                                sorted_servers: sorted_servers.clone(),
+                            });
+                            sorted_servers
+                        });
                     tx.send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
                         server_list,
                     )));
                 });
+                Ok(())
+            }
+            Action::ServerBrowser(ServerBrowserAction::SortServers(sort_criteria)) => {
+                let tx = tx.clone();
+                let server_list = {
+                    let mut data = server_browser_data.lock().unwrap();
+                    let data_ref = data.as_mut().unwrap();
+                    let sorted_servers = data_ref.all_servers.sorted(sort_criteria);
+                    data_ref.sorted_servers = sorted_servers.clone();
+                    sorted_servers
+                };
+                tx.send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
+                    Ok(server_list),
+                )));
                 Ok(())
             }
         }

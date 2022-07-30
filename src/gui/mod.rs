@@ -29,14 +29,14 @@ pub struct LauncherWindow {
     server_browser: Rc<RefCell<ServerBrowser>>,
 }
 
-pub trait ActionHandler: Fn(Action) -> anyhow::Result<()> {}
-impl<F: Fn(Action) -> anyhow::Result<()>> ActionHandler for F {}
+pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
+impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 
 type CleanupFn = Box<dyn FnMut()>;
 
 impl LauncherWindow {
-    pub fn new(on_action: impl ActionHandler + 'static) -> Self {
-        let on_action: Rc<dyn ActionHandler> = Rc::new(on_action);
+    pub fn new(on_action: impl Handler<Action> + 'static) -> Self {
+        let on_action: Rc<dyn Handler<Action>> = Rc::new(on_action);
 
         let mut window = Window::default().with_size(1280, 760);
         window.set_label("BUGLE");
@@ -53,7 +53,12 @@ impl LauncherWindow {
             .center_of_parent();
         welcome_group.end();
 
-        let server_browser = Rc::new(RefCell::new(ServerBrowser::new(on_action.clone())));
+        let server_browser = {
+            let on_action = on_action.clone();
+            Rc::new(RefCell::new(ServerBrowser::new(move |browser_action| {
+                on_action(Action::ServerBrowser(browser_action))
+            })))
+        };
 
         content_group.end();
 

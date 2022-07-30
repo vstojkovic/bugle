@@ -2,73 +2,16 @@ use futures::future::try_join_all;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Result};
 use serde::Deserialize;
-use serde_repr::Deserialize_repr;
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Region {
-    EU,
-    America,
-    Asia,
-    Oceania,
-    LATAM,
-    Japan,
-}
+mod containers;
+mod model;
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Ownership {
-    Private,
-    Official,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Kind {
-    Conflict,
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct Server {
-    #[serde(rename = "serverUID")]
-    pub id: String,
-
-    #[serde(rename = "Name")]
-    pub name: Option<String>,
-
-    #[serde(rename = "MapName")]
-    pub map: String,
-
-    #[serde(rename = "private")]
-    pub password_protected: bool,
-
-    #[serde(rename = "CSF")]
-    pub ownership: Ownership,
-
-    #[serde(rename = "S05")]
-    pub battleye_required: bool,
-
-    #[serde(rename = "Sy")]
-    pub region: Region,
-
-    #[serde(rename = "maxplayers")]
-    pub max_players: usize,
-
-    #[serde(rename = "S0")]
-    pub pvp_enabled: bool,
-
-    #[serde(rename = "S30")]
-    pub kind: Kind,
-
-    #[serde(rename = "buildId")]
-    pub build_id: u64,
-}
+pub use self::containers::{ServerList, SortCriteria, SortKey};
+pub use self::model::{Kind, Mode, Ownership, Region, Server};
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
-pub async fn fetch_server_list() -> Result<Vec<Server>> {
+pub async fn fetch_server_list() -> Result<ServerList> {
     let client = make_client()?;
     let bucket_list = client
         .get(format!(
@@ -88,18 +31,19 @@ pub async fn fetch_server_list() -> Result<Vec<Server>> {
     let servers = try_join_all(
         responses
             .into_iter()
-            .map(|response| response.json::<ServerList>()),
+            .map(|response| response.json::<ServersBucket>()),
     )
     .await?;
     Ok(servers
         .into_iter()
         .map(|list| list.servers)
         .flatten()
-        .collect())
+        .collect::<Vec<Server>>()
+        .into())
 }
 
 #[derive(Debug, Deserialize)]
-struct ServerList {
+struct ServersBucket {
     #[serde(rename = "sessions")]
     pub servers: Vec<Server>,
 }
