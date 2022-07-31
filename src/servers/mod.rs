@@ -4,4 +4,4 @@ mod net;
 
 pub use self::containers::{ServerList, SortCriteria, SortKey};
 pub use self::model::{Kind, Mode, Ownership, Region, Server};
-pub use self::net::{fetch_server_list};
+pub use self::net::fetch_server_list;

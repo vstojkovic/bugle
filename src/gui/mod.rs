@@ -55,9 +55,9 @@ impl LauncherWindow {
 
         let server_browser = {
             let on_action = on_action.clone();
-            Rc::new(RefCell::new(ServerBrowser::new(move |browser_action| {
+            ServerBrowser::new(move |browser_action| {
                 on_action(Action::ServerBrowser(browser_action))
-            })))
+            })
         };
 
         content_group.end();

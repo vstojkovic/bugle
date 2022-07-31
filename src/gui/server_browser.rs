@@ -14,97 +14,95 @@ use crate::servers::{Mode, Region, Server, ServerList, SortCriteria, SortKey};
 use super::{CleanupFn, Handler};
 
 pub enum ServerBrowserAction {
-    LoadServers(SortCriteria),
-    SortServers(SortCriteria),
+    LoadServers,
 }
 
 pub enum ServerBrowserUpdate {
     PopulateServers(Result<ServerList>),
 }
 
+struct ServerBrowserData {
+    all_servers: ServerList,
+    sort_criteria: SortCriteria,
+    sorted_servers: ServerList,
+}
+
+impl ServerBrowserData {
+    fn new(all_servers: ServerList, sort_criteria: SortCriteria) -> Self {
+        let sorted_servers = all_servers.sorted(sort_criteria);
+        Self {
+            all_servers,
+            sort_criteria,
+            sorted_servers,
+        }
+    }
+
+    fn sort_criteria(&self) -> &SortCriteria {
+        &self.sort_criteria
+    }
+
+    fn set_sort_criteria(&mut self, sort_criteria: SortCriteria) {
+        self.sort_criteria = sort_criteria;
+        self.sorted_servers = self.all_servers.sorted(self.sort_criteria);
+    }
+
+    fn servers(&self) -> ServerList {
+        self.sorted_servers.clone()
+    }
+}
+
 pub(super) struct ServerBrowser {
     pub(super) group: Group,
-    on_action: Rc<dyn Handler<ServerBrowserAction>>,
+    on_action: Box<dyn Handler<ServerBrowserAction>>,
     server_list: SmartTable,
-    sort_criteria: Rc<RefCell<SortCriteria>>,
+    state: ServerBrowserData,
+    col_down: i32,
 }
 
 impl ServerBrowser {
-    pub(super) fn new(on_action: impl Handler<ServerBrowserAction> + 'static) -> Self {
-        let on_action: Rc<dyn Handler<ServerBrowserAction>> = Rc::new(on_action);
+    pub(super) fn new(on_action: impl Handler<ServerBrowserAction> + 'static) -> Rc<RefCell<Self>> {
+        let state = ServerBrowserData::new(
+            ServerList::empty(),
+            SortCriteria {
+                key: SortKey::Name,
+                ascending: true,
+            },
+        );
 
         let mut group = Group::default_fill();
 
-        let sort_criteria = Rc::new(RefCell::new(SortCriteria {
-            key: SortKey::Name,
-            ascending: true,
-        }));
-        let mut server_list = make_table(TABLE_COLUMNS, &sort_criteria.borrow());
-        {
-            let sort_criteria = sort_criteria.clone();
-            let col_down = Rc::new(RefCell::new(0));
-            let on_action = on_action.clone();
-            server_list.set_callback(move |server_list| {
-                if let TableContext::ColHeader = server_list.callback_context() {
-                    match app::event() {
-                        Event::Push => {
-                            *col_down.borrow_mut() = server_list.callback_col();
-                        }
-                        Event::Released => {
-                            let col = server_list.callback_col();
-                            if col == *col_down.borrow() {
-                                if let Some(new_key) = column_to_sort_key(col) {
-                                    let old_key = sort_criteria.borrow().key;
-                                    if new_key == old_key {
-                                        let new_asc = !sort_criteria.borrow().ascending;
-                                        sort_criteria.borrow_mut().ascending = new_asc;
-                                    } else {
-                                        *sort_criteria.borrow_mut() = SortCriteria {
-                                            key: new_key,
-                                            ascending: true,
-                                        };
-                                        let old_col = sort_key_to_column(old_key);
-                                        server_list.set_col_header_value(
-                                            old_col,
-                                            &sortable_column_header(old_col, None),
-                                        );
-                                    }
-                                    server_list.set_col_header_value(
-                                        col,
-                                        &sortable_column_header(
-                                            col,
-                                            Some(sort_criteria.borrow().ascending),
-                                        ),
-                                    );
-                                    server_list.redraw();
-                                    on_action(ServerBrowserAction::SortServers(
-                                        *sort_criteria.borrow(),
-                                    ))
-                                    .unwrap();
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                };
-            });
-        }
+        let mut server_list = make_table(TABLE_COLUMNS, state.sort_criteria());
 
         group.end();
         group.hide();
 
-        Self {
+        let browser = Rc::new(RefCell::new(Self {
             group,
-            on_action,
-            server_list,
-            sort_criteria,
+            on_action: Box::new(on_action),
+            server_list: server_list.clone(),
+            state,
+            col_down: -1,
+        }));
+
+        {
+            let browser = browser.clone();
+            server_list.set_callback(move |_| {
+                let mut browser = browser.borrow_mut();
+                match app::event() {
+                    Event::Push => browser.server_list_push(),
+                    Event::Released => browser.server_list_release(),
+                    _ => (),
+                }
+            });
         }
+
+        browser
     }
 
     pub(super) fn show(&mut self) -> CleanupFn {
         self.group.show();
 
-        (self.on_action)(ServerBrowserAction::LoadServers(*self.sort_criteria.borrow())).unwrap();
+        (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
 
         let mut group = self.group.clone();
         Box::new(move || {
@@ -114,14 +112,58 @@ impl ServerBrowser {
 
     pub(super) fn handle_update(&mut self, update: ServerBrowserUpdate) {
         match update {
-            ServerBrowserUpdate::PopulateServers(servers) => match servers {
-                Ok(server_list) => self.populate_servers(server_list),
+            ServerBrowserUpdate::PopulateServers(payload) => match payload {
+                Ok(all_servers) => {
+                    self.state = ServerBrowserData::new(all_servers, *self.state.sort_criteria());
+                    self.populate_servers();
+                }
                 Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
             },
         }
     }
 
-    fn populate_servers(&mut self, server_list: ServerList) {
+    fn server_list_push(&mut self) {
+        self.col_down = if self.server_list.callback_context() == TableContext::ColHeader {
+            self.server_list.callback_col()
+        } else {
+            -1
+        };
+    }
+
+    fn server_list_release(&mut self) {
+        if self.server_list.callback_context() != TableContext::ColHeader {
+            return;
+        }
+
+        let col = self.server_list.callback_col();
+        if col == self.col_down {
+            if let Some(new_key) = column_to_sort_key(col) {
+                let old_criteria = *self.state.sort_criteria();
+                let new_criteria = if new_key == old_criteria.key {
+                    old_criteria.reversed()
+                } else {
+                    SortCriteria {
+                        key: new_key,
+                        ascending: true,
+                    }
+                };
+                if old_criteria.key != new_criteria.key {
+                    let old_col = sort_key_to_column(old_criteria.key);
+                    self.server_list
+                        .set_col_header_value(old_col, &sortable_column_header(old_col, None));
+                }
+                self.state.set_sort_criteria(new_criteria);
+                self.server_list.set_col_header_value(
+                    col,
+                    &sortable_column_header(col, Some(new_criteria.ascending)),
+                );
+                self.populate_servers();
+            }
+        }
+    }
+
+    fn populate_servers(&mut self) {
+        let server_list = self.state.servers().clone();
         let row_count = server_list.len();
         {
             let data_ref = self.server_list.data_ref();

@@ -35,6 +35,12 @@ impl<S: Servers + 'static> From<S> for ServerList {
 }
 
 impl ServerList {
+    pub fn empty() -> Self {
+        Self {
+            servers: Arc::new(vec![]),
+        }
+    }
+
     pub fn sorted(&self, criteria: SortCriteria) -> Self {
         Self {
             servers: Arc::new(ServerListView::sorted_from(self.servers.clone(), criteria)),
@@ -57,6 +63,13 @@ pub struct SortCriteria {
 }
 
 impl SortCriteria {
+    pub fn reversed(&self) -> Self {
+        Self {
+            key: self.key,
+            ascending: !self.ascending,
+        }
+    }
+
     fn comparator(&self) -> Box<dyn FnMut(&Server, &Server) -> Ordering> {
         let cmp = match self.key {
             SortKey::Name => |lhs: &Server, rhs: &Server| {
