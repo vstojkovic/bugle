@@ -56,8 +56,8 @@ pub(super) struct ServerBrowser {
     pub(super) group: Group,
     on_action: Box<dyn Handler<ServerBrowserAction>>,
     server_list: SmartTable,
+    server_details: SmartTable,
     state: ServerBrowserData,
-    col_down: i32,
 }
 
 impl ServerBrowser {
@@ -101,8 +101,8 @@ impl ServerBrowser {
             group,
             on_action: Box::new(on_action),
             server_list: server_list.clone(),
+            server_details,
             state,
-            col_down: -1,
         }));
 
         {
@@ -110,8 +110,7 @@ impl ServerBrowser {
             server_list.set_callback(move |_| {
                 let mut browser = browser.borrow_mut();
                 match app::event() {
-                    Event::Push => browser.server_list_push(),
-                    Event::Released => browser.server_list_release(),
+                    Event::Released => if app::event_is_click() { browser.server_list_click() },
                     _ => (),
                 }
             });
@@ -143,43 +142,35 @@ impl ServerBrowser {
         }
     }
 
-    fn server_list_push(&mut self) {
-        self.col_down = if self.server_list.callback_context() == TableContext::ColHeader {
-            self.server_list.callback_col()
-        } else {
-            -1
+    fn server_list_click(&mut self) {
+        match self.server_list.callback_context() {
+            TableContext::ColHeader => (),
+            TableContext::Cell => return self.populate_details(self.server_list.callback_row()),
+            _ => return,
         };
-    }
-
-    fn server_list_release(&mut self) {
-        if self.server_list.callback_context() != TableContext::ColHeader {
-            return;
-        }
 
         let col = self.server_list.callback_col();
-        if col == self.col_down {
-            if let Some(new_key) = column_to_sort_key(col) {
-                let old_criteria = *self.state.sort_criteria();
-                let new_criteria = if new_key == old_criteria.key {
-                    old_criteria.reversed()
-                } else {
-                    SortCriteria {
-                        key: new_key,
-                        ascending: true,
-                    }
-                };
-                if old_criteria.key != new_criteria.key {
-                    let old_col = sort_key_to_column(old_criteria.key);
-                    self.server_list
-                        .set_col_header_value(old_col, &sortable_column_header(old_col, None));
+        if let Some(new_key) = column_to_sort_key(col) {
+            let old_criteria = *self.state.sort_criteria();
+            let new_criteria = if new_key == old_criteria.key {
+                old_criteria.reversed()
+            } else {
+                SortCriteria {
+                    key: new_key,
+                    ascending: true,
                 }
-                self.state.set_sort_criteria(new_criteria);
-                self.server_list.set_col_header_value(
-                    col,
-                    &sortable_column_header(col, Some(new_criteria.ascending)),
-                );
-                self.populate_servers();
+            };
+            if old_criteria.key != new_criteria.key {
+                let old_col = sort_key_to_column(old_criteria.key);
+                self.server_list
+                    .set_col_header_value(old_col, &sortable_column_header(old_col, None));
             }
+            self.state.set_sort_criteria(new_criteria);
+            self.server_list.set_col_header_value(
+                col,
+                &sortable_column_header(col, Some(new_criteria.ascending)),
+            );
+            self.populate_servers();
         }
     }
 
@@ -192,6 +183,17 @@ impl ServerBrowser {
         }
         self.server_list.set_rows(row_count as _);
         self.server_list.redraw();
+    }
+
+    fn populate_details(&mut self, row: i32) {
+        let server = &self.state.servers()[row as _];
+        self.server_details.set_cell_value(0, 0, &server.id);
+        self.server_details.set_cell_value(1, 0, &server.name);
+        self.server_details.set_cell_value(2, 0, &format!("{}:{}", server.ip, server.port));
+        self.server_details.set_cell_value(3, 0, &server.map);
+        self.server_details.set_cell_value(4, 0, mode_name(server));
+        self.server_details.set_cell_value(5, 0, region_name(&server.region));
+        self.server_details.redraw();
     }
 }
 
@@ -216,7 +218,7 @@ const SERVER_LIST_COLS: &[(&str, i32)] = &[
     ("Level", 50),
 ];
 
-const SERVER_DETAILS_ROWS: &[&str] = &["ID", "Host"];
+const SERVER_DETAILS_ROWS: &[&str] = &["ID", "Server Name", "Host", "Map Name", "Mode", "Region"];
 
 fn make_server_list(initial_sort: &SortCriteria) -> SmartTable {
     let mut table = SmartTable::default_fill().with_opts(TableOpts {
@@ -251,7 +253,7 @@ fn make_server_list(initial_sort: &SortCriteria) -> SmartTable {
 
 fn make_server_details() -> SmartTable {
     let mut table = SmartTable::default_fill().with_opts(TableOpts {
-        rows: 2,
+        rows: SERVER_DETAILS_ROWS.len() as _,
         cols: 1,
         editable: false,
         ..Default::default()
@@ -279,12 +281,8 @@ fn make_server_row(server: &Server) -> Vec<String> {
     let mode_name = mode_name(&server).to_string();
     vec![
         (if server.password_protected { GLYPH_LOCK } else { "" }).to_string(),
-        server
-            .name
-            .as_ref()
-            .map(String::clone)
-            .unwrap_or("".to_string()),
-        server.map.to_string(),
+        server.name.clone(),
+        server.map.clone(),
         mode_name,
         region_name(&server.region).to_string(),
         format!("??/{}", server.max_players), // TODO: Current players

@@ -72,11 +72,7 @@ impl SortCriteria {
 
     fn comparator(&self) -> Box<dyn FnMut(&Server, &Server) -> Ordering> {
         let cmp = match self.key {
-            SortKey::Name => |lhs: &Server, rhs: &Server| {
-                let lname = if let Some(name) = lhs.name.as_ref() { name } else { "" };
-                let rname = if let Some(name) = rhs.name.as_ref() { name } else { "" };
-                lname.cmp(rname)
-            },
+            SortKey::Name => |lhs: &Server, rhs: &Server| lhs.name.cmp(&rhs.name),
             SortKey::Map => |lhs: &Server, rhs: &Server| lhs.map.cmp(&rhs.map),
             SortKey::Mode => |lhs: &Server, rhs: &Server| lhs.mode().cmp(&rhs.mode()),
             SortKey::Region => |lhs: &Server, rhs: &Server| lhs.region.cmp(&rhs.region),

@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 
@@ -39,8 +41,8 @@ pub struct Server {
     #[serde(rename = "serverUID")]
     pub id: String,
 
-    #[serde(rename = "Name")]
-    pub name: Option<String>,
+    #[serde(rename = "Name", default)]
+    pub name: String,
 
     #[serde(rename = "MapName")]
     pub map: String,
@@ -66,6 +68,12 @@ pub struct Server {
     #[serde(rename = "S30")]
     pub kind: Kind,
 
+    #[serde()]
+    pub ip: IpAddr,
+
+    #[serde(rename = "Port")]
+    pub port: u32, // FIXME: should be u16, but there's invalid data
+
     #[serde(rename = "buildId")]
     pub build_id: u64,
 }
@@ -80,5 +88,9 @@ impl Server {
         } else {
             Mode::PVE
         }
+    }
+
+    pub fn host(&self) -> String {
+        format!("{}:{}", self.ip, self.port)
     }
 }
