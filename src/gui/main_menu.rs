@@ -2,30 +2,40 @@ use fltk::app;
 use fltk::button::{Button, RadioButton};
 use fltk::dialog;
 use fltk::enums::FrameType;
-use fltk::group::Column;
+use fltk::group::Group;
 use fltk::prelude::*;
 
 use super::alert_not_implemented;
+use super::prelude::LayoutExt;
 
 pub(super) struct MainMenu {
-    pub(super) group: Column,
     continue_btn: Button,
     online_btn: RadioButton,
 }
 
 impl MainMenu {
     pub(super) fn new() -> Self {
-        let mut group = Column::default_fill();
-        group.set_margin(10);
-        group.set_pad(10);
+        let group = Group::default_fill();
 
-        let continue_btn = make_button(Button::default, "Continue");
-        let online_btn = make_button(RadioButton::default, "Online");
-        let mut singleplayer_btn = make_button(Button::default, "Singleplayer");
-        let mut coop_btn = make_button(Button::default, "Co-op");
-        let mut mods_btn = make_button(Button::default, "Mods");
-        let mut settings_btn = make_button(Button::default, "Settings");
-        let mut exit_btn = make_button(Button::default, "Exit");
+        let continue_btn = make_button(Button::default_fill, "Continue");
+        let online_btn = make_button(RadioButton::default_fill, "Online");
+        let mut singleplayer_btn = make_button(Button::default_fill, "Singleplayer");
+        let mut coop_btn = make_button(Button::default_fill, "Co-op");
+        let mut mods_btn = make_button(Button::default_fill, "Mods");
+        let mut settings_btn = make_button(Button::default_fill, "Settings");
+        let mut exit_btn = make_button(Button::default_fill, "Exit");
+
+        let btn_count = group.children();
+        let btn_height = (group.h() - (btn_count - 1) * 10) / btn_count;
+        group
+            .child(0)
+            .unwrap()
+            .with_size_flex(0, btn_height)
+            .inside_parent(0, 0);
+        for idx in 1..btn_count {
+            let prev = group.child(idx - 1).unwrap();
+            group.child(idx).unwrap().size_of(&prev).below_of(&prev, 10);
+        }
 
         group.end();
 
@@ -36,7 +46,6 @@ impl MainMenu {
         exit_btn.set_callback(|_| app::quit());
 
         Self {
-            group,
             continue_btn,
             online_btn,
         }

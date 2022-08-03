@@ -4,13 +4,14 @@ use std::rc::Rc;
 use anyhow::Result;
 use fltk::app;
 use fltk::enums::Event;
-use fltk::group::Group;
+use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
 
 use crate::servers::{Mode, Region, Server, ServerList, SortCriteria, SortKey};
 
+use super::prelude::*;
 use super::{CleanupFn, Handler};
 
 pub enum ServerBrowserAction {
@@ -71,7 +72,27 @@ impl ServerBrowser {
 
         let mut group = Group::default_fill();
 
-        let mut server_list = make_table(TABLE_COLUMNS, state.sort_criteria());
+        let tiles = Tile::default_fill();
+
+        let upper_tile = Group::default_fill()
+            .inside_parent(0, 0)
+            .with_size_flex(0, group.height() / 4 * 3);
+
+        let mut server_list = make_server_list(state.sort_criteria());
+        server_list.end();
+
+        upper_tile.end();
+
+        let lower_tile = Group::default_fill()
+            .below_of(&upper_tile, 0)
+            .stretch_to_parent(0, 0);
+
+        let server_details = make_server_details();
+        server_details.end();
+
+        lower_tile.end();
+
+        tiles.end();
 
         group.end();
         group.hide();
@@ -182,9 +203,9 @@ const GLYPH_UNSORTED: &str = "\u{25bd}";
 const GLYPH_ASC: &str = "\u{25b2}";
 const GLYPH_DESC: &str = "\u{25bc}";
 
-const TABLE_COLUMNS: &[(&str, i32)] = &[
+const SERVER_LIST_COLS: &[(&str, i32)] = &[
     (GLYPH_LOCK, 20),
-    ("Server Name", 420),
+    ("Server Name", 400),
     ("Map", 160),
     ("Mode", 80),
     ("Region", 80),
@@ -195,10 +216,12 @@ const TABLE_COLUMNS: &[(&str, i32)] = &[
     ("Level", 50),
 ];
 
-fn make_table(cols: &[(&str, i32)], initial_sort: &SortCriteria) -> SmartTable {
+const SERVER_DETAILS_ROWS: &[&str] = &["ID", "Host"];
+
+fn make_server_list(initial_sort: &SortCriteria) -> SmartTable {
     let mut table = SmartTable::default_fill().with_opts(TableOpts {
         rows: 0,
-        cols: cols.len() as _,
+        cols: SERVER_LIST_COLS.len() as _,
         editable: false,
         ..Default::default()
     });
@@ -207,7 +230,7 @@ fn make_table(cols: &[(&str, i32)], initial_sort: &SortCriteria) -> SmartTable {
 
     let sorted_col = sort_key_to_column(initial_sort.key);
 
-    for (idx, (header, width)) in cols.iter().enumerate() {
+    for (idx, (header, width)) in SERVER_LIST_COLS.iter().enumerate() {
         let idx = idx as _;
         if column_to_sort_key(idx).is_some() {
             table.set_col_header_value(
@@ -223,6 +246,32 @@ fn make_table(cols: &[(&str, i32)], initial_sort: &SortCriteria) -> SmartTable {
         table.set_col_width(idx, *width);
     }
 
+    table
+}
+
+fn make_server_details() -> SmartTable {
+    let mut table = SmartTable::default_fill().with_opts(TableOpts {
+        rows: 2,
+        cols: 1,
+        editable: false,
+        ..Default::default()
+    });
+    table.set_col_resize(true);
+
+    let mut header_width = 0i32;
+    fltk::draw::set_font(table.label_font(), table.label_size());
+    for (idx, header) in SERVER_DETAILS_ROWS.iter().enumerate() {
+        let idx = idx as _;
+        table.set_row_header_value(idx, header);
+        let (w, _) = fltk::draw::measure(header, true);
+        header_width = std::cmp::max(header_width, w);
+    }
+    header_width += 20;
+    table.set_row_header_width(header_width);
+
+    let w = table.w();
+    table.set_col_header_value(0, "Server Details");
+    table.set_col_width(0, w - header_width - 20);
     table
 }
 
@@ -287,7 +336,7 @@ fn column_to_sort_key(col: i32) -> Option<SortKey> {
 fn sortable_column_header(col: i32, ascending: Option<bool>) -> String {
     format!(
         "{} {}",
-        TABLE_COLUMNS[col as usize].0,
+        SERVER_LIST_COLS[col as usize].0,
         match ascending {
             None => GLYPH_UNSORTED,
             Some(false) => GLYPH_DESC,

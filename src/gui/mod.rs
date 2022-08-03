@@ -2,15 +2,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use fltk::dialog;
-use fltk::group::{Group, Row};
+use fltk::group::Group;
 use fltk::prelude::*;
 use fltk::text::TextDisplay;
 use fltk::window::Window;
 
 mod main_menu;
+mod prelude;
 mod server_browser;
 
 use self::main_menu::MainMenu;
+use self::prelude::*;
 use self::server_browser::ServerBrowser;
 
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
@@ -41,11 +43,18 @@ impl LauncherWindow {
         let mut window = Window::default().with_size(1280, 760);
         window.set_label("BUGLE");
 
-        let mut main_group = Row::default_fill();
+        let root_group = Group::default_fill();
 
-        let mut _main_menu = MainMenu::new();
+        let main_menu_group = Group::default()
+            .inside_parent(10, 10)
+            .size_of_parent()
+            .with_size_flex(200, -20);
+        let mut main_menu = MainMenu::new();
+        main_menu_group.end();
 
-        let content_group = Group::default_fill();
+        let content_group = Group::default_fill()
+            .right_of(&main_menu_group, 10)
+            .stretch_to_parent(10, 10);
 
         let mut welcome_group = Group::default_fill();
         let _welcome_text = TextDisplay::default()
@@ -62,8 +71,7 @@ impl LauncherWindow {
 
         content_group.end();
 
-        main_group.set_size(&_main_menu.group.as_group().unwrap(), 200);
-        main_group.end();
+        root_group.end();
 
         window.end();
 
@@ -74,13 +82,13 @@ impl LauncherWindow {
 
         {
             let on_action = on_action.clone();
-            _main_menu.set_on_continue(move || on_action(Action::Continue));
+            main_menu.set_on_continue(move || on_action(Action::Continue));
         }
 
         {
             let old_cleanup = active_content_cleanup_fn.clone();
             let server_browser = server_browser.clone();
-            _main_menu.set_on_online(move || {
+            main_menu.set_on_online(move || {
                 switch_content(&old_cleanup, || server_browser.borrow_mut().show());
             });
         }
