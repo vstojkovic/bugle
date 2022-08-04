@@ -38,7 +38,7 @@ pub enum Mode {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Server {
-    #[serde(rename = "serverUID")]
+    #[serde(rename = "EXTERNAL_SERVER_UID")]
     pub id: String,
 
     #[serde(rename = "Name", default)]
@@ -72,7 +72,7 @@ pub struct Server {
     pub ip: IpAddr,
 
     #[serde(rename = "Port")]
-    pub port: u32, // FIXME: should be u16, but there's invalid data
+    pub port: u32,
 
     #[serde(rename = "buildId")]
     pub build_id: u64,
