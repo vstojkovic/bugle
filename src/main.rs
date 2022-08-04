@@ -1,10 +1,12 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
+use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
 use steamlocate::SteamDir;
 
+mod config;
 mod gui;
 mod servers;
 
@@ -12,14 +14,36 @@ use gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Upda
 
 struct Game {
     root: PathBuf,
+    build_id: u32,
 }
 
 impl Game {
-    fn locate() -> Option<Self> {
+    fn locate() -> Option<PathBuf> {
         let mut steam = SteamDir::locate()?;
         let app = steam.app(&440900)?;
-        Some(Self {
-            root: app.path.clone(),
+
+        Some(app.path.clone())
+    }
+
+    fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let mut engine_ini_path = path.as_ref().to_path_buf();
+        engine_ini_path.extend([
+            "ConanSandbox",
+            "Saved",
+            "Config",
+            "WindowsNoEditor",
+            "Engine.ini",
+        ]);
+
+        let engine_ini = config::load_ini(engine_ini_path)?;
+        let build_id = engine_ini
+            .get_from(Some("OnlineSubsystem"), "BuildIdOverride")
+            .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
+            .and_then(|s| Ok(s.parse::<u32>()?))?;
+
+        Ok(Self {
+            root: path.as_ref().into(),
+            build_id,
         })
     }
 
@@ -42,16 +66,24 @@ impl Game {
 async fn main() {
     let launcher = App::default();
 
-    let game = std::rc::Rc::new({
-        match Game::locate() {
-            Some(game) => game,
-            None => {
-                dialog::alert_default(
-                    "Cannot locate Conan Exiles installation. Please verify that you have Conan \
-                    Exiles installed in a Steam library and try again.",
-                );
-                return;
-            }
+    let game_root = match Game::locate() {
+        Some(root) => root,
+        None => {
+            dialog::alert_default(
+                "Cannot locate Conan Exiles installation. Please verify that you have Conan \
+                Exiles installed in a Steam library and try again.",
+            );
+            return;
+        }
+    };
+    let game = std::rc::Rc::new(match Game::new(game_root) {
+        Ok(game) => game,
+        Err(err) => {
+            gui::alert_error(
+                "There was a problem with your Conan Exiles installation.",
+                &err,
+            );
+            return;
         }
     });
 

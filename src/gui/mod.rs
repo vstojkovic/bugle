@@ -110,12 +110,16 @@ impl LauncherWindow {
     }
 }
 
-fn alert_not_implemented(_: &mut impl WidgetExt) {
+pub fn alert_not_implemented() {
     dialog::alert_default("This feature is not yet implemented in the current release.");
 }
 
-fn alert_error(message: &str, err: &anyhow::Error) {
+pub fn alert_error(message: &str, err: &anyhow::Error) {
     dialog::alert_default(&format!("{}\n{}", message, err));
+}
+
+fn not_implemented_callback(_: &mut impl WidgetExt) {
+    alert_not_implemented()
 }
 
 fn switch_content(

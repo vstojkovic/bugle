@@ -5,7 +5,7 @@ use fltk::enums::FrameType;
 use fltk::group::Group;
 use fltk::prelude::*;
 
-use super::alert_not_implemented;
+use super::not_implemented_callback;
 use super::prelude::LayoutExt;
 
 pub(super) struct MainMenu {
@@ -39,10 +39,10 @@ impl MainMenu {
 
         group.end();
 
-        singleplayer_btn.set_callback(alert_not_implemented);
-        coop_btn.set_callback(alert_not_implemented);
-        mods_btn.set_callback(alert_not_implemented);
-        settings_btn.set_callback(alert_not_implemented);
+        singleplayer_btn.set_callback(not_implemented_callback);
+        coop_btn.set_callback(not_implemented_callback);
+        mods_btn.set_callback(not_implemented_callback);
+        settings_btn.set_callback(not_implemented_callback);
         exit_btn.set_callback(|_| app::quit());
 
         Self {
