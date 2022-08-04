@@ -110,7 +110,11 @@ impl ServerBrowser {
             server_list.set_callback(move |_| {
                 let mut browser = browser.borrow_mut();
                 match app::event() {
-                    Event::Released => if app::event_is_click() { browser.server_list_click() },
+                    Event::Released => {
+                        if app::event_is_click() {
+                            browser.server_list_click()
+                        }
+                    }
                     _ => (),
                 }
             });
@@ -187,13 +191,17 @@ impl ServerBrowser {
 
     fn populate_details(&mut self, row: i32) {
         let server = &self.state.servers()[row as _];
-        self.server_details.set_cell_value(0, 0, &server.id);
-        self.server_details.set_cell_value(1, 0, &server.name);
-        self.server_details.set_cell_value(2, 0, &format!("{}:{}", server.ip, server.port));
-        self.server_details.set_cell_value(3, 0, &server.map);
-        self.server_details.set_cell_value(4, 0, mode_name(server));
-        self.server_details.set_cell_value(5, 0, region_name(&server.region));
+        self.set_detail_field(0, &server.id);
+        self.set_detail_field(1, &server.name);
+        self.set_detail_field(2, &format!("{}:{}", server.ip, server.port));
+        self.set_detail_field(3, &server.map);
+        self.set_detail_field(4, mode_name(server));
+        self.set_detail_field(5, region_name(&server.region));
         self.server_details.redraw();
+    }
+
+    fn set_detail_field(&mut self, idx: i32, value: &str) {
+        self.server_details.set_cell_value(idx, 0, value);
     }
 }
 
