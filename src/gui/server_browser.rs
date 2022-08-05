@@ -3,16 +3,21 @@ use std::rc::Rc;
 
 use anyhow::Result;
 use fltk::app;
-use fltk::enums::Event;
+use fltk::button::CheckButton;
+use fltk::enums::{Align, CallbackTrigger, Event};
+use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
+use fltk::input::Input;
+use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
+use strum::IntoEnumIterator;
 
-use crate::servers::{Mode, Region, Server, ServerList, SortCriteria, SortKey};
+use crate::servers::{Filter, Mode, Region, Server, ServerList, SortCriteria, SortKey};
 
 use super::prelude::*;
-use super::{CleanupFn, Handler};
+use super::{widget_auto_height, widget_col_width, CleanupFn, Handler};
 
 pub enum ServerBrowserAction {
     LoadServers,
@@ -24,18 +29,39 @@ pub enum ServerBrowserUpdate {
 
 struct ServerBrowserData {
     all_servers: ServerList,
+    filter: Filter,
+    filtered_servers: ServerList,
     sort_criteria: SortCriteria,
     sorted_servers: ServerList,
 }
 
 impl ServerBrowserData {
-    fn new(all_servers: ServerList, sort_criteria: SortCriteria) -> Self {
-        let sorted_servers = all_servers.sorted(sort_criteria);
+    fn new(all_servers: ServerList, filter: Filter, sort_criteria: SortCriteria) -> Self {
+        let filtered_servers = all_servers.filtered(&filter);
+        let sorted_servers = filtered_servers.sorted(sort_criteria);
         Self {
             all_servers,
+            filter,
+            filtered_servers,
             sort_criteria,
             sorted_servers,
         }
+    }
+
+    fn populate_servers(&mut self, all_servers: ServerList) {
+        self.all_servers = all_servers;
+        self.filtered_servers = self.all_servers.filtered(&self.filter);
+        self.sorted_servers = self.filtered_servers.sorted(self.sort_criteria);
+    }
+
+    fn filter(&self) -> &Filter {
+        &self.filter
+    }
+
+    fn change_filter(&mut self, mut mutator: impl FnMut(&mut Filter)) {
+        mutator(&mut self.filter);
+        self.filtered_servers = self.all_servers.filtered(&self.filter);
+        self.sorted_servers = self.filtered_servers.sorted(self.sort_criteria);
     }
 
     fn sort_criteria(&self) -> &SortCriteria {
@@ -44,7 +70,7 @@ impl ServerBrowserData {
 
     fn set_sort_criteria(&mut self, sort_criteria: SortCriteria) {
         self.sort_criteria = sort_criteria;
-        self.sorted_servers = self.all_servers.sorted(self.sort_criteria);
+        self.sorted_servers = self.filtered_servers.sorted(self.sort_criteria);
     }
 
     fn servers(&self) -> ServerList {
@@ -61,9 +87,15 @@ pub(super) struct ServerBrowser {
 }
 
 impl ServerBrowser {
-    pub(super) fn new(on_action: impl Handler<ServerBrowserAction> + 'static) -> Rc<RefCell<Self>> {
+    pub(super) fn new(
+        build_id: u32,
+        on_action: impl Handler<ServerBrowserAction> + 'static,
+    ) -> Rc<RefCell<Self>> {
+        let mut filter: Filter = Default::default();
+        filter.set_build_id(build_id);
         let state = ServerBrowserData::new(
             ServerList::empty(),
+            filter,
             SortCriteria {
                 key: SortKey::Name,
                 ascending: true,
@@ -72,11 +104,79 @@ impl ServerBrowser {
 
         let mut group = Group::default_fill();
 
-        let tiles = Tile::default_fill();
+        let mut filter_pane = Group::default_fill();
+
+        let label_align = Align::Right | Align::Inside;
+        let name_label = Frame::default()
+            .with_label("Server Name:")
+            .with_align(label_align);
+        let map_label = Frame::default().with_label("Map:").with_align(label_align);
+        let invalid_check = CheckButton::default().with_label("Show invalid servers");
+        let mode_label = Frame::default().with_label("Mode:").with_align(label_align);
+        let region_label = Frame::default()
+            .with_label("Region:")
+            .with_align(label_align);
+        let pwd_prot_check = CheckButton::default().with_label("Show password protected servers");
+        let left_width = widget_col_width(&[&name_label, &mode_label]);
+        let mid_width = widget_col_width(&[&mode_label, &region_label]);
+        let right_width = widget_col_width(&[&invalid_check, &pwd_prot_check]);
+        let height = widget_auto_height(&name_label);
+        let input_width = (filter_pane.w() - left_width - mid_width - right_width - 40) / 2;
+
+        filter_pane.set_size(filter_pane.w(), height * 2 + 10);
+
+        let name_label = name_label.with_size(left_width, height).inside_parent(0, 0);
+        let mut name_input = Input::default()
+            .with_size(input_width, height)
+            .right_of(&name_label, 10);
+        let map_label = map_label
+            .with_size(mid_width, height)
+            .right_of(&name_input, 10);
+        let mut map_input = Input::default()
+            .with_size(input_width, height)
+            .right_of(&map_label, 10);
+        let mut invalid_check = invalid_check
+            .with_size(right_width, height)
+            .right_of(&map_input, 10);
+        let mode_label = mode_label
+            .with_size(left_width, height)
+            .below_of(&name_label, 10);
+        let mut mode_input = InputChoice::default()
+            .with_size(input_width, height)
+            .right_of(&mode_label, 10);
+        mode_input.input().set_readonly(true);
+        mode_input.input().clear_visible_focus();
+        mode_input.add("All");
+        for mode in Mode::iter() {
+            mode_input.add(mode_name(mode));
+        }
+        mode_input.set_value_index(0);
+        let region_label = region_label
+            .with_size(mid_width, height)
+            .right_of(&mode_input, 10);
+        let mut region_input = InputChoice::default()
+            .with_size(input_width, height)
+            .right_of(&region_label, 10);
+        region_input.input().set_readonly(true);
+        region_input.input().clear_visible_focus();
+        region_input.add("All");
+        for region in Region::iter() {
+            region_input.add(region_name(region));
+        }
+        region_input.set_value_index(0);
+        let mut pwd_prot_check = pwd_prot_check
+            .with_size(right_width, height)
+            .right_of(&region_input, 10);
+
+        filter_pane.end();
+
+        let tiles = Tile::default_fill()
+            .below_of(&filter_pane, 10)
+            .stretch_to_parent(0, 0);
 
         let upper_tile = Group::default_fill()
             .inside_parent(0, 0)
-            .with_size_flex(0, group.height() / 4 * 3);
+            .with_size_flex(0, tiles.height() * 3 / 4);
 
         let mut server_list = make_server_list(state.sort_criteria());
         server_list.end();
@@ -119,6 +219,87 @@ impl ServerBrowser {
                 }
             });
         }
+        {
+            let browser = browser.clone();
+            name_input.set_trigger(CallbackTrigger::Changed);
+            name_input.set_callback(move |input| {
+                let mut browser = browser.borrow_mut();
+                browser
+                    .state
+                    .change_filter(|filter| filter.set_name(input.value()));
+                browser.populate_servers();
+            });
+        }
+        {
+            let browser = browser.clone();
+            map_input.set_trigger(CallbackTrigger::Changed);
+            map_input.set_callback(move |input| {
+                let mut browser = browser.borrow_mut();
+                browser
+                    .state
+                    .change_filter(|filter| filter.set_map(input.value()));
+                browser.populate_servers();
+            });
+        }
+        {
+            let browser = browser.clone();
+            mode_input.set_trigger(CallbackTrigger::Changed);
+            mode_input.set_callback(move |input| {
+                let mut browser = browser.borrow_mut();
+                let mode = {
+                    let repr = input.menu_button().value() - 1;
+                    if repr < 0 {
+                        None
+                    } else {
+                        Mode::from_repr(repr as _)
+                    }
+                };
+                browser.state.change_filter(|filter| filter.set_mode(mode));
+                browser.populate_servers();
+            });
+        }
+        {
+            let browser = browser.clone();
+            region_input.set_trigger(CallbackTrigger::Changed);
+            region_input.set_callback(move |input| {
+                let mut browser = browser.borrow_mut();
+                let region = {
+                    let repr = input.menu_button().value() - 1;
+                    if repr < 0 {
+                        None
+                    } else {
+                        Region::from_repr(repr as _)
+                    }
+                };
+                browser
+                    .state
+                    .change_filter(|filter| filter.set_region(region));
+                browser.populate_servers();
+            });
+        }
+        {
+            let browser = browser.clone();
+            invalid_check.set_trigger(CallbackTrigger::Changed);
+            invalid_check.set_callback(move |input| {
+                let mut browser = browser.borrow_mut();
+                let build_id = if input.is_checked() { None } else { Some(build_id) };
+                browser
+                    .state
+                    .change_filter(|filter| filter.set_build_id(build_id));
+                browser.populate_servers();
+            })
+        }
+        {
+            let browser = browser.clone();
+            pwd_prot_check.set_trigger(CallbackTrigger::Changed);
+            pwd_prot_check.set_callback(move |input| {
+                let mut browser = browser.borrow_mut();
+                browser
+                    .state
+                    .change_filter(|filter| filter.set_password_protected(input.is_checked()));
+                browser.populate_servers();
+            })
+        }
 
         browser
     }
@@ -138,7 +319,7 @@ impl ServerBrowser {
         match update {
             ServerBrowserUpdate::PopulateServers(payload) => match payload {
                 Ok(all_servers) => {
-                    self.state = ServerBrowserData::new(all_servers, *self.state.sort_criteria());
+                    self.state.populate_servers(all_servers);
                     self.populate_servers();
                 }
                 Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
@@ -195,8 +376,8 @@ impl ServerBrowser {
         self.set_detail_field(1, &server.name);
         self.set_detail_field(2, &format!("{}:{}", server.ip, server.port));
         self.set_detail_field(3, &server.map);
-        self.set_detail_field(4, mode_name(server));
-        self.set_detail_field(5, region_name(&server.region));
+        self.set_detail_field(4, mode_name(server.mode()));
+        self.set_detail_field(5, region_name(server.region));
         self.server_details.redraw();
     }
 
@@ -235,6 +416,7 @@ fn make_server_list(initial_sort: &SortCriteria) -> SmartTable {
         editable: false,
         ..Default::default()
     });
+    table.make_resizable(true);
     table.set_row_header(false);
     table.set_col_resize(true);
 
@@ -286,13 +468,12 @@ fn make_server_details() -> SmartTable {
 }
 
 fn make_server_row(server: &Server) -> Vec<String> {
-    let mode_name = mode_name(&server).to_string();
     vec![
         (if server.password_protected { GLYPH_LOCK } else { "" }).to_string(),
         server.name.clone(),
         server.map.clone(),
-        mode_name,
-        region_name(&server.region).to_string(),
+        mode_name(server.mode()).to_string(),
+        region_name(server.region).to_string(),
         format!("??/{}", server.max_players), // TODO: Current players
         "????".to_string(),                   // TODO: Age
         "????".to_string(),                   // TODO: Ping
@@ -301,15 +482,15 @@ fn make_server_row(server: &Server) -> Vec<String> {
     ]
 }
 
-fn mode_name(server: &Server) -> &str {
-    match server.mode() {
+fn mode_name(mode: Mode) -> &'static str {
+    match mode {
         Mode::PVE => "PVE",
         Mode::PVEC => "PVE-C",
         Mode::PVP => "PVP",
     }
 }
 
-fn region_name(region: &Region) -> &str {
+fn region_name(region: Region) -> &'static str {
     match region {
         Region::EU => "EU",
         Region::America => "America",

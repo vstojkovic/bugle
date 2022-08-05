@@ -112,7 +112,7 @@ async fn main() {
         }
     };
 
-    let mut main_win = LauncherWindow::new(on_action);
+    let mut main_win = LauncherWindow::new(game.build_id, on_action);
     main_win.show();
 
     while launcher.wait() {

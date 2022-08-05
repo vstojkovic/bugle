@@ -2,7 +2,9 @@ use std::cmp::Ordering;
 use std::ops::{Deref, Index};
 use std::sync::Arc;
 
-use super::Server;
+use regex::{Regex, RegexBuilder};
+
+use super::{Mode, Region, Server};
 
 pub trait Servers: Index<usize, Output = Server> + Send + Sync {
     fn len(&self) -> usize;
@@ -44,6 +46,12 @@ impl ServerList {
     pub fn sorted(&self, criteria: SortCriteria) -> Self {
         Self {
             servers: Arc::new(ServerListView::sorted_from(self.servers.clone(), criteria)),
+        }
+    }
+
+    pub fn filtered(&self, filter: &Filter) -> Self {
+        Self {
+            servers: Arc::new(ServerListView::filtered_from(self.servers.clone(), filter)),
         }
     }
 }
@@ -92,6 +100,70 @@ impl SortCriteria {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Filter {
+    name: Regex,
+    map: Regex,
+    mode: Option<Mode>,
+    region: Option<Region>,
+    build_id: Option<u32>,
+    password_protected: bool,
+}
+
+impl Default for Filter {
+    fn default() -> Self {
+        Filter {
+            name: Regex::new("").unwrap(),
+            map: Regex::new("").unwrap(),
+            mode: None,
+            region: None,
+            build_id: None,
+            password_protected: false,
+        }
+    }
+}
+
+impl Filter {
+    pub fn set_name(&mut self, name: String) {
+        self.name = RegexBuilder::new(&regex::escape(&name))
+            .case_insensitive(true)
+            .build()
+            .unwrap();
+    }
+
+    pub fn set_map(&mut self, map: String) {
+        self.map = RegexBuilder::new(&regex::escape(&map))
+            .case_insensitive(true)
+            .build()
+            .unwrap();
+    }
+
+    pub fn set_mode(&mut self, mode: impl Into<Option<Mode>>) {
+        self.mode = mode.into();
+    }
+
+    pub fn set_region(&mut self, region: impl Into<Option<Region>>) {
+        self.region = region.into();
+    }
+
+    pub fn set_build_id(&mut self, build_id: impl Into<Option<u32>>) {
+        self.build_id = build_id.into();
+    }
+
+    pub fn set_password_protected(&mut self, password_protected: bool) {
+        self.password_protected = password_protected;
+    }
+
+    pub fn matches(&self, server: &Server) -> bool {
+        self.name.is_match(&server.name)
+            && self.map.is_match(&server.map)
+            && self.mode.map_or(true, |mode| server.mode() == mode)
+            && self.region.map_or(true, |region| server.region == region)
+            && self.build_id.map_or(true, |id| server.build_id == id)
+            && self.password_protected >= server.password_protected
+    }
+}
+
 struct ServerListView {
     source: Arc<dyn Servers>,
     indices: Vec<usize>,
@@ -102,6 +174,14 @@ impl ServerListView {
         let mut indices: Vec<usize> = (0..source.len()).collect();
         let mut comparator = criteria.comparator();
         indices.sort_unstable_by(|lidx, ridx| comparator(&source[*lidx], &source[*ridx]));
+        Self { source, indices }
+    }
+
+    fn filtered_from(source: Arc<dyn Servers>, filter: &Filter) -> Self {
+        let indices: Vec<usize> = (0..source.len())
+            .into_iter()
+            .filter(|idx| filter.matches(&source[*idx]))
+            .collect();
         Self { source, indices }
     }
 }

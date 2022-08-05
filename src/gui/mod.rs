@@ -37,7 +37,7 @@ impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 type CleanupFn = Box<dyn FnMut()>;
 
 impl LauncherWindow {
-    pub fn new(on_action: impl Handler<Action> + 'static) -> Self {
+    pub fn new(build_id: u32, on_action: impl Handler<Action> + 'static) -> Self {
         let on_action: Rc<dyn Handler<Action>> = Rc::new(on_action);
 
         let mut window = Window::default().with_size(1280, 760);
@@ -64,7 +64,7 @@ impl LauncherWindow {
 
         let server_browser = {
             let on_action = on_action.clone();
-            ServerBrowser::new(move |browser_action| {
+            ServerBrowser::new(build_id, move |browser_action| {
                 on_action(Action::ServerBrowser(browser_action))
             })
         };
@@ -116,6 +116,29 @@ pub fn alert_not_implemented() {
 
 pub fn alert_error(message: &str, err: &anyhow::Error) {
     dialog::alert_default(&format!("{}\n{}", message, err));
+}
+
+fn widget_auto_width<W: WidgetExt + ?Sized>(widget: &W) -> i32 {
+    let (w, _) = widget.measure_label();
+    w + 20
+}
+
+fn widget_auto_height<W: WidgetExt + ?Sized>(widget: &W) -> i32 {
+    let (_, h) = widget.measure_label();
+    h * 3 / 2
+}
+
+fn button_auto_height<B: ButtonExt + ?Sized>(button: &B) -> i32 {
+    let (_, h) = button.measure_label();
+    h * 14 / 8
+}
+
+fn widget_col_width(widgets: &[&dyn WidgetExt]) -> i32 {
+    widgets
+        .into_iter()
+        .map(|widget| widget_auto_width(*widget))
+        .max()
+        .unwrap()
 }
 
 fn not_implemented_callback(_: &mut impl WidgetExt) {

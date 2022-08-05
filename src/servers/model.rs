@@ -2,16 +2,19 @@ use std::net::IpAddr;
 
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
+use strum_macros::{EnumIter, FromRepr};
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, Deserialize_repr, EnumIter, FromRepr, PartialEq, Eq, PartialOrd, Ord,
+)]
 #[repr(u8)]
 pub enum Region {
-    America = 1,
-    Asia = 2,
-    EU = 0,
-    Japan = 5,
-    LATAM = 4,
-    Oceania = 3,
+    EU,
+    America,
+    Asia,
+    Oceania,
+    LATAM,
+    Japan,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
@@ -29,7 +32,7 @@ pub enum Kind {
     Other,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, EnumIter, FromRepr, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Mode {
     PVE,
     PVEC,
@@ -75,7 +78,7 @@ pub struct Server {
     pub port: u32,
 
     #[serde(rename = "buildId")]
-    pub build_id: u64,
+    pub build_id: u32,
 }
 
 impl Server {
