@@ -21,7 +21,7 @@ pub(super) trait FilterHolder {
 }
 
 pub(super) struct FilterPane {
-    group: Group,
+    root: Group,
     name_input: Input,
     map_input: Input,
     mode_input: InputChoice,
@@ -33,7 +33,7 @@ pub(super) struct FilterPane {
 
 impl FilterPane {
     pub fn new(build_id: u32) -> Self {
-        let mut group = Group::default_fill();
+        let mut root = Group::default_fill();
         let label_align = Align::Right | Align::Inside;
         let name_label = Frame::default()
             .with_label("Server Name:")
@@ -49,9 +49,9 @@ impl FilterPane {
         let mid_width = widget_col_width(&[&mode_label, &region_label]);
         let right_width = widget_col_width(&[&invalid_check, &pwd_prot_check]);
         let height = widget_auto_height(&name_label);
-        let input_width = (group.w() - left_width - mid_width - right_width - 40) / 2;
+        let input_width = (root.w() - left_width - mid_width - right_width - 40) / 2;
 
-        group.set_size(group.w(), height * 2 + 10);
+        root.set_size(root.w(), height * 2 + 10);
 
         let name_label = name_label.with_size(left_width, height).inside_parent(0, 0);
         let name_input = Input::default()
@@ -96,10 +96,10 @@ impl FilterPane {
             .with_size(right_width, height)
             .right_of(&region_input, 10);
 
-        group.end();
+        root.end();
 
         Self {
-            group,
+            root,
             name_input,
             map_input,
             mode_input,
@@ -111,7 +111,7 @@ impl FilterPane {
     }
 
     pub fn root(&self) -> &Group {
-        &self.group
+        &self.root
     }
 
     pub fn set_filter_holder(&self, filter_holder: impl FilterHolder + 'static) {

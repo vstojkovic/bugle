@@ -43,7 +43,7 @@ impl LauncherWindow {
         let mut window = Window::default().with_size(1280, 760);
         window.set_label("BUGLE");
 
-        let root_group = Group::default_fill();
+        let root = Group::default_fill();
 
         let main_menu_group = Group::default()
             .inside_parent(10, 10)
@@ -71,7 +71,7 @@ impl LauncherWindow {
 
         content_group.end();
 
-        root_group.end();
+        root.end();
 
         window.end();
 

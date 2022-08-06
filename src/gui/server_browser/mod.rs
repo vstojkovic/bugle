@@ -85,7 +85,7 @@ impl ServerBrowserData {
 }
 
 pub(super) struct ServerBrowser {
-    pub(super) group: Group,
+    root: Group,
     on_action: Box<dyn Handler<ServerBrowserAction>>,
     server_list: SmartTable,
     server_details: SmartTable,
@@ -93,7 +93,7 @@ pub(super) struct ServerBrowser {
 }
 
 impl ServerBrowser {
-    pub(super) fn new(
+    pub fn new(
         build_id: u32,
         on_action: impl Handler<ServerBrowserAction> + 'static,
     ) -> Rc<Self> {
@@ -108,7 +108,7 @@ impl ServerBrowser {
             },
         )));
 
-        let mut group = Group::default_fill();
+        let mut root = Group::default_fill();
 
         let filter_pane = FilterPane::new(build_id);
 
@@ -136,11 +136,11 @@ impl ServerBrowser {
 
         tiles.end();
 
-        group.end();
-        group.hide();
+        root.end();
+        root.hide();
 
         let browser = Rc::new(Self {
-            group,
+            root,
             on_action: Box::new(on_action),
             server_list: server_list.clone(),
             server_details,
@@ -163,18 +163,18 @@ impl ServerBrowser {
         browser
     }
 
-    pub(super) fn show(&self) -> CleanupFn {
-        self.group.clone().show();
+    pub fn show(&self) -> CleanupFn {
+        self.root.clone().show();
 
         (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
 
-        let mut group = self.group.clone();
+        let mut group = self.root.clone();
         Box::new(move || {
             group.hide();
         })
     }
 
-    pub(super) fn handle_update(&self, update: ServerBrowserUpdate) {
+    pub fn handle_update(&self, update: ServerBrowserUpdate) {
         match update {
             ServerBrowserUpdate::PopulateServers(payload) => match payload {
                 Ok(all_servers) => {
