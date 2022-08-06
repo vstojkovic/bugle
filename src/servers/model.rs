@@ -27,7 +27,7 @@ pub enum Ownership {
 #[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Kind {
-    Conflict,
+    Conflict = 1,
     #[serde(other)]
     Other,
 }
