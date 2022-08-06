@@ -28,7 +28,7 @@ pub enum Update {
 
 pub struct LauncherWindow {
     window: Window,
-    server_browser: Rc<RefCell<ServerBrowser>>,
+    server_browser: Rc<ServerBrowser>,
 }
 
 pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
@@ -89,7 +89,7 @@ impl LauncherWindow {
             let old_cleanup = active_content_cleanup_fn.clone();
             let server_browser = server_browser.clone();
             main_menu.set_on_online(move || {
-                switch_content(&old_cleanup, || server_browser.borrow_mut().show());
+                switch_content(&old_cleanup, || server_browser.show());
             });
         }
 
@@ -105,7 +105,7 @@ impl LauncherWindow {
 
     pub fn handle_update(&mut self, update: Update) {
         match update {
-            Update::ServerBrowser(update) => self.server_browser.borrow_mut().handle_update(update),
+            Update::ServerBrowser(update) => self.server_browser.handle_update(update),
         }
     }
 }
