@@ -47,7 +47,7 @@ pub struct Server {
     #[serde(rename = "Name", default)]
     pub name: String,
 
-    #[serde(rename = "MapName")]
+    #[serde(rename = "MapName", default)]
     pub map: String,
 
     #[serde(rename = "private")]
