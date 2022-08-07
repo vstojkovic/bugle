@@ -137,35 +137,41 @@ impl ServerBrowser {
         let browser = Rc::new(Self {
             root,
             on_action: Box::new(on_action),
-            list_pane: list_pane.clone(),
+            list_pane: Rc::clone(&list_pane),
             details_pane,
-            state: state.clone(),
+            state: Rc::clone(&state),
         });
 
-        filter_pane.set_filter_holder(browser.clone());
+        filter_pane.set_filter_holder(Rc::clone(&browser));
         {
-            let browser = browser.clone(); // TODO: Make weak
+            let browser = Rc::downgrade(&Rc::clone(&browser));
             list_pane.set_on_sort_changed(move |sort_criteria| {
-                browser.state.borrow_mut().set_sort_criteria(sort_criteria);
-                browser.list_pane.populate(browser.state.borrow().servers());
+                if let Some(browser) = browser.upgrade() {
+                    browser.state.borrow_mut().set_sort_criteria(sort_criteria);
+                    browser.list_pane.populate(browser.state.borrow().servers());
+                }
             });
         }
         {
-            let browser = browser.clone(); // TODO: Make weak
-            list_pane.set_on_server_selected(move |server| browser.details_pane.populate(server));
+            let browser = Rc::downgrade(&Rc::clone(&browser));
+            list_pane.set_on_server_selected(move |server| {
+                if let Some(browser) = browser.upgrade() {
+                    browser.details_pane.populate(server)
+                }
+            });
         }
 
         browser
     }
 
     pub fn show(&self) -> CleanupFn {
-        self.root.clone().show();
+        let mut root = self.root.clone();
+        root.show();
 
         (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
 
-        let mut group = self.root.clone();
         Box::new(move || {
-            group.hide();
+            root.hide();
         })
     }
 
@@ -182,7 +188,7 @@ impl ServerBrowser {
     }
 }
 
-impl FilterHolder for Rc<ServerBrowser> {
+impl FilterHolder for ServerBrowser {
     fn access_filter(&self, accessor: impl FnOnce(&Filter)) {
         accessor(self.state.borrow().filter());
     }

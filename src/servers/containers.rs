@@ -45,13 +45,19 @@ impl ServerList {
 
     pub fn sorted(&self, criteria: SortCriteria) -> Self {
         Self {
-            servers: Arc::new(ServerListView::sorted_from(self.servers.clone(), criteria)),
+            servers: Arc::new(ServerListView::sorted_from(
+                Arc::clone(&self.servers),
+                criteria,
+            )),
         }
     }
 
     pub fn filtered(&self, filter: &Filter) -> Self {
         Self {
-            servers: Arc::new(ServerListView::filtered_from(self.servers.clone(), filter)),
+            servers: Arc::new(ServerListView::filtered_from(
+                Arc::clone(&self.servers),
+                filter,
+            )),
         }
     }
 }

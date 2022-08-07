@@ -114,9 +114,9 @@ impl FilterPane {
         &self.root
     }
 
-    pub fn set_filter_holder(&self, filter_holder: impl FilterHolder + 'static) {
+    pub fn set_filter_holder(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
         filter_holder.access_filter(|filter| self.populate(filter));
-        self.set_callbacks(Rc::new(filter_holder));
+        self.set_callbacks(filter_holder);
     }
 
     fn populate(&self, filter: &Filter) {
@@ -144,70 +144,83 @@ impl FilterPane {
 
     fn set_callbacks(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
         {
-            let filter_holder = filter_holder.clone();
+            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            // let filter_holder = Rc::clone(&filter_holder);
             let mut name_input = self.name_input.clone();
             name_input.set_trigger(CallbackTrigger::Changed);
             name_input.set_callback(move |input| {
-                filter_holder.mutate_filter(|filter| filter.set_name(input.value()));
+                if let Some(filter_holder) = filter_holder.upgrade() {
+                    filter_holder.mutate_filter(|filter| filter.set_name(input.value()));
+                }
             });
         }
         {
-            let filter_holder = filter_holder.clone();
+            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
             let mut map_input = self.map_input.clone();
             map_input.set_trigger(CallbackTrigger::Changed);
             map_input.set_callback(move |input| {
-                filter_holder.mutate_filter(|filter| filter.set_map(input.value()));
+                if let Some(filter_holder) = filter_holder.upgrade() {
+                    filter_holder.mutate_filter(|filter| filter.set_map(input.value()));
+                }
             });
         }
         {
-            let filter_holder = filter_holder.clone();
+            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
             let mut mode_input = self.mode_input.clone();
             mode_input.set_trigger(CallbackTrigger::Changed);
             mode_input.set_callback(move |input| {
-                let mode = {
-                    let repr = input.menu_button().value() - 1;
-                    if repr < 0 {
-                        None
-                    } else {
-                        Mode::from_repr(repr as _)
-                    }
-                };
-                filter_holder.mutate_filter(|filter| filter.set_mode(mode));
+                if let Some(filter_holder) = filter_holder.upgrade() {
+                    let mode = {
+                        let repr = input.menu_button().value() - 1;
+                        if repr < 0 {
+                            None
+                        } else {
+                            Mode::from_repr(repr as _)
+                        }
+                    };
+                    filter_holder.mutate_filter(|filter| filter.set_mode(mode));
+                }
             });
         }
         {
-            let filter_holder = filter_holder.clone();
+            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
             let mut region_input = self.region_input.clone();
             region_input.set_trigger(CallbackTrigger::Changed);
             region_input.set_callback(move |input| {
-                let region = {
-                    let repr = input.menu_button().value() - 1;
-                    if repr < 0 {
-                        None
-                    } else {
-                        Region::from_repr(repr as _)
-                    }
-                };
-                filter_holder.mutate_filter(|filter| filter.set_region(region));
+                if let Some(filter_holder) = filter_holder.upgrade() {
+                    let region = {
+                        let repr = input.menu_button().value() - 1;
+                        if repr < 0 {
+                            None
+                        } else {
+                            Region::from_repr(repr as _)
+                        }
+                    };
+                    filter_holder.mutate_filter(|filter| filter.set_region(region));
+                }
             });
         }
         {
-            let filter_holder = filter_holder.clone();
+            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
             let build_id = self.build_id;
             let mut invalid_check = self.invalid_check.clone();
             invalid_check.set_trigger(CallbackTrigger::Changed);
             invalid_check.set_callback(move |input| {
-                let build_id = if input.is_checked() { None } else { Some(build_id) };
-                filter_holder.mutate_filter(|filter| filter.set_build_id(build_id));
+                if let Some(filter_holder) = filter_holder.upgrade() {
+                    let build_id = if input.is_checked() { None } else { Some(build_id) };
+                    filter_holder.mutate_filter(|filter| filter.set_build_id(build_id));
+                }
             })
         }
         {
-            let filter_holder = filter_holder.clone();
+            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
             let mut pwd_prot_check = self.pwd_prot_check.clone();
             pwd_prot_check.set_trigger(CallbackTrigger::Changed);
             pwd_prot_check.set_callback(move |input| {
-                filter_holder
-                    .mutate_filter(|filter| filter.set_password_protected(input.is_checked()));
+                if let Some(filter_holder) = filter_holder.upgrade() {
+                    filter_holder
+                        .mutate_filter(|filter| filter.set_password_protected(input.is_checked()));
+                }
             })
         }
     }

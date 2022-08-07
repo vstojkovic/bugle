@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::rc::Rc;
 
 use anyhow::Result;
 use fltk::app::{self, App};
@@ -76,7 +77,7 @@ async fn main() {
             return;
         }
     };
-    let game = std::rc::Rc::new(match Game::new(game_root) {
+    let game = Rc::new(match Game::new(game_root) {
         Ok(game) => game,
         Err(err) => {
             gui::alert_error(
@@ -90,7 +91,7 @@ async fn main() {
     let (tx, rx) = app::channel();
 
     let on_action = {
-        let game = game.clone();
+        let game = Rc::clone(&game);
         move |action| match action {
             Action::Continue => {
                 let _ = game.launch(true, &["-continuesession"])?;

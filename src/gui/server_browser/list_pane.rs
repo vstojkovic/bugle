@@ -60,14 +60,18 @@ impl ListPane {
         });
 
         {
-            let list_pane = list_pane.clone(); // TODO: Make weak
-            table.set_callback(move |_| match app::event() {
-                Event::Released => {
-                    if app::event_is_click() {
-                        list_pane.clicked()
+            let list_pane = Rc::downgrade(&Rc::clone(&list_pane));
+            table.set_callback(move |_| {
+                if let Some(list_pane) = list_pane.upgrade() {
+                    match app::event() {
+                        Event::Released => {
+                            if app::event_is_click() {
+                                list_pane.clicked()
+                            }
+                        }
+                        _ => (),
                     }
                 }
-                _ => (),
             });
         }
 

@@ -63,7 +63,7 @@ impl LauncherWindow {
         welcome_group.end();
 
         let server_browser = {
-            let on_action = on_action.clone();
+            let on_action = Rc::clone(&on_action);
             ServerBrowser::new(build_id, move |browser_action| {
                 on_action(Action::ServerBrowser(browser_action))
             })
@@ -81,13 +81,13 @@ impl LauncherWindow {
             })));
 
         {
-            let on_action = on_action.clone();
+            let on_action = Rc::clone(&on_action);
             main_menu.set_on_continue(move || on_action(Action::Continue));
         }
 
         {
-            let old_cleanup = active_content_cleanup_fn.clone();
-            let server_browser = server_browser.clone();
+            let old_cleanup = Rc::clone(&active_content_cleanup_fn);
+            let server_browser = Rc::clone(&server_browser);
             main_menu.set_on_online(move || {
                 switch_content(&old_cleanup, || server_browser.show());
             });
