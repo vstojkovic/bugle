@@ -26,15 +26,18 @@ pub struct ServerListView<S: ServerList, I: Indexer<S>> {
     source: S,
     indexer: I,
     indices: Vec<usize>,
+    inverse: Vec<Option<usize>>,
 }
 
 impl<S: ServerList, I: Indexer<S>> ServerListView<S, I> {
     pub fn new(source: S, indexer: I) -> Self {
         let indices = indexer.index_source(&source);
+        let inverse = Self::map_inverse(&source, &indices);
         Self {
             source,
             indexer,
             indices,
+            inverse,
         }
     }
 
@@ -56,6 +59,19 @@ impl<S: ServerList, I: Indexer<S>> ServerListView<S, I> {
 
     pub fn reindex(&mut self) {
         self.indices = self.indexer.index_source(&self.source);
+        self.inverse = Self::map_inverse(&self.source, &self.indices);
+    }
+
+    pub fn from_source_index(&self, idx: usize) -> Option<usize> {
+        self.inverse[idx]
+    }
+
+    fn map_inverse(source: &S, indices: &Vec<usize>) -> Vec<Option<usize>> {
+        let mut inverse: Vec<Option<usize>> = vec![None; source.len()];
+        for (my_idx, src_idx) in indices.iter().enumerate() {
+            inverse[*src_idx] = Some(my_idx);
+        }
+        inverse
     }
 }
 

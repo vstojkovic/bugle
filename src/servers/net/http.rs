@@ -3,7 +3,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Result};
 use serde::{Deserialize, Deserializer};
 
-use super::Server;
+use crate::servers::Server;
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 

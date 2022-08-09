@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
@@ -74,11 +75,23 @@ pub struct Server {
     #[serde()]
     pub ip: IpAddr,
 
+    #[serde(rename = "kdsObservedServerAddress")]
+    pub observed_ip: Option<IpAddr>,
+
     #[serde(rename = "Port")]
     pub port: u32,
 
     #[serde(rename = "buildId")]
     pub build_id: u32,
+
+    #[serde(skip)]
+    pub connected_players: Option<usize>,
+
+    #[serde(skip)]
+    pub age: Option<Duration>,
+
+    #[serde(skip)]
+    pub ping: Option<Duration>,
 }
 
 impl Server {
@@ -93,7 +106,11 @@ impl Server {
         }
     }
 
+    pub fn ip(&self) -> &IpAddr {
+        self.observed_ip.as_ref().unwrap_or(&self.ip)
+    }
+
     pub fn host(&self) -> String {
-        format!("{}:{}", self.ip, self.port)
+        format!("{}:{}", self.ip(), self.port)
     }
 }

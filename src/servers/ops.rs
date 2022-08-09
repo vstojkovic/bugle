@@ -11,12 +11,50 @@ pub enum SortKey {
     Map,
     Mode,
     Region,
+    Players,
+    Age,
+    Ping,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SortCriteria {
     pub key: SortKey,
     pub ascending: bool,
+}
+
+macro_rules! cmp_values {
+    ($ascending:expr, $($expr:tt)+) => {
+        if $ascending {
+            |lhs: &Server, rhs: &Server| lhs.$($expr)+.cmp(&rhs.$($expr)+)
+        } else {
+            |lhs: &Server, rhs: &Server| rhs.$($expr)+.cmp(&lhs.$($expr)+)
+        }
+    };
+}
+
+macro_rules! cmp_options {
+    ($ascending:expr, $($expr:tt)+) => {
+        if $ascending {
+            |lhs: &Server, rhs: &Server| cmp_options!(@template lhs, rhs, lv, rv, lv, rv, $($expr)+)
+        } else {
+            |lhs: &Server, rhs: &Server| cmp_options!(@template lhs, rhs, lv, rv, rv, lv, $($expr)+)
+        }
+    };
+    (@template $lhs:ident, $rhs:ident, $lbind:tt, $rbind:tt, $lval:tt, $rval:tt, $($expr:tt)+) => {
+        if let Some($lbind) = $lhs.$($expr)+ {
+            if let Some($rbind) = $rhs.$($expr)+ {
+                $lval.cmp(&$rval)
+            } else {
+                Ordering::Less
+            }
+        } else {
+            if $rhs.$($expr)+.is_some() {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        }
+    };
 }
 
 impl SortCriteria {
@@ -27,32 +65,33 @@ impl SortCriteria {
         }
     }
 
-    fn comparator(&self) -> Box<dyn FnMut(&Server, &Server) -> Ordering> {
-        let cmp = match self.key {
-            SortKey::Name => |lhs: &Server, rhs: &Server| lhs.name.cmp(&rhs.name),
-            SortKey::Map => |lhs: &Server, rhs: &Server| lhs.map.cmp(&rhs.map),
-            SortKey::Mode => |lhs: &Server, rhs: &Server| lhs.mode().cmp(&rhs.mode()),
-            SortKey::Region => |lhs: &Server, rhs: &Server| lhs.region.cmp(&rhs.region),
+    fn comparator(&self) -> Box<dyn for<'s> Fn(&'s Server, &'s Server) -> Ordering> {
+        let cmp: Box<dyn Fn(&Server, &Server) -> Ordering> = match self.key {
+            SortKey::Name => Box::new(cmp_values!(self.ascending, name)),
+            SortKey::Map => Box::new(cmp_values!(self.ascending, map)),
+            SortKey::Mode => Box::new(cmp_values!(self.ascending, mode())),
+            SortKey::Region => Box::new(cmp_values!(self.ascending, region)),
+            SortKey::Players => Box::new({
+                let connected_cmp = cmp_options!(self.ascending, connected_players);
+                let max_cmp = cmp_values!(self.ascending, max_players);
+                move |lhs: &Server, rhs: &Server| {
+                    connected_cmp(lhs, rhs).then_with(|| max_cmp(lhs, rhs))
+                }
+            }),
+            SortKey::Age => Box::new(cmp_options!(self.ascending, age)),
+            SortKey::Ping => Box::new(cmp_options!(self.ascending, ping)),
         };
-        let cmp = move |lhs: &Server, rhs: &Server| {
-            cmp(lhs, rhs).then_with(|| Self::tie_breaker(lhs, rhs))
-        };
-        if self.ascending {
-            Box::new(cmp)
-        } else {
-            Box::new(move |lhs, rhs| cmp(lhs, rhs).reverse())
-        }
-    }
-
-    fn tie_breaker(lhs: &Server, rhs: &Server) -> Ordering {
-        lhs.id.cmp(&rhs.id)
+        let tie_breaker = cmp_values!(self.ascending, id);
+        Box::new(move |lhs: &Server, rhs: &Server| {
+            cmp(lhs, rhs).then_with(|| tie_breaker(lhs, rhs))
+        })
     }
 }
 
 impl<S: ServerList> Indexer<S> for SortCriteria {
     fn index_source(&self, source: &S) -> Vec<usize> {
         let mut indices: Vec<usize> = (0..source.len()).collect();
-        let mut comparator = self.comparator();
+        let comparator = self.comparator();
         indices.sort_unstable_by(|lidx, ridx| comparator(&source[*lidx], &source[*ridx]));
         indices
     }

@@ -7,7 +7,8 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
 use crate::servers::{
-    Filter, Mode, Region, Server, ServerList, ServerListView, SortCriteria, SortKey,
+    Filter, Mode, Region, Server, ServerList, ServerListView, ServerQueryResponse, SortCriteria,
+    SortKey,
 };
 
 use self::details_pane::DetailsPane;
@@ -27,6 +28,7 @@ pub enum ServerBrowserAction {
 
 pub enum ServerBrowserUpdate {
     PopulateServers(Result<Vec<Server>>),
+    UpdateServer(ServerQueryResponse),
 }
 
 struct ServerBrowserData {
@@ -73,6 +75,31 @@ impl ServerBrowserData {
             *sort_criteria = criteria;
             true
         });
+    }
+
+    fn update_server(&mut self, index: usize, mutator: impl FnOnce(&mut Server)) -> bool {
+        self.servers.mutate(move |filtered_servers, sort_criteria| {
+            let should_reindex = filtered_servers.mutate(move |all_servers, filter| {
+                let server = match all_servers.get_mut(index) {
+                    Some(server) => server,
+                    _ => return false,
+                };
+                let matched_before = filter.matches(server);
+                mutator(server);
+                filter.matches(server) != matched_before
+            });
+            should_reindex
+                || (sort_criteria.key == SortKey::Players)
+                || (sort_criteria.key == SortKey::Age)
+                || (sort_criteria.key == SortKey::Ping)
+        })
+    }
+
+    fn to_display_index(&self, index: usize) -> Option<usize> {
+        self.servers
+            .source()
+            .from_source_index(index)
+            .and_then(|index| self.servers.from_source_index(index))
     }
 }
 
@@ -195,6 +222,23 @@ impl ServerBrowser {
                 }
                 Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
             },
+            ServerBrowserUpdate::UpdateServer(response) => {
+                let repopulate = {
+                    let mut state = self.state.borrow_mut();
+                    state.update_server(response.server_idx, |server| {
+                        server.connected_players = Some(response.connected_players);
+                        server.age = Some(response.age);
+                        server.ping = Some(response.round_trip);
+                    })
+                };
+                if repopulate {
+                    self.list_pane.populate(self.state.clone());
+                } else if let Some(index) =
+                    self.state.borrow().to_display_index(response.server_idx)
+                {
+                    self.list_pane.update(index);
+                }
+            }
         }
     }
 }

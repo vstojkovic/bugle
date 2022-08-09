@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use fltk::prelude::*;
 use fltk_table::{SmartTable, TableOpts};
 
@@ -21,7 +23,7 @@ impl DetailsPane {
 
         let mut header_width = 0i32;
         fltk::draw::set_font(table.label_font(), table.label_size());
-        for (idx, header) in SERVER_DETAILS_ROWS.iter().enumerate() {
+        for (idx, (header, _)) in SERVER_DETAILS_ROWS.iter().enumerate() {
             let idx = idx as _;
             table.set_row_header_value(idx, header);
             let (w, _) = fltk::draw::measure(header, true);
@@ -41,14 +43,18 @@ impl DetailsPane {
 
     pub fn populate(&self, server: &Server) {
         let mut table = self.table.clone();
-        table.set_cell_value(0, 0, &server.id);
-        table.set_cell_value(1, 0, &server.name);
-        table.set_cell_value(2, 0, &format!("{}:{}", server.ip, server.port));
-        table.set_cell_value(3, 0, &server.map);
-        table.set_cell_value(4, 0, mode_name(server.mode()));
-        table.set_cell_value(5, 0, region_name(server.region));
+        for (idx, (_, cell_value)) in SERVER_DETAILS_ROWS.iter().enumerate() {
+            table.set_cell_value(idx as _, 0, cell_value(server).as_ref());
+        }
         table.redraw();
     }
 }
 
-const SERVER_DETAILS_ROWS: &[&str] = &["ID", "Server Name", "Host", "Map Name", "Mode", "Region"];
+const SERVER_DETAILS_ROWS: &[(&str, fn(&Server) -> Cow<str>)] = &[
+    ("ID", |server| Cow::from(&server.id)),
+    ("Server Name", |server| Cow::from(&server.name)),
+    ("Host", |server| Cow::from(server.host())),
+    ("Map Name", |server| Cow::from(&server.map)),
+    ("Mode", |server| Cow::from(mode_name(server.mode()))),
+    ("Region", |server| Cow::from(region_name(server.region))),
+];

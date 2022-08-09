@@ -92,6 +92,14 @@ impl ListPane {
         *self.server_list.borrow_mut() = server_list;
     }
 
+    pub fn update(&self, idx: usize) {
+        let mut table = self.table.clone();
+        let servers = self.server_list.borrow();
+        let data_ref = table.data_ref();
+        data_ref.lock().unwrap()[idx] = make_server_row(&servers.borrow()[idx]);
+        table.redraw();
+    }
+
     pub fn set_on_sort_changed(&self, on_sort_changed: impl Fn(SortCriteria) + 'static) {
         *self.on_sort_changed.borrow_mut() = Box::new(on_sort_changed);
     }
@@ -151,10 +159,10 @@ const GLYPH_DESC: &str = "\u{25bc}";
 const SERVER_LIST_COLS: &[(&str, i32)] = &[
     (GLYPH_LOCK, 20),
     ("Server Name", 400),
-    ("Map", 160),
+    ("Map", 150),
     ("Mode", 80),
     ("Region", 80),
-    ("Players", 60),
+    ("Players", 70),
     ("Age", 60),
     ("Ping", 60),
     ("BattlEye", 60),
@@ -167,6 +175,9 @@ fn sort_key_to_column(sort_key: SortKey) -> i32 {
         SortKey::Map => 2,
         SortKey::Mode => 3,
         SortKey::Region => 4,
+        SortKey::Players => 5,
+        SortKey::Age => 6,
+        SortKey::Ping => 7,
     }
 }
 
@@ -176,6 +187,9 @@ fn column_to_sort_key(col: i32) -> Option<SortKey> {
         2 => Some(SortKey::Map),
         3 => Some(SortKey::Mode),
         4 => Some(SortKey::Region),
+        5 => Some(SortKey::Players),
+        6 => Some(SortKey::Age),
+        7 => Some(SortKey::Ping),
         _ => None,
     }
 }
@@ -193,15 +207,27 @@ fn sortable_column_header(col: i32, ascending: Option<bool>) -> String {
 }
 
 fn make_server_row(server: &Server) -> Vec<String> {
+    let players = match server.connected_players {
+        Some(players) => format!("{}/{}", players, server.max_players),
+        None => format!("?/{}", server.max_players),
+    };
+    let age = match server.age {
+        Some(age) => format!("{}", age.as_secs() / 86400),
+        None => "????".to_string(),
+    };
+    let ping = match server.ping {
+        Some(ping) => format!("{}", ping.as_millis()),
+        None => "????".to_string(),
+    };
     vec![
         (if server.password_protected { GLYPH_LOCK } else { "" }).to_string(),
         server.name.clone(),
         server.map.clone(),
         mode_name(server.mode()).to_string(),
         region_name(server.region).to_string(),
-        format!("??/{}", server.max_players), // TODO: Current players
-        "????".to_string(),                   // TODO: Age
-        "????".to_string(),                   // TODO: Ping
+        players,
+        age,
+        ping,
         (if server.battleye_required { GLYPH_YES } else { GLYPH_NO }).to_string(),
         "??".to_string(), // TODO: Level
     ]

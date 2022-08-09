@@ -5,10 +5,12 @@ use std::rc::Rc;
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
+use servers::{ServerQueryClient, ServerQueryRequest};
 use steamlocate::SteamDir;
 
 mod config;
 mod gui;
+mod net;
 mod servers;
 
 use gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
@@ -100,10 +102,29 @@ async fn main() {
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
                 let tx = tx.clone();
+                let build_id = game.build_id;
                 tokio::spawn(async move {
                     let servers = servers::fetch_server_list()
                         .await
                         .map_err(anyhow::Error::msg);
+                    if let Ok(servers) = &servers {
+                        let tx = tx.clone();
+                        let query_client = ServerQueryClient::new(build_id, move |response| {
+                            tx.send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
+                                response,
+                            )));
+                        })
+                        .unwrap(); // FIXME: Show error
+                        query_client.send(servers.iter().enumerate().filter_map(
+                            |(idx, server)| {
+                                if server.build_id == build_id {
+                                    ServerQueryRequest::for_server(idx, server)
+                                } else {
+                                    None
+                                }
+                            },
+                        ));
+                    };
                     tx.send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
                         servers,
                     )));
@@ -117,8 +138,9 @@ async fn main() {
     main_win.show();
 
     while launcher.wait() {
-        if let Some(update) = rx.recv() {
+        while let Some(update) = rx.recv() {
             main_win.handle_update(update);
+            app::check();
         }
     }
 }
