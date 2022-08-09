@@ -3,11 +3,11 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Result};
 use serde::{Deserialize, Deserializer};
 
-use super::{Server, ServerList};
+use super::Server;
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
-pub async fn fetch_server_list() -> Result<ServerList> {
+pub async fn fetch_server_list() -> Result<Vec<Server>> {
     let client = make_client()?;
     let bucket_list = client
         .get(format!(
@@ -35,8 +35,7 @@ pub async fn fetch_server_list() -> Result<ServerList> {
         .map(|list| list.servers)
         .flatten()
         .map(|item| item.server)
-        .collect::<Vec<Server>>()
-        .into())
+        .collect::<Vec<Server>>())
 }
 
 #[derive(Debug)]

@@ -1,11 +1,14 @@
 use std::cell::RefCell;
+use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 
 use anyhow::Result;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
-use crate::servers::{Filter, Mode, Region, ServerList, SortCriteria, SortKey};
+use crate::servers::{
+    Filter, Mode, Region, Server, ServerList, ServerListView, SortCriteria, SortKey,
+};
 
 use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterHolder, FilterPane};
@@ -23,64 +26,72 @@ pub enum ServerBrowserAction {
 }
 
 pub enum ServerBrowserUpdate {
-    PopulateServers(Result<ServerList>),
+    PopulateServers(Result<Vec<Server>>),
 }
 
 struct ServerBrowserData {
-    all_servers: ServerList,
-    filter: Filter,
-    filtered_servers: ServerList,
-    sort_criteria: SortCriteria,
-    sorted_servers: ServerList,
+    servers: ServerListView<ServerListView<Vec<Server>, Filter>, SortCriteria>,
 }
 
 impl ServerBrowserData {
-    fn new(all_servers: ServerList, filter: Filter, sort_criteria: SortCriteria) -> Self {
-        let filtered_servers = all_servers.filtered(&filter);
-        let sorted_servers = filtered_servers.sorted(sort_criteria);
+    fn new(all_servers: Vec<Server>, filter: Filter, sort_criteria: SortCriteria) -> Self {
+        let filtered_servers = ServerListView::new(all_servers, filter);
+        let sorted_servers = ServerListView::new(filtered_servers, sort_criteria);
         Self {
-            all_servers,
-            filter,
-            filtered_servers,
-            sort_criteria,
-            sorted_servers,
+            servers: sorted_servers,
         }
     }
 
-    fn set_servers(&mut self, all_servers: ServerList) {
-        self.all_servers = all_servers;
-        self.update_filtered_servers();
+    fn set_servers(&mut self, servers: Vec<Server>) {
+        self.servers.mutate(move |filtered_servers, _| {
+            filtered_servers.mutate(move |all_servers, _| {
+                *all_servers = servers;
+                true
+            })
+        });
     }
 
     fn filter(&self) -> &Filter {
-        &self.filter
+        &self.servers.source().indexer()
     }
 
     fn change_filter(&mut self, mut mutator: impl FnMut(&mut Filter)) {
-        mutator(&mut self.filter);
-        self.update_filtered_servers();
+        self.servers.mutate(move |filtered_servers, _| {
+            filtered_servers.mutate(move |_, filter| {
+                mutator(filter);
+                true
+            })
+        });
     }
 
     fn sort_criteria(&self) -> &SortCriteria {
-        &self.sort_criteria
+        &self.servers.indexer()
     }
 
-    fn set_sort_criteria(&mut self, sort_criteria: SortCriteria) {
-        self.sort_criteria = sort_criteria;
-        self.update_sorted_servers();
+    fn set_sort_criteria(&mut self, criteria: SortCriteria) {
+        self.servers.mutate(move |_, sort_criteria| {
+            *sort_criteria = criteria;
+            true
+        });
     }
+}
 
-    fn servers(&self) -> ServerList {
-        self.sorted_servers.clone()
+impl Index<usize> for ServerBrowserData {
+    type Output = Server;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.servers[index]
     }
+}
 
-    fn update_filtered_servers(&mut self) {
-        self.filtered_servers = self.all_servers.filtered(&self.filter);
-        self.update_sorted_servers()
+impl IndexMut<usize> for ServerBrowserData {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.servers[index]
     }
+}
 
-    fn update_sorted_servers(&mut self) {
-        self.sorted_servers = self.filtered_servers.sorted(self.sort_criteria);
+impl ServerList for ServerBrowserData {
+    fn len(&self) -> usize {
+        self.servers.len()
     }
 }
 
@@ -97,7 +108,7 @@ impl ServerBrowser {
         let mut filter: Filter = Default::default();
         filter.set_build_id(build_id);
         let state = Rc::new(RefCell::new(ServerBrowserData::new(
-            ServerList::empty(),
+            Vec::new(),
             filter,
             SortCriteria {
                 key: SortKey::Name,
@@ -148,7 +159,7 @@ impl ServerBrowser {
             list_pane.set_on_sort_changed(move |sort_criteria| {
                 if let Some(browser) = browser.upgrade() {
                     browser.state.borrow_mut().set_sort_criteria(sort_criteria);
-                    browser.list_pane.populate(browser.state.borrow().servers());
+                    browser.list_pane.populate(browser.state.clone());
                 }
             });
         }
@@ -180,7 +191,7 @@ impl ServerBrowser {
             ServerBrowserUpdate::PopulateServers(payload) => match payload {
                 Ok(all_servers) => {
                     self.state.borrow_mut().set_servers(all_servers);
-                    self.list_pane.populate(self.state.borrow().servers());
+                    self.list_pane.populate(self.state.clone());
                 }
                 Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
             },
@@ -195,7 +206,7 @@ impl FilterHolder for ServerBrowser {
 
     fn mutate_filter(&self, mutator: impl FnMut(&mut Filter)) {
         self.state.borrow_mut().change_filter(mutator);
-        self.list_pane.populate(self.state.borrow().servers());
+        self.list_pane.populate(self.state.clone());
     }
 }
 

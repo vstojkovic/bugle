@@ -14,7 +14,7 @@ use super::{mode_name, region_name};
 pub(super) struct ListPane {
     table: SmartTable,
     sort_criteria: RefCell<SortCriteria>,
-    server_list: RefCell<ServerList>,
+    server_list: RefCell<Rc<RefCell<dyn ServerList>>>,
     on_sort_changed: RefCell<Box<dyn Fn(SortCriteria)>>,
     on_server_selected: RefCell<Box<dyn Fn(&Server)>>,
 }
@@ -54,7 +54,7 @@ impl ListPane {
         let list_pane = Rc::new(Self {
             table: table.clone(),
             sort_criteria: RefCell::new(*initial_sort),
-            server_list: RefCell::new(ServerList::empty()),
+            server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
             on_sort_changed: RefCell::new(Box::new(|_| ())),
             on_server_selected: RefCell::new(Box::new(|_| ())),
         });
@@ -78,15 +78,17 @@ impl ListPane {
         list_pane
     }
 
-    pub fn populate(&self, server_list: ServerList) {
+    pub fn populate(&self, server_list: Rc<RefCell<dyn ServerList>>) {
         let mut table = self.table.clone();
-        let row_count = server_list.len();
         {
-            let data_ref = table.data_ref();
-            *data_ref.lock().unwrap() = server_list.into_iter().map(make_server_row).collect();
+            let servers = server_list.borrow();
+            {
+                let data_ref = table.data_ref();
+                *data_ref.lock().unwrap() = servers.into_iter().map(make_server_row).collect();
+            }
+            table.set_rows(servers.len() as _);
+            table.redraw();
         }
-        table.set_rows(row_count as _);
-        table.redraw();
         *self.server_list.borrow_mut() = server_list;
     }
 
@@ -102,7 +104,8 @@ impl ListPane {
         match self.table.callback_context() {
             TableContext::ColHeader => self.header_clicked(),
             TableContext::Cell => {
-                let server = &self.server_list.borrow()[self.table.callback_row() as _];
+                let server_list = self.server_list.borrow();
+                let server = &server_list.borrow()[self.table.callback_row() as _];
                 self.on_server_selected.borrow()(server);
             }
             _ => (),
