@@ -92,11 +92,15 @@ impl ListPane {
         *self.server_list.borrow_mut() = server_list;
     }
 
-    pub fn update(&self, idx: usize) {
+    pub fn update(&self, indices: impl IntoIterator<Item = usize>) {
         let mut table = self.table.clone();
-        let servers = self.server_list.borrow();
+        let servers_ref = self.server_list.borrow();
+        let servers = servers_ref.borrow();
         let data_ref = table.data_ref();
-        data_ref.lock().unwrap()[idx] = make_server_row(&servers.borrow()[idx]);
+        let mut data = data_ref.lock().unwrap();
+        for idx in indices.into_iter() {
+            data[idx] = make_server_row(&servers[idx]);
+        }
         table.redraw();
     }
 

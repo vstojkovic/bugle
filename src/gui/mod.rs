@@ -26,6 +26,25 @@ pub enum Update {
     ServerBrowser(ServerBrowserUpdate),
 }
 
+impl Update {
+    pub fn try_consolidate(self, other: Self) -> Result<Update, (Update, Update)> {
+        match (self, other) {
+            (Self::ServerBrowser(this), Self::ServerBrowser(other)) => {
+                Self::consolidation_result(this.try_consolidate(other))
+            }
+        }
+    }
+
+    fn consolidation_result<U: Into<Update>>(
+        result: Result<U, (U, U)>,
+    ) -> Result<Update, (Update, Update)> {
+        match result {
+            Ok(consolidated) => Ok(consolidated.into()),
+            Err((this, other)) => Err((this.into(), other.into())),
+        }
+    }
+}
+
 pub struct LauncherWindow {
     window: Window,
     server_browser: Rc<ServerBrowser>,

@@ -29,6 +29,31 @@ pub enum ServerBrowserAction {
 pub enum ServerBrowserUpdate {
     PopulateServers(Result<Vec<Server>>),
     UpdateServer(ServerQueryResponse),
+    BatchUpdateServers(Vec<ServerQueryResponse>),
+}
+
+impl ServerBrowserUpdate {
+    pub fn try_consolidate(
+        self,
+        other: ServerBrowserUpdate,
+    ) -> std::result::Result<Self, (Self, Self)> {
+        match (self, other) {
+            (Self::BatchUpdateServers(mut consolidated), Self::UpdateServer(response)) => {
+                consolidated.push(response);
+                Ok(Self::BatchUpdateServers(consolidated))
+            }
+            (Self::UpdateServer(first), Self::UpdateServer(second)) => {
+                Ok(Self::BatchUpdateServers(vec![first, second]))
+            }
+            (this, other) => Err((this, other)),
+        }
+    }
+}
+
+impl From<ServerBrowserUpdate> for super::Update {
+    fn from(update: ServerBrowserUpdate) -> Self {
+        Self::ServerBrowser(update)
+    }
 }
 
 struct ServerBrowserData {
@@ -77,21 +102,15 @@ impl ServerBrowserData {
         });
     }
 
-    fn update_server(&mut self, index: usize, mutator: impl FnOnce(&mut Server)) -> bool {
+    fn update_servers(
+        &mut self,
+        mutator: impl FnOnce(&mut Vec<Server>, &Filter) -> bool,
+        should_sort: impl FnOnce(&SortCriteria) -> bool,
+    ) -> bool {
         self.servers.mutate(move |filtered_servers, sort_criteria| {
-            let should_reindex = filtered_servers.mutate(move |all_servers, filter| {
-                let server = match all_servers.get_mut(index) {
-                    Some(server) => server,
-                    _ => return false,
-                };
-                let matched_before = filter.matches(server);
-                mutator(server);
-                filter.matches(server) != matched_before
-            });
-            should_reindex
-                || (sort_criteria.key == SortKey::Players)
-                || (sort_criteria.key == SortKey::Age)
-                || (sort_criteria.key == SortKey::Ping)
+            let should_reindex =
+                filtered_servers.mutate(move |all_servers, filter| mutator(all_servers, filter));
+            should_reindex || should_sort(sort_criteria)
         })
     }
 
@@ -216,30 +235,67 @@ impl ServerBrowser {
     pub fn handle_update(&self, update: ServerBrowserUpdate) {
         match update {
             ServerBrowserUpdate::PopulateServers(payload) => match payload {
-                Ok(all_servers) => {
-                    self.state.borrow_mut().set_servers(all_servers);
-                    self.list_pane.populate(self.state.clone());
-                }
+                Ok(all_servers) => self.populate_servers(all_servers),
                 Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
             },
             ServerBrowserUpdate::UpdateServer(response) => {
-                let repopulate = {
-                    let mut state = self.state.borrow_mut();
-                    state.update_server(response.server_idx, |server| {
-                        server.connected_players = Some(response.connected_players);
-                        server.age = Some(response.age);
-                        server.ping = Some(response.round_trip);
-                    })
-                };
-                if repopulate {
-                    self.list_pane.populate(self.state.clone());
-                } else if let Some(index) =
-                    self.state.borrow().to_display_index(response.server_idx)
-                {
-                    self.list_pane.update(index);
-                }
+                self.update_servers(&[response]);
+            }
+            ServerBrowserUpdate::BatchUpdateServers(responses) => {
+                self.update_servers(&responses);
             }
         }
+    }
+
+    fn populate_servers(&self, all_servers: Vec<Server>) {
+        self.state.borrow_mut().set_servers(all_servers);
+        self.list_pane.populate(self.state.clone());
+    }
+
+    fn update_servers(&self, updates: &[ServerQueryResponse]) {
+        let mut updated_indices: Vec<usize> = Vec::with_capacity(updates.len());
+        let repopulate = {
+            let mut state = self.state.borrow_mut();
+            state.update_servers(
+                |all_servers, filter| {
+                    let mut should_reindex = false;
+                    for update in updates {
+                        let server = match all_servers.get_mut(update.server_idx) {
+                            Some(server) => server,
+                            None => continue,
+                        };
+                        updated_indices.push(update.server_idx);
+                        if Self::update_server(server, update, filter) {
+                            should_reindex = true;
+                        }
+                    }
+                    should_reindex
+                },
+                |sort_criteria| {
+                    (sort_criteria.key == SortKey::Players)
+                        || (sort_criteria.key == SortKey::Age)
+                        || (sort_criteria.key == SortKey::Ping)
+                },
+            )
+        };
+        if repopulate {
+            self.list_pane.populate(self.state.clone());
+        } else {
+            let state = self.state.borrow();
+            self.list_pane.update(
+                updated_indices
+                    .iter()
+                    .filter_map(|idx| state.to_display_index(*idx)),
+            );
+        };
+    }
+
+    fn update_server(server: &mut Server, update: &ServerQueryResponse, filter: &Filter) -> bool {
+        let matched_before = filter.matches(server);
+        server.connected_players = Some(update.connected_players);
+        server.age = Some(update.age);
+        server.ping = Some(update.round_trip);
+        filter.matches(server) != matched_before
     }
 }
 

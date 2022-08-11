@@ -138,7 +138,17 @@ async fn main() {
     main_win.show();
 
     while launcher.wait() {
-        while let Some(update) = rx.recv() {
+        while let Some(mut update) = rx.recv() {
+            while let Some(next) = rx.recv() {
+                update = match update.try_consolidate(next) {
+                    Ok(consolidated) => consolidated,
+                    Err((update, next)) => {
+                        main_win.handle_update(update);
+                        app::check();
+                        next
+                    }
+                };
+            }
             main_win.handle_update(update);
             app::check();
         }
