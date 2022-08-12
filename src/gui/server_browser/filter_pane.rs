@@ -145,7 +145,6 @@ impl FilterPane {
     fn set_callbacks(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
         {
             let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
-            // let filter_holder = Rc::clone(&filter_holder);
             let mut name_input = self.name_input.clone();
             name_input.set_trigger(CallbackTrigger::Changed);
             name_input.set_callback(move |input| {
