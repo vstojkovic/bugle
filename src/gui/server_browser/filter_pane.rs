@@ -144,7 +144,7 @@ impl FilterPane {
 
     fn set_callbacks(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
         {
-            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            let filter_holder = Rc::downgrade(&filter_holder);
             let mut name_input = self.name_input.clone();
             name_input.set_trigger(CallbackTrigger::Changed);
             name_input.set_callback(move |input| {
@@ -154,7 +154,7 @@ impl FilterPane {
             });
         }
         {
-            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            let filter_holder = Rc::downgrade(&filter_holder);
             let mut map_input = self.map_input.clone();
             map_input.set_trigger(CallbackTrigger::Changed);
             map_input.set_callback(move |input| {
@@ -164,7 +164,7 @@ impl FilterPane {
             });
         }
         {
-            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            let filter_holder = Rc::downgrade(&filter_holder);
             let mut mode_input = self.mode_input.clone();
             mode_input.set_trigger(CallbackTrigger::Changed);
             mode_input.set_callback(move |input| {
@@ -182,7 +182,7 @@ impl FilterPane {
             });
         }
         {
-            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            let filter_holder = Rc::downgrade(&filter_holder);
             let mut region_input = self.region_input.clone();
             region_input.set_trigger(CallbackTrigger::Changed);
             region_input.set_callback(move |input| {
@@ -200,7 +200,7 @@ impl FilterPane {
             });
         }
         {
-            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            let filter_holder = Rc::downgrade(&filter_holder);
             let build_id = self.build_id;
             let mut invalid_check = self.invalid_check.clone();
             invalid_check.set_trigger(CallbackTrigger::Changed);
@@ -212,7 +212,7 @@ impl FilterPane {
             })
         }
         {
-            let filter_holder = Rc::downgrade(&Rc::clone(&filter_holder));
+            let filter_holder = Rc::downgrade(&filter_holder);
             let mut pwd_prot_check = self.pwd_prot_check.clone();
             pwd_prot_check.set_trigger(CallbackTrigger::Changed);
             pwd_prot_check.set_callback(move |input| {

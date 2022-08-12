@@ -201,7 +201,7 @@ impl ServerBrowser {
 
         filter_pane.set_filter_holder(Rc::clone(&browser));
         {
-            let browser = Rc::downgrade(&Rc::clone(&browser));
+            let browser = Rc::downgrade(&browser);
             list_pane.set_on_sort_changed(move |sort_criteria| {
                 if let Some(browser) = browser.upgrade() {
                     browser.state.borrow_mut().set_sort_criteria(sort_criteria);
@@ -210,7 +210,7 @@ impl ServerBrowser {
             });
         }
         {
-            let browser = Rc::downgrade(&Rc::clone(&browser));
+            let browser = Rc::downgrade(&browser);
             list_pane.set_on_server_selected(move |server| {
                 if let Some(browser) = browser.upgrade() {
                     browser.details_pane.populate(server)

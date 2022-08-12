@@ -62,7 +62,7 @@ impl ListPane {
         });
 
         {
-            let list_pane = Rc::downgrade(&Rc::clone(&list_pane));
+            let list_pane = Rc::downgrade(&list_pane);
             table.set_callback(move |_| {
                 if let Some(list_pane) = list_pane.upgrade() {
                     match app::event() {
