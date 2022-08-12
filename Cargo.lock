@@ -91,6 +91,7 @@ name = "bugle"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bitflags",
  "fltk",
  "fltk-table",
  "futures",

@@ -12,3 +12,7 @@ pub fn is_valid_ip(ip: &IpAddr) -> bool {
         _ => false,
     }
 }
+
+pub fn is_valid_port(port: u32) -> bool {
+    (port > 0) && (port < 0xffff)
+}

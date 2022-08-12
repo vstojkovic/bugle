@@ -5,7 +5,8 @@ use std::rc::Rc;
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
-use servers::{ServerQueryClient, ServerQueryRequest};
+use net::{is_valid_ip, is_valid_port};
+use servers::{ServerQueryClient, ServerQueryRequest, Validity};
 use steamlocate::SteamDir;
 
 mod config;
@@ -92,6 +93,7 @@ async fn main() {
 
     let (tx, rx) = app::channel();
 
+    // TODO: Refactor and organize
     let on_action = {
         let game = Rc::clone(&game);
         move |action| match action {
@@ -104,10 +106,22 @@ async fn main() {
                 let tx = tx.clone();
                 let build_id = game.build_id;
                 tokio::spawn(async move {
-                    let servers = servers::fetch_server_list()
+                    let mut servers = servers::fetch_server_list()
                         .await
                         .map_err(anyhow::Error::msg);
-                    if let Ok(servers) = &servers {
+                    if let Ok(servers) = &mut servers {
+                        for server in servers.iter_mut() {
+                            if server.build_id != build_id {
+                                server.validity.insert(Validity::INVALID_BUILD);
+                            }
+                            if !is_valid_ip(server.ip()) {
+                                server.validity.insert(Validity::INVALID_ADDR);
+                            }
+                            if !is_valid_port(server.port) {
+                                server.validity.insert(Validity::INVALID_PORT);
+                            }
+                        }
+
                         let tx = tx.clone();
                         let query_client = ServerQueryClient::new(build_id, move |response| {
                             tx.send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(

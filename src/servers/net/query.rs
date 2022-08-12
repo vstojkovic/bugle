@@ -11,7 +11,6 @@ use governor::Quota;
 use tokio::net::UdpSocket;
 use tokio::task::JoinHandle;
 
-use crate::net::is_valid_ip;
 use crate::servers::Server;
 
 #[derive(Debug)]
@@ -22,15 +21,14 @@ pub struct ServerQueryRequest {
 
 impl ServerQueryRequest {
     pub fn for_server(server_idx: usize, server: &Server) -> Option<Self> {
-        let port: u16 = (server.port + 1).try_into().ok()?;
-        if !is_valid_ip(server.ip()) {
-            return None;
+        if server.is_valid() {
+            Some(Self {
+                server_idx,
+                addr: SocketAddr::new(*server.ip(), (server.port + 1) as _),
+            })
+        } else {
+            None
         }
-
-        Some(Self {
-            server_idx,
-            addr: SocketAddr::new(*server.ip(), port),
-        })
     }
 }
 

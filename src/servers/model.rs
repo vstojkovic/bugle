@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 use std::time::Duration;
 
+use bitflags::bitflags;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use strum_macros::{EnumIter, FromRepr};
@@ -38,6 +39,22 @@ pub enum Mode {
     PVE,
     PVEC,
     PVP,
+}
+
+bitflags! {
+    #[derive(Default)]
+    pub struct Validity: u8 {
+        const VALID = 0;
+        const INVALID_BUILD = 1;
+        const INVALID_ADDR = 2;
+        const INVALID_PORT = 4;
+    }
+}
+
+impl Validity {
+    pub fn is_valid(self) -> bool {
+        self == Self::VALID
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -92,6 +109,9 @@ pub struct Server {
 
     #[serde(skip)]
     pub ping: Option<Duration>,
+
+    #[serde(skip)]
+    pub validity: Validity,
 }
 
 impl Server {
@@ -112,5 +132,9 @@ impl Server {
 
     pub fn host(&self) -> String {
         format!("{}:{}", self.ip(), self.port)
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.validity.is_valid()
     }
 }
