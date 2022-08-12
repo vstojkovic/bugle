@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use fltk::app;
@@ -6,6 +7,7 @@ use fltk::enums::Event;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
+use lazy_static::lazy_static;
 
 use crate::servers::{Server, ServerList, SortCriteria, SortKey};
 
@@ -173,6 +175,17 @@ const SERVER_LIST_COLS: &[(&str, i32)] = &[
     ("Level", 50),
 ];
 
+lazy_static! {
+    static ref COLUMN_TO_SORT_KEY: HashMap<i32, SortKey> = {
+        use strum::IntoEnumIterator;
+        let mut map = HashMap::new();
+        for sort_key in SortKey::iter() {
+            map.insert(sort_key_to_column(sort_key), sort_key);
+        }
+        map
+    };
+}
+
 fn sort_key_to_column(sort_key: SortKey) -> i32 {
     match sort_key {
         SortKey::Name => 1,
@@ -186,16 +199,7 @@ fn sort_key_to_column(sort_key: SortKey) -> i32 {
 }
 
 fn column_to_sort_key(col: i32) -> Option<SortKey> {
-    match col {
-        1 => Some(SortKey::Name),
-        2 => Some(SortKey::Map),
-        3 => Some(SortKey::Mode),
-        4 => Some(SortKey::Region),
-        5 => Some(SortKey::Players),
-        6 => Some(SortKey::Age),
-        7 => Some(SortKey::Ping),
-        _ => None,
-    }
+    COLUMN_TO_SORT_KEY.get(&col).copied()
 }
 
 fn sortable_column_header(col: i32, ascending: Option<bool>) -> String {

@@ -95,6 +95,7 @@ dependencies = [
  "fltk-table",
  "futures",
  "governor",
+ "lazy_static",
  "regex",
  "reqwest",
  "rust-ini",
