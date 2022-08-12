@@ -56,11 +56,11 @@ impl From<ServerBrowserUpdate> for super::Update {
     }
 }
 
-struct ServerBrowserData {
+struct ServerBrowserState {
     servers: ServerListView<ServerListView<Vec<Server>, Filter>, SortCriteria>,
 }
 
-impl ServerBrowserData {
+impl ServerBrowserState {
     fn new(all_servers: Vec<Server>, filter: Filter, sort_criteria: SortCriteria) -> Self {
         let filtered_servers = ServerListView::new(all_servers, filter);
         let sorted_servers = ServerListView::new(filtered_servers, sort_criteria);
@@ -122,20 +122,20 @@ impl ServerBrowserData {
     }
 }
 
-impl Index<usize> for ServerBrowserData {
+impl Index<usize> for ServerBrowserState {
     type Output = Server;
     fn index(&self, index: usize) -> &Self::Output {
         &self.servers[index]
     }
 }
 
-impl IndexMut<usize> for ServerBrowserData {
+impl IndexMut<usize> for ServerBrowserState {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.servers[index]
     }
 }
 
-impl ServerList for ServerBrowserData {
+impl ServerList for ServerBrowserState {
     fn len(&self) -> usize {
         self.servers.len()
     }
@@ -146,14 +146,14 @@ pub(super) struct ServerBrowser {
     on_action: Box<dyn Handler<ServerBrowserAction>>,
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
-    state: Rc<RefCell<ServerBrowserData>>,
+    state: Rc<RefCell<ServerBrowserState>>,
 }
 
 impl ServerBrowser {
     pub fn new(build_id: u32, on_action: impl Handler<ServerBrowserAction> + 'static) -> Rc<Self> {
         let mut filter: Filter = Default::default();
         filter.set_build_id(build_id);
-        let state = Rc::new(RefCell::new(ServerBrowserData::new(
+        let state = Rc::new(RefCell::new(ServerBrowserState::new(
             Vec::new(),
             filter,
             SortCriteria {
