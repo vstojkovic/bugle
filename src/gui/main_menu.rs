@@ -56,6 +56,7 @@ impl MainMenu {
         on_continue: impl Fn() -> anyhow::Result<()> + 'static,
     ) {
         self.continue_btn.set_callback(move |_| {
+            // FIXME: Change this to alert_error
             if let Err(err) = on_continue() {
                 dialog::alert_default(&format!("Failed to launch Conan Exiles:\n{}", err))
             }

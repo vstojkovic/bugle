@@ -20,6 +20,7 @@ pub(super) struct ListPane {
     server_list: RefCell<Rc<RefCell<dyn ServerList>>>,
     on_sort_changed: RefCell<Box<dyn Fn(SortCriteria)>>,
     on_server_selected: RefCell<Box<dyn Fn(&Server)>>,
+    selected_idx: RefCell<Option<usize>>,
 }
 
 impl ListPane {
@@ -60,6 +61,7 @@ impl ListPane {
             server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
             on_sort_changed: RefCell::new(Box::new(|_| ())),
             on_server_selected: RefCell::new(Box::new(|_| ())),
+            selected_idx: RefCell::new(None),
         });
 
         {
@@ -115,14 +117,20 @@ impl ListPane {
         *self.on_server_selected.borrow_mut() = Box::new(on_server_selected);
     }
 
+    pub fn selected_index(&self) -> Option<usize> {
+        *self.selected_idx.borrow()
+    }
+
     fn clicked(&self) {
         match self.table.callback_context() {
             TableContext::ColHeader => self.header_clicked(),
             TableContext::Cell => {
                 let _ = self.table.clone().take_focus();
 
+                let selected_idx = self.table.callback_row() as _;
+                *self.selected_idx.borrow_mut() = Some(selected_idx);
                 let server_list = self.server_list.borrow();
-                let server = &server_list.borrow()[self.table.callback_row() as _];
+                let server = &server_list.borrow()[selected_idx];
                 self.on_server_selected.borrow()(server);
             }
             _ => (),

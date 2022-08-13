@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::net::SocketAddr;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 
@@ -11,13 +12,13 @@ use crate::servers::{
     SortKey,
 };
 
-use self::actions_pane::ActionsPane;
+use self::actions_pane::{Action, ActionsPane};
 use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
 
-use super::{prelude::*, alert_not_implemented};
-use super::{CleanupFn, Handler};
+use super::prelude::*;
+use super::{alert_error, alert_not_implemented, CleanupFn, Handler};
 
 mod actions_pane;
 mod details_pane;
@@ -26,6 +27,7 @@ mod list_pane;
 
 pub enum ServerBrowserAction {
     LoadServers,
+    JoinServer(SocketAddr),
 }
 
 pub enum ServerBrowserUpdate {
@@ -227,7 +229,24 @@ impl ServerBrowser {
             });
         }
         {
-            actions_pane.set_on_action(|_| alert_not_implemented());
+            let browser = Rc::downgrade(&browser);
+            actions_pane.set_on_action(move |action| {
+                if let Some(browser) = browser.upgrade() {
+                    match action {
+                        Action::Join => {
+                            if let Some(server_idx) = browser.list_pane.selected_index() {
+                                let server = &browser.state.borrow()[server_idx];
+                                let addr = SocketAddr::new(*server.ip(), server.port as _);
+                                let action = ServerBrowserAction::JoinServer(addr);
+                                if let Err(err) = (browser.on_action)(action) {
+                                    alert_error(ERR_JOINING_SERVER, &err);
+                                }
+                            }
+                        }
+                        _ => alert_not_implemented(),
+                    }
+                }
+            });
         }
 
         browser
@@ -323,6 +342,7 @@ impl FilterHolder for ServerBrowser {
 }
 
 const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
+const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
 
 fn mode_name(mode: Mode) -> &'static str {
     match mode {

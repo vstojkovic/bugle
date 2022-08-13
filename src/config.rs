@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use ini::{Ini, ParseOption};
+use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
 
 fn load_text_lossy<P: AsRef<Path>>(path: P) -> std::io::Result<String> {
     let bytes = std::fs::read(path.as_ref())?;
@@ -22,6 +22,16 @@ pub fn load_ini<P: AsRef<Path>>(path: P) -> Result<Ini> {
         ParseOption {
             enabled_escape: false,
             enabled_quote: false,
+        },
+    )?)
+}
+
+pub fn save_ini<P: AsRef<Path>>(ini: &Ini, path: P) -> Result<()> {
+    Ok(ini.write_to_file_opt(
+        path,
+        WriteOption {
+            escape_policy: EscapePolicy::Nothing,
+            line_separator: LineSeparator::SystemDefault,
         },
     )?)
 }
