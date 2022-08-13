@@ -7,6 +7,7 @@ use fltk::prelude::*;
 use fltk::text::TextDisplay;
 use fltk::window::Window;
 
+pub mod glyph;
 mod main_menu;
 mod prelude;
 mod server_browser;
@@ -156,6 +157,14 @@ fn widget_col_width(widgets: &[&dyn WidgetExt]) -> i32 {
     widgets
         .into_iter()
         .map(|widget| widget_auto_width(*widget))
+        .max()
+        .unwrap()
+}
+
+fn button_row_height(buttons: &[&dyn ButtonExt]) -> i32 {
+    buttons
+        .into_iter()
+        .map(|button| button_auto_height(*button))
         .max()
         .unwrap()
 }

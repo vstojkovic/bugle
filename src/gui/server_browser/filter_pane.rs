@@ -9,7 +9,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use strum::IntoEnumIterator;
 
-use crate::gui::prelude::*;
+use crate::gui::{glyph, prelude::*};
 use crate::gui::{widget_auto_height, widget_col_width};
 use crate::servers::{Filter, Mode, Region};
 
@@ -39,12 +39,14 @@ impl FilterPane {
             .with_label("Server Name:")
             .with_align(label_align);
         let map_label = Frame::default().with_label("Map:").with_align(label_align);
-        let invalid_check = CheckButton::default().with_label("Show invalid servers");
+        let invalid_check =
+            CheckButton::default().with_label(&format!("{} Show invalid servers", glyph::WARNING));
         let mode_label = Frame::default().with_label("Mode:").with_align(label_align);
         let region_label = Frame::default()
             .with_label("Region:")
             .with_align(label_align);
-        let pwd_prot_check = CheckButton::default().with_label("Show password protected servers");
+        let pwd_prot_check = CheckButton::default()
+            .with_label(&format!("{} Show password protected servers", glyph::LOCK));
         let left_width = widget_col_width(&[&name_label, &mode_label]);
         let mid_width = widget_col_width(&[&mode_label, &region_label]);
         let right_width = widget_col_width(&[&invalid_check, &pwd_prot_check]);

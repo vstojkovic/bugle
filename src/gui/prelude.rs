@@ -13,7 +13,9 @@ pub(super) trait LayoutExt {
 
 impl<T: WidgetExt> LayoutExt for T {
     fn inside_of<W: WidgetExt>(self, widget: &W, dx: i32, dy: i32) -> Self {
-        self.with_pos(widget.x() + dx, widget.y() + dy)
+        let ox = if dx >= 0 { widget.x() } else { widget.x() + widget.width() };
+        let oy = if dy >= 0 { widget.y() } else { widget.y() + widget.height() };
+        self.with_pos(ox + dx, oy + dy)
     }
 
     fn inside_parent(self, dx: i32, dy: i32) -> Self {

@@ -9,6 +9,7 @@ use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
 use lazy_static::lazy_static;
 
+use crate::gui::glyph;
 use crate::servers::{Server, ServerList, SortCriteria, SortKey};
 
 use super::{mode_name, region_name};
@@ -118,6 +119,8 @@ impl ListPane {
         match self.table.callback_context() {
             TableContext::ColHeader => self.header_clicked(),
             TableContext::Cell => {
+                let _ = self.table.clone().take_focus();
+
                 let server_list = self.server_list.borrow();
                 let server = &server_list.borrow()[self.table.callback_row() as _];
                 self.on_server_selected.borrow()(server);
@@ -155,16 +158,10 @@ impl ListPane {
     }
 }
 
-const GLYPH_LOCK: &str = "\u{1f512}";
-const GLYPH_YES: &str = "\u{2714}";
-const GLYPH_NO: &str = "\u{2716}";
-const GLYPH_UNSORTED: &str = "\u{25bd}";
-const GLYPH_ASC: &str = "\u{25b2}";
-const GLYPH_DESC: &str = "\u{25bc}";
-
 const SERVER_LIST_COLS: &[(&str, i32)] = &[
-    (GLYPH_LOCK, 20),
-    ("Server Name", 400),
+    (glyph::WARNING, 20),
+    (glyph::LOCK, 20),
+    ("Server Name", 380),
     ("Map", 150),
     ("Mode", 80),
     ("Region", 80),
@@ -188,13 +185,13 @@ lazy_static! {
 
 fn sort_key_to_column(sort_key: SortKey) -> i32 {
     match sort_key {
-        SortKey::Name => 1,
-        SortKey::Map => 2,
-        SortKey::Mode => 3,
-        SortKey::Region => 4,
-        SortKey::Players => 5,
-        SortKey::Age => 6,
-        SortKey::Ping => 7,
+        SortKey::Name => 2,
+        SortKey::Map => 3,
+        SortKey::Mode => 4,
+        SortKey::Region => 5,
+        SortKey::Players => 6,
+        SortKey::Age => 7,
+        SortKey::Ping => 8,
     }
 }
 
@@ -207,9 +204,9 @@ fn sortable_column_header(col: i32, ascending: Option<bool>) -> String {
         "{} {}",
         SERVER_LIST_COLS[col as usize].0,
         match ascending {
-            None => GLYPH_UNSORTED,
-            Some(false) => GLYPH_DESC,
-            Some(true) => GLYPH_ASC,
+            None => glyph::UNSORTED,
+            Some(false) => glyph::DESC,
+            Some(true) => glyph::ASC,
         }
     )
 }
@@ -228,7 +225,8 @@ fn make_server_row(server: &Server) -> Vec<String> {
         None => "????".to_string(),
     };
     vec![
-        (if server.password_protected { GLYPH_LOCK } else { "" }).to_string(),
+        (if server.is_valid() { "" } else { glyph::WARNING }).to_string(),
+        (if server.password_protected { glyph::LOCK } else { "" }).to_string(),
         server.name.clone(),
         server.map.clone(),
         mode_name(server.mode()).to_string(),
@@ -236,7 +234,7 @@ fn make_server_row(server: &Server) -> Vec<String> {
         players,
         age,
         ping,
-        (if server.battleye_required { GLYPH_YES } else { GLYPH_NO }).to_string(),
+        (if server.battleye_required { glyph::YES } else { glyph::NO }).to_string(),
         "??".to_string(), // TODO: Level
     ]
 }

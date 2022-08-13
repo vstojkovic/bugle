@@ -11,13 +11,15 @@ use crate::servers::{
     SortKey,
 };
 
+use self::actions_pane::ActionsPane;
 use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
 
-use super::prelude::*;
+use super::{prelude::*, alert_not_implemented};
 use super::{CleanupFn, Handler};
 
+mod actions_pane;
 mod details_pane;
 mod filter_pane;
 mod list_pane;
@@ -146,6 +148,7 @@ pub(super) struct ServerBrowser {
     on_action: Box<dyn Handler<ServerBrowserAction>>,
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
+    actions_pane: Rc<ActionsPane>,
     state: Rc<RefCell<ServerBrowserState>>,
 }
 
@@ -166,9 +169,11 @@ impl ServerBrowser {
 
         let filter_pane = FilterPane::new(build_id);
 
+        let actions_pane = ActionsPane::new();
+
         let tiles = Tile::default_fill()
             .below_of(filter_pane.root(), 10)
-            .stretch_to_parent(0, 0);
+            .stretch_to_parent(0, actions_pane.root().height());
 
         let upper_tile = Group::default_fill()
             .inside_parent(0, 0)
@@ -196,6 +201,7 @@ impl ServerBrowser {
             on_action: Box::new(on_action),
             list_pane: Rc::clone(&list_pane),
             details_pane,
+            actions_pane: Rc::clone(&actions_pane),
             state: Rc::clone(&state),
         });
 
@@ -213,9 +219,15 @@ impl ServerBrowser {
             let browser = Rc::downgrade(&browser);
             list_pane.set_on_server_selected(move |server| {
                 if let Some(browser) = browser.upgrade() {
-                    browser.details_pane.populate(server)
+                    browser.details_pane.populate(server);
+                    browser
+                        .actions_pane
+                        .set_server_actions_enabled(server.is_valid());
                 }
             });
+        }
+        {
+            actions_pane.set_on_action(|_| alert_not_implemented());
         }
 
         browser
