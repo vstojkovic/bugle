@@ -13,6 +13,7 @@ fltk-table = "0.2.1"
 futures = "0.3"
 governor = "0.4.2"
 lazy_static = "1"
+linked-hash-map = "0.5.6"
 regex = "1.6"
 reqwest = { version = "0.11", features = ["gzip", "json"] }
 rust-ini = "0.18"

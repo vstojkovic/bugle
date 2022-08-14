@@ -66,6 +66,10 @@ impl<S: ServerList, I: Indexer<S>> ServerListView<S, I> {
         self.inverse[idx]
     }
 
+    pub fn to_source_index(&self, idx: usize) -> usize {
+        self.indices[idx]
+    }
+
     fn map_inverse(source: &S, indices: &Vec<usize>) -> Vec<Option<usize>> {
         let mut inverse: Vec<Option<usize>> = vec![None; source.len()];
         for (my_idx, src_idx) in indices.iter().enumerate() {

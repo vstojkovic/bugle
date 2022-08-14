@@ -9,7 +9,7 @@ use fltk::prelude::*;
 
 use crate::servers::{
     Filter, Mode, Region, Server, ServerList, ServerListView, ServerQueryResponse, SortCriteria,
-    SortKey,
+    SortKey, ServerQueryRequest,
 };
 
 use self::actions_pane::{Action, ActionsPane};
@@ -28,6 +28,7 @@ mod list_pane;
 pub enum ServerBrowserAction {
     LoadServers,
     JoinServer(SocketAddr),
+    PingServer(ServerQueryRequest),
 }
 
 pub enum ServerBrowserUpdate {
@@ -123,6 +124,11 @@ impl ServerBrowserState {
             .source()
             .from_source_index(index)
             .and_then(|index| self.servers.from_source_index(index))
+    }
+
+    fn to_source_index(&self, index: usize) -> usize {
+        let index = self.servers.to_source_index(index);
+        self.servers.source().to_source_index(index)
     }
 }
 
@@ -241,6 +247,16 @@ impl ServerBrowser {
                                 if let Err(err) = (browser.on_action)(action) {
                                     alert_error(ERR_JOINING_SERVER, &err);
                                 }
+                            }
+                        }
+                        Action::Ping => {
+                            if let Some(server_idx) = browser.list_pane.selected_index() {
+                                let state = browser.state.borrow();
+                                let server = &state[server_idx];
+                                let source_idx = state.to_source_index(server_idx);
+                                let request = ServerQueryRequest::for_server(source_idx, server);
+                                let action = ServerBrowserAction::PingServer(request.unwrap());
+                                (browser.on_action)(action).unwrap();
                             }
                         }
                         _ => alert_not_implemented(),
