@@ -8,8 +8,8 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
 use crate::servers::{
-    Filter, Mode, Region, Server, ServerList, ServerListView, ServerQueryRequest,
-    ServerQueryResponse, SortCriteria, SortKey,
+    Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList, ServerListView,
+    SortCriteria, SortKey,
 };
 
 use self::actions_pane::{Action, ActionsPane};
@@ -28,13 +28,13 @@ mod list_pane;
 pub enum ServerBrowserAction {
     LoadServers,
     JoinServer(SocketAddr),
-    PingServer(ServerQueryRequest),
+    PingServer(PingRequest),
 }
 
 pub enum ServerBrowserUpdate {
     PopulateServers(Result<Vec<Server>>),
-    UpdateServer(ServerQueryResponse),
-    BatchUpdateServers(Vec<ServerQueryResponse>),
+    UpdateServer(PingResponse),
+    BatchUpdateServers(Vec<PingResponse>),
 }
 
 impl ServerBrowserUpdate {
@@ -257,7 +257,7 @@ impl ServerBrowser {
                                 let state = browser.state.borrow();
                                 let server = &state[server_idx];
                                 let source_idx = state.to_source_index(server_idx);
-                                let request = ServerQueryRequest::for_server(source_idx, server);
+                                let request = PingRequest::for_server(source_idx, server);
                                 let action = ServerBrowserAction::PingServer(request.unwrap());
                                 (browser.on_action)(action).unwrap();
                             }
@@ -305,7 +305,7 @@ impl ServerBrowser {
         self.list_pane.populate(self.state.clone());
     }
 
-    fn update_servers(&self, updates: &[ServerQueryResponse]) {
+    fn update_servers(&self, updates: &[PingResponse]) {
         let selected_idx = self.selected_server_index();
 
         let mut updated_indices: Vec<usize> = Vec::with_capacity(updates.len());
@@ -347,7 +347,7 @@ impl ServerBrowser {
         };
     }
 
-    fn update_server(server: &mut Server, update: &ServerQueryResponse, filter: &Filter) -> bool {
+    fn update_server(server: &mut Server, update: &PingResponse, filter: &Filter) -> bool {
         let matched_before = filter.matches(server);
         server.connected_players = Some(update.connected_players);
         server.age = Some(update.age);

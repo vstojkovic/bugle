@@ -4,7 +4,7 @@ use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
 use net::{is_valid_ip, is_valid_port};
-use servers::{fetch_server_list, Server, ServerQueryClient, ServerQueryRequest, Validity};
+use servers::{fetch_server_list, PingClient, PingRequest, Server, Validity};
 
 mod config;
 mod game;
@@ -20,7 +20,7 @@ struct Launcher {
     game: Game,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
-    query_client: Mutex<Option<ServerQueryClient>>,
+    ping_client: Mutex<Option<PingClient>>,
 }
 
 impl Launcher {
@@ -31,7 +31,7 @@ impl Launcher {
             game,
             tx,
             rx,
-            query_client: Mutex::new(None),
+            ping_client: Mutex::new(None),
         })
     }
 
@@ -86,19 +86,19 @@ impl Launcher {
             let servers = self.load_servers().await;
             if let Ok(servers) = &servers {
                 let tx = self.tx.clone();
-                let query_client = ServerQueryClient::new(self.game.build_id(), move |response| {
+                let ping_client = PingClient::new(self.game.build_id(), move |response| {
                     tx.send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
                         response,
                     )));
                 })
                 .unwrap(); // FIXME: Show error
-                query_client.send(
+                ping_client.send(
                     servers
                         .iter()
                         .enumerate()
-                        .filter_map(|(idx, server)| ServerQueryRequest::for_server(idx, server)),
+                        .filter_map(|(idx, server)| PingRequest::for_server(idx, server)),
                 );
-                *self.query_client.lock().unwrap() = Some(query_client);
+                *self.ping_client.lock().unwrap() = Some(ping_client);
             };
             self.tx
                 .send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
@@ -108,8 +108,8 @@ impl Launcher {
         Ok(())
     }
 
-    fn on_ping_server(&self, request: ServerQueryRequest) -> Result<()> {
-        if let Some(client) = self.query_client.lock().unwrap().as_ref() {
+    fn on_ping_server(&self, request: PingRequest) -> Result<()> {
+        if let Some(client) = self.ping_client.lock().unwrap().as_ref() {
             client.send([request]);
         }
         Ok(())

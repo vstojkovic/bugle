@@ -17,12 +17,12 @@ use tokio::time::timeout;
 use crate::servers::Server;
 
 #[derive(Debug)]
-pub struct ServerQueryRequest {
+pub struct PingRequest {
     server_idx: usize,
     addr: SocketAddr,
 }
 
-impl ServerQueryRequest {
+impl PingRequest {
     pub fn for_server(server_idx: usize, server: &Server) -> Option<Self> {
         if server.is_valid() {
             Some(Self {
@@ -36,34 +36,31 @@ impl ServerQueryRequest {
 }
 
 #[derive(Debug)]
-pub struct ServerQueryResponse {
+pub struct PingResponse {
     pub server_idx: usize,
     pub connected_players: usize,
     pub age: Duration,
     pub round_trip: Duration,
 }
 
-pub struct ServerQueryClient {
+pub struct PingClient {
     client_impl: Arc<ClientImpl>,
 }
 
-impl ServerQueryClient {
-    pub fn new(
-        build_id: u32,
-        on_response: impl Fn(ServerQueryResponse) + Send + 'static,
-    ) -> Result<Self> {
+impl PingClient {
+    pub fn new(build_id: u32, on_response: impl Fn(PingResponse) + Send + 'static) -> Result<Self> {
         ClientImpl::new(build_id, on_response).map(|client_impl| Self { client_impl })
     }
 }
 
-impl Deref for ServerQueryClient {
+impl Deref for PingClient {
     type Target = Arc<ClientImpl>;
     fn deref(&self) -> &Self::Target {
         &self.client_impl
     }
 }
 
-impl Drop for ServerQueryClient {
+impl Drop for PingClient {
     fn drop(&mut self) {
         let mut pending = self.client_impl.pending.lock().unwrap();
         if let Some(task) = pending.task.take() {
@@ -86,7 +83,7 @@ pub struct ClientImpl {
 impl ClientImpl {
     fn new(
         build_id: u32,
-        on_response: impl Fn(ServerQueryResponse) + Send + 'static,
+        on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> Result<Arc<Self>> {
         let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
         let socket = {
@@ -107,7 +104,7 @@ impl ClientImpl {
         Ok(client)
     }
 
-    pub fn send<R: IntoIterator<Item = ServerQueryRequest>>(self: &Arc<Self>, requests: R) {
+    pub fn send<R: IntoIterator<Item = PingRequest>>(self: &Arc<Self>, requests: R) {
         let mut unsent = self.unsent.lock().unwrap();
         unsent.requests.extend(requests);
         if let None = unsent.task {
@@ -117,7 +114,7 @@ impl ClientImpl {
 
     fn spawn_receiver(
         self: Arc<Self>,
-        on_response: impl Fn(ServerQueryResponse) + Send + 'static,
+        on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> JoinHandle<()> {
         tokio::spawn(Receiver::new(self, on_response).run())
     }
@@ -131,7 +128,7 @@ type RateLimiter =
     governor::RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware<QuantaInstant>>;
 
 struct PendingRequests {
-    requests: LinkedHashMap<SocketAddr, PendingQuery>,
+    requests: LinkedHashMap<SocketAddr, PendingRequest>,
     task: Option<JoinHandle<()>>,
 }
 
@@ -144,14 +141,14 @@ impl PendingRequests {
     }
 }
 
-struct PendingQuery {
+struct PendingRequest {
     idx: usize,
     sent_timestamp: Instant,
     should_retry: bool,
 }
 
 struct UnsentRequests {
-    requests: VecDeque<ServerQueryRequest>,
+    requests: VecDeque<PingRequest>,
     task: Option<JoinHandle<()>>,
 }
 
@@ -214,7 +211,7 @@ impl Sender {
                 pending
                     .requests
                     .entry(next.addr)
-                    .or_insert_with(|| PendingQuery {
+                    .or_insert_with(|| PendingRequest {
                         idx: next.server_idx,
                         sent_timestamp,
                         should_retry: false,
@@ -224,13 +221,13 @@ impl Sender {
     }
 }
 
-struct Receiver<F: Fn(ServerQueryResponse) + Send> {
+struct Receiver<F: Fn(PingResponse) + Send> {
     client: Arc<ClientImpl>,
     on_response: F,
     max_time: Duration,
 }
 
-impl<F: Fn(ServerQueryResponse) + Send> Receiver<F> {
+impl<F: Fn(PingResponse) + Send> Receiver<F> {
     fn new(client: Arc<ClientImpl>, on_response: F) -> Self {
         Self {
             client,
@@ -265,7 +262,7 @@ impl<F: Fn(ServerQueryResponse) + Send> Receiver<F> {
         let players = i32::max(0, i32::from_le_bytes(packet[..4].try_into().unwrap()));
         let age = Duration::from_secs(u64::from_le_bytes(packet[8..].try_into().unwrap()));
 
-        let response = ServerQueryResponse {
+        let response = PingResponse {
             server_idx: request.idx,
             connected_players: players as _,
             age,
@@ -284,7 +281,7 @@ impl<F: Fn(ServerQueryResponse) + Send> Receiver<F> {
                     break;
                 }
                 if entry.get().should_retry {
-                    retries.push(ServerQueryRequest {
+                    retries.push(PingRequest {
                         server_idx: entry.get().idx,
                         addr: *entry.key(),
                     });
