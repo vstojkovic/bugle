@@ -239,9 +239,8 @@ impl<F: Fn(PingResponse) + Send> Receiver<F> {
     async fn run(self) {
         let mut buf = [0; 16];
         loop {
-            if let Ok(Ok((size, addr))) =
-                timeout(self.max_time, self.client.socket.recv_from(&mut buf)).await
-            {
+            let recv_result = timeout(self.max_time, self.client.socket.recv_from(&mut buf)).await;
+            if let Ok(Ok((size, addr))) = recv_result {
                 self.process_packet(&buf[..size], addr)
             }
             self.handle_timeouts();
