@@ -262,6 +262,15 @@ impl ServerBrowser {
                                 (browser.on_action)(action).unwrap();
                             }
                         }
+                        Action::Refresh => {
+                            {
+                                let mut state = browser.state.borrow_mut();
+                                state.set_servers(vec![]);
+                            }
+                            browser.list_pane.populate(browser.state.clone());
+                            browser.list_pane.set_selected_index(None, false);
+                            (browser.on_action)(ServerBrowserAction::LoadServers).unwrap();
+                        }
                         Action::ScrollLock(scroll_lock) => {
                             browser.list_pane.set_scroll_lock(scroll_lock);
                         }

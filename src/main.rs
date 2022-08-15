@@ -3,8 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
-use net::{is_valid_ip, is_valid_port};
-use servers::{fetch_server_list, PingClient, PingRequest, Server, Validity};
+use tokio::task::JoinHandle;
 
 mod config;
 mod game;
@@ -14,13 +13,15 @@ mod servers;
 
 use self::game::Game;
 use self::gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
+use self::net::{is_valid_ip, is_valid_port};
+use self::servers::{fetch_server_list, PingClient, PingRequest, Server, Validity};
 
 struct Launcher {
     app: App,
     game: Game,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
-    ping_client: Mutex<Option<PingClient>>,
+    server_loader: Mutex<ServerLoader>,
 }
 
 impl Launcher {
@@ -31,7 +32,7 @@ impl Launcher {
             game,
             tx,
             rx,
-            ping_client: Mutex::new(None),
+            server_loader: Mutex::new(Default::default()),
         })
     }
 
@@ -82,40 +83,71 @@ impl Launcher {
     }
 
     fn on_load_servers(self: Arc<Self>) -> Result<()> {
+        let this = Arc::clone(&self);
+        let mut server_loader = this.server_loader.lock().unwrap();
+        if let ServerLoaderState::Fetching(_) = &server_loader.state {
+            return Ok(());
+        }
+        let fetch_generation = server_loader.generation.wrapping_add(1);
+        server_loader.generation = fetch_generation;
+        server_loader.state =
+            ServerLoaderState::Fetching(Arc::clone(&self).spawn_fetcher(fetch_generation));
+        Ok(())
+    }
+
+    fn on_ping_server(&self, request: PingRequest) -> Result<()> {
+        if let ServerLoaderState::Pinging(client) = &self.server_loader.lock().unwrap().state {
+            client.send([request]);
+        }
+        Ok(())
+    }
+
+    fn spawn_fetcher(self: Arc<Self>, generation: u32) -> JoinHandle<()> {
         tokio::spawn(async move {
-            let servers = self.load_servers().await;
-            if let Ok(servers) = &servers {
-                let tx = self.tx.clone();
-                let ping_client = PingClient::new(self.game.build_id(), move |response| {
-                    tx.send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
-                        response,
-                    )));
-                })
-                .unwrap(); // FIXME: Show error
+            let servers = self.fetch_and_validate_servers().await;
+
+            let mut server_loader = self.server_loader.lock().unwrap();
+            if server_loader.generation != generation {
+                return;
+            }
+
+            let ping_generation = generation.wrapping_add(1);
+            server_loader.generation = ping_generation;
+
+            let servers_and_state = servers.and_then(|servers| {
+                let ping_client = Arc::clone(&self).make_ping_client(ping_generation)?;
                 ping_client.send(
                     servers
                         .iter()
                         .enumerate()
                         .filter_map(|(idx, server)| PingRequest::for_server(idx, server)),
                 );
-                *self.ping_client.lock().unwrap() = Some(ping_client);
+                Ok((servers, ServerLoaderState::Pinging(ping_client)))
+            });
+            let (servers, state) = match servers_and_state {
+                Ok((servers, state)) => (Ok(servers), state),
+                Err(err) => (Err(err), ServerLoaderState::Inactive),
             };
+            server_loader.state = state;
+
+            let update = Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(servers));
+            self.tx.send(update);
+        })
+    }
+
+    fn make_ping_client(self: Arc<Self>, generation: u32) -> Result<PingClient> {
+        Ok(PingClient::new(self.game.build_id(), move |response| {
+            if self.server_loader.lock().unwrap().generation != generation {
+                return;
+            }
             self.tx
-                .send(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
-                    servers,
+                .send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
+                    response,
                 )));
-        });
-        Ok(())
+        })?)
     }
 
-    fn on_ping_server(&self, request: PingRequest) -> Result<()> {
-        if let Some(client) = self.ping_client.lock().unwrap().as_ref() {
-            client.send([request]);
-        }
-        Ok(())
-    }
-
-    async fn load_servers(&self) -> Result<Vec<Server>> {
+    async fn fetch_and_validate_servers(&self) -> Result<Vec<Server>> {
         let mut servers = fetch_server_list().await?;
 
         for server in servers.iter_mut() {
@@ -132,6 +164,20 @@ impl Launcher {
 
         Ok(servers)
     }
+}
+
+#[derive(Default)]
+struct ServerLoader {
+    generation: u32,
+    state: ServerLoaderState,
+}
+
+#[derive(Default)]
+enum ServerLoaderState {
+    #[default]
+    Inactive,
+    Fetching(JoinHandle<()>),
+    Pinging(PingClient),
 }
 
 #[tokio::main]
