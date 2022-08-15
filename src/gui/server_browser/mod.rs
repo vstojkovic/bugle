@@ -2,8 +2,10 @@ use std::cell::RefCell;
 use std::net::SocketAddr;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
+use std::str::FromStr;
 
 use anyhow::Result;
+use fltk::dialog;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
@@ -18,7 +20,7 @@ use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
 
 use super::prelude::*;
-use super::{alert_error, alert_not_implemented, CleanupFn, Handler};
+use super::{alert_error, CleanupFn, Handler};
 
 mod actions_pane;
 mod details_pane;
@@ -271,10 +273,24 @@ impl ServerBrowser {
                             browser.list_pane.set_selected_index(None, false);
                             (browser.on_action)(ServerBrowserAction::LoadServers).unwrap();
                         }
+                        Action::DirectConnect => {
+                            let addr = dialog::input_default("Connect to:", "127.0.0.1:7777");
+                            let addr = match addr {
+                                Some(str) => SocketAddr::from_str(&str).map_err(anyhow::Error::msg),
+                                None => return,
+                            };
+                            let addr = match addr {
+                                Ok(addr) => addr,
+                                Err(err) => return alert_error(ERR_INVALID_ADDR, &err),
+                            };
+                            let action = ServerBrowserAction::JoinServer(addr);
+                            if let Err(err) = (browser.on_action)(action) {
+                                alert_error(ERR_JOINING_SERVER, &err);
+                            }
+                        }
                         Action::ScrollLock(scroll_lock) => {
                             browser.list_pane.set_scroll_lock(scroll_lock);
                         }
-                        _ => alert_not_implemented(),
                     }
                 }
             });
@@ -393,6 +409,7 @@ impl FilterHolder for ServerBrowser {
 
 const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
 const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
+const ERR_INVALID_ADDR: &str = "Invalid server address.";
 
 fn mode_name(mode: Mode) -> &'static str {
     match mode {
