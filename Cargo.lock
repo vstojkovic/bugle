@@ -108,6 +108,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tokio",
+ "winapi",
 ]
 
 [[package]]

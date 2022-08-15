@@ -14,12 +14,13 @@ use tokio::net::UdpSocket;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
+use crate::net::bind_udp_socket;
 use crate::servers::Server;
 
 #[derive(Debug)]
 pub struct PingRequest {
     server_idx: usize,
-    addr: SocketAddr,
+    pub addr: SocketAddr,
 }
 
 impl PingRequest {
@@ -87,7 +88,7 @@ impl ClientImpl {
     ) -> Result<Arc<Self>> {
         let bind_addr = SocketAddr::from(([0, 0, 0, 0], 0));
         let socket = {
-            let socket = std::net::UdpSocket::bind(bind_addr)?;
+            let socket = bind_udp_socket(bind_addr)?;
             socket.set_nonblocking(true)?;
             UdpSocket::from_std(socket)?
         };
@@ -241,7 +242,7 @@ impl<F: Fn(PingResponse) + Send> Receiver<F> {
         loop {
             let recv_result = timeout(self.max_time, self.client.socket.recv_from(&mut buf)).await;
             if let Ok(Ok((size, addr))) = recv_result {
-                self.process_packet(&buf[..size], addr)
+                self.process_packet(&buf[..size], addr);
             }
             self.handle_timeouts();
         }

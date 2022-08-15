@@ -257,8 +257,8 @@ impl ServerBrowser {
                                 let state = browser.state.borrow();
                                 let server = &state[server_idx];
                                 let source_idx = state.to_source_index(server_idx);
-                                let request = PingRequest::for_server(source_idx, server);
-                                let action = ServerBrowserAction::PingServer(request.unwrap());
+                                let request = PingRequest::for_server(source_idx, server).unwrap();
+                                let action = ServerBrowserAction::PingServer(request);
                                 (browser.on_action)(action).unwrap();
                             }
                         }
