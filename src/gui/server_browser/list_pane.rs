@@ -19,8 +19,14 @@ pub(super) struct ListPane {
     sort_criteria: RefCell<SortCriteria>,
     server_list: RefCell<Rc<RefCell<dyn ServerList>>>,
     on_sort_changed: RefCell<Box<dyn Fn(SortCriteria)>>,
-    on_server_selected: RefCell<Box<dyn Fn(&Server)>>,
-    selected_idx: RefCell<Option<usize>>,
+    on_server_selected: RefCell<Box<dyn Fn(Option<&Server>)>>,
+    selection: RefCell<Selection>,
+}
+
+#[derive(Default)]
+struct Selection {
+    index: Option<usize>,
+    scroll_lock: bool,
 }
 
 impl ListPane {
@@ -61,7 +67,7 @@ impl ListPane {
             server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
             on_sort_changed: RefCell::new(Box::new(|_| ())),
             on_server_selected: RefCell::new(Box::new(|_| ())),
-            selected_idx: RefCell::new(None),
+            selection: RefCell::new(Default::default()),
         });
 
         {
@@ -113,12 +119,46 @@ impl ListPane {
         *self.on_sort_changed.borrow_mut() = Box::new(on_sort_changed);
     }
 
-    pub fn set_on_server_selected(&self, on_server_selected: impl Fn(&Server) + 'static) {
+    pub fn set_on_server_selected(&self, on_server_selected: impl Fn(Option<&Server>) + 'static) {
         *self.on_server_selected.borrow_mut() = Box::new(on_server_selected);
     }
 
     pub fn selected_index(&self) -> Option<usize> {
-        *self.selected_idx.borrow()
+        self.selection.borrow().index
+    }
+
+    pub fn set_selected_index(&self, index: Option<usize>, override_scroll_lock: bool) {
+        {
+            let mut selection = self.selection.borrow_mut();
+            if index == selection.index {
+                return;
+            }
+            selection.index = index;
+            let mut table = self.table.clone();
+            if let Some(index) = index {
+                let row = index as _;
+                table.set_selection(row, 0, row, (SERVER_LIST_COLS.len() - 1) as _);
+            } else {
+                table.unset_selection();
+            }
+        }
+        if override_scroll_lock || self.selection.borrow().scroll_lock {
+            self.ensure_selection_visible();
+        }
+        if let Some(index) = index {
+            let server_list = self.server_list.borrow();
+            let server = &server_list.borrow()[index];
+            self.on_server_selected.borrow()(Some(server));
+        } else {
+            self.on_server_selected.borrow()(None);
+        }
+    }
+
+    pub fn set_scroll_lock(&self, scroll_lock: bool) {
+        self.selection.borrow_mut().scroll_lock = scroll_lock;
+        if scroll_lock {
+            self.ensure_selection_visible();
+        }
     }
 
     fn clicked(&self) {
@@ -128,10 +168,10 @@ impl ListPane {
                 let _ = self.table.clone().take_focus();
 
                 let selected_idx = self.table.callback_row() as _;
-                *self.selected_idx.borrow_mut() = Some(selected_idx);
+                self.selection.borrow_mut().index = Some(selected_idx);
                 let server_list = self.server_list.borrow();
                 let server = &server_list.borrow()[selected_idx];
-                self.on_server_selected.borrow()(server);
+                self.on_server_selected.borrow()(Some(server));
             }
             _ => (),
         }
@@ -163,6 +203,21 @@ impl ListPane {
         );
         *self.sort_criteria.borrow_mut() = new_criteria;
         self.on_sort_changed.borrow()(new_criteria);
+    }
+
+    fn ensure_selection_visible(&self) {
+        let row = match self.selection.borrow().index {
+            Some(index) => index as i32,
+            None => return,
+        };
+        let mut table = self.table.clone();
+        if let Some((top, bottom, _, _)) = table.try_visible_cells() {
+            let row_span = bottom - top;
+            let new_top = i32::max(row - row_span / 2, 0);
+            if top != new_top {
+                table.set_row_position(new_top);
+            }
+        }
     }
 }
 

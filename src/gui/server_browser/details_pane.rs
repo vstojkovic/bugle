@@ -41,10 +41,14 @@ impl DetailsPane {
         Self { table }
     }
 
-    pub fn populate(&self, server: &Server) {
+    pub fn populate(&self, server: Option<&Server>) {
         let mut table = self.table.clone();
-        for (idx, (_, cell_value)) in SERVER_DETAILS_ROWS.iter().enumerate() {
-            table.set_cell_value(idx as _, 0, cell_value(server).as_ref());
+        if let Some(server) = server {
+            for (idx, (_, cell_value)) in SERVER_DETAILS_ROWS.iter().enumerate() {
+                table.set_cell_value(idx as _, 0, cell_value(server).as_ref());
+            }
+        } else {
+            table.clear();
         }
         table.redraw();
     }

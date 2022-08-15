@@ -8,8 +8,8 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
 use crate::servers::{
-    Filter, Mode, Region, Server, ServerList, ServerListView, ServerQueryResponse, SortCriteria,
-    SortKey, ServerQueryRequest,
+    Filter, Mode, Region, Server, ServerList, ServerListView, ServerQueryRequest,
+    ServerQueryResponse, SortCriteria, SortKey,
 };
 
 use self::actions_pane::{Action, ActionsPane};
@@ -218,8 +218,10 @@ impl ServerBrowser {
             let browser = Rc::downgrade(&browser);
             list_pane.set_on_sort_changed(move |sort_criteria| {
                 if let Some(browser) = browser.upgrade() {
+                    let selected_idx = browser.selected_server_index();
                     browser.state.borrow_mut().set_sort_criteria(sort_criteria);
                     browser.list_pane.populate(browser.state.clone());
+                    browser.set_selected_server_index(selected_idx, true);
                 }
             });
         }
@@ -228,9 +230,10 @@ impl ServerBrowser {
             list_pane.set_on_server_selected(move |server| {
                 if let Some(browser) = browser.upgrade() {
                     browser.details_pane.populate(server);
+                    let actions_enabled = server.map(Server::is_valid).unwrap_or(false);
                     browser
                         .actions_pane
-                        .set_server_actions_enabled(server.is_valid());
+                        .set_server_actions_enabled(actions_enabled);
                 }
             });
         }
@@ -258,6 +261,9 @@ impl ServerBrowser {
                                 let action = ServerBrowserAction::PingServer(request.unwrap());
                                 (browser.on_action)(action).unwrap();
                             }
+                        }
+                        Action::ScrollLock(scroll_lock) => {
+                            browser.list_pane.set_scroll_lock(scroll_lock);
                         }
                         _ => alert_not_implemented(),
                     }
@@ -300,6 +306,8 @@ impl ServerBrowser {
     }
 
     fn update_servers(&self, updates: &[ServerQueryResponse]) {
+        let selected_idx = self.selected_server_index();
+
         let mut updated_indices: Vec<usize> = Vec::with_capacity(updates.len());
         let repopulate = {
             let mut state = self.state.borrow_mut();
@@ -325,8 +333,10 @@ impl ServerBrowser {
                 },
             )
         };
+
         if repopulate {
             self.list_pane.populate(self.state.clone());
+            self.set_selected_server_index(selected_idx, false);
         } else {
             let state = self.state.borrow();
             self.list_pane.update(
@@ -344,6 +354,19 @@ impl ServerBrowser {
         server.ping = Some(update.round_trip);
         filter.matches(server) != matched_before
     }
+
+    fn selected_server_index(&self) -> Option<usize> {
+        self.list_pane
+            .selected_index()
+            .map(|index| self.state.borrow().to_source_index(index))
+    }
+
+    fn set_selected_server_index(&self, index: Option<usize>, override_scroll_lock: bool) {
+        self.list_pane.set_selected_index(
+            index.and_then(|index| self.state.borrow().to_display_index(index)),
+            override_scroll_lock,
+        );
+    }
 }
 
 impl FilterHolder for ServerBrowser {
@@ -352,8 +375,10 @@ impl FilterHolder for ServerBrowser {
     }
 
     fn mutate_filter(&self, mutator: impl FnMut(&mut Filter)) {
+        let selected_idx = self.selected_server_index();
         self.state.borrow_mut().change_filter(mutator);
         self.list_pane.populate(self.state.clone());
+        self.set_selected_server_index(selected_idx, false);
     }
 }
 

@@ -1,17 +1,19 @@
 use std::rc::Rc;
 
-use fltk::button::Button;
+use fltk::button::{Button, CheckButton};
+use fltk::enums::CallbackTrigger;
 use fltk::group::Group;
 use fltk::prelude::*;
 
 use crate::gui::prelude::*;
-use crate::gui::{button_row_height, widget_auto_width};
+use crate::gui::{button_row_height, widget_auto_height, widget_auto_width};
 
 pub enum Action {
     DirectConnect,
     Refresh,
     Ping,
     Join,
+    ScrollLock(bool),
 }
 
 pub(super) struct ActionsPane {
@@ -20,6 +22,7 @@ pub(super) struct ActionsPane {
     refresh_button: Button,
     ping_button: Button,
     join_button: Button,
+    scroll_lock_check: CheckButton,
 }
 
 impl ActionsPane {
@@ -36,6 +39,10 @@ impl ActionsPane {
             &ping_button,
             &join_button,
         ]);
+
+        let scroll_lock_check = CheckButton::default().with_label("Scroll lock");
+        let scroll_lock_width = widget_auto_width(&scroll_lock_check);
+        let scroll_lock_height = widget_auto_height(&scroll_lock_check);
 
         let root = root
             .with_size_flex(0, button_height + 20)
@@ -60,6 +67,10 @@ impl ActionsPane {
             .left_of(&join_button, 10);
         ping_button.deactivate();
 
+        let scroll_lock_check = scroll_lock_check
+            .with_size(scroll_lock_width, scroll_lock_height)
+            .center_of_parent();
+
         root.end();
 
         Rc::new(Self {
@@ -68,6 +79,7 @@ impl ActionsPane {
             refresh_button,
             ping_button,
             join_button,
+            scroll_lock_check,
         })
     }
 
@@ -109,6 +121,13 @@ impl ActionsPane {
             let mut join_button = self.join_button.clone();
             let on_action = Rc::clone(&on_action);
             join_button.set_callback(move |_| on_action(Action::Join));
+        }
+        {
+            let mut scroll_lock_check = self.scroll_lock_check.clone();
+            let on_action = Rc::clone(&on_action);
+            scroll_lock_check.set_trigger(CallbackTrigger::Changed);
+            scroll_lock_check
+                .set_callback(move |check| on_action(Action::ScrollLock(check.is_checked())));
         }
     }
 }
