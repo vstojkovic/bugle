@@ -97,7 +97,7 @@ impl Launcher {
 
     fn on_ping_server(&self, request: PingRequest) -> Result<()> {
         if let ServerLoaderState::Pinging(client) = &self.server_loader.lock().unwrap().state {
-            client.send([request]);
+            client.priority_send(request);
         }
         Ok(())
     }

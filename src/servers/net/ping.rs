@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::io::Result;
 use std::net::SocketAddr;
 use std::ops::Deref;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use governor::clock::{QuantaClock, QuantaInstant};
@@ -108,6 +108,19 @@ impl ClientImpl {
     pub fn send<R: IntoIterator<Item = PingRequest>>(self: &Arc<Self>, requests: R) {
         let mut unsent = self.unsent.lock().unwrap();
         unsent.requests.extend(requests);
+        self.ensure_sender(unsent);
+    }
+
+    pub fn priority_send(self: &Arc<Self>, request: PingRequest) {
+        let mut unsent = self.unsent.lock().unwrap();
+        unsent.requests.push_front(request);
+        self.ensure_sender(unsent);
+    }
+
+    fn ensure_sender(self: &Arc<Self>, mut unsent: MutexGuard<UnsentRequests>) {
+        if unsent.requests.is_empty() {
+            return;
+        }
         if let None = unsent.task {
             unsent.task = Some(Arc::clone(self).spawn_sender());
         }
@@ -191,7 +204,9 @@ impl Sender {
             {
                 let mut pending = self.client.pending.lock().unwrap();
                 if let Entry::Occupied(mut entry) = pending.requests.entry(next.addr) {
-                    entry.get_mut().should_retry = true;
+                    if entry.get().idx == next.server_idx {
+                        entry.get_mut().should_retry = true;
+                    } // TODO: Else log
                     continue;
                 }
             }
@@ -203,7 +218,7 @@ impl Sender {
                 .await
                 .is_err()
             {
-                // TODO: Retry? Or just silently drop like this?
+                // TODO: Log
                 continue;
             }
             let sent_timestamp = Instant::now();
