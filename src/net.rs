@@ -1,5 +1,5 @@
 use std::io::{Error, Result};
-use std::net::{IpAddr, ToSocketAddrs, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs, UdpSocket};
 
 pub fn is_valid_ip(ip: &IpAddr) -> bool {
     match ip {
@@ -16,6 +16,10 @@ pub fn is_valid_ip(ip: &IpAddr) -> bool {
 
 pub fn is_valid_port(port: u32) -> bool {
     (port > 0) && (port < 0xffff)
+}
+
+pub fn default_ip() -> IpAddr {
+    IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
 }
 
 #[cfg(not(windows))]

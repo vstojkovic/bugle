@@ -89,11 +89,14 @@ pub struct Server {
     #[serde(rename = "S30")]
     pub kind: Kind,
 
-    #[serde()]
-    pub ip: IpAddr,
+    #[serde(rename = "ip")]
+    pub reported_ip: IpAddr,
 
     #[serde(rename = "kdsObservedServerAddress")]
     pub observed_ip: Option<IpAddr>,
+
+    #[serde(skip, default = "crate::net::default_ip")]
+    pub ip: IpAddr,
 
     #[serde(rename = "Port")]
     pub port: u32,
@@ -127,7 +130,7 @@ impl Server {
     }
 
     pub fn ip(&self) -> &IpAddr {
-        self.observed_ip.as_ref().unwrap_or(&self.ip)
+        &self.ip
     }
 
     pub fn host(&self) -> String {

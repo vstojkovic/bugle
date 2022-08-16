@@ -104,7 +104,7 @@ impl Launcher {
 
     fn spawn_fetcher(self: Arc<Self>, generation: u32) -> JoinHandle<()> {
         tokio::spawn(async move {
-            let servers = self.fetch_and_validate_servers().await;
+            let servers = self.fetch_servers().await;
 
             let mut server_loader = self.server_loader.lock().unwrap();
             if server_loader.generation != generation {
@@ -147,22 +147,32 @@ impl Launcher {
         })?)
     }
 
-    async fn fetch_and_validate_servers(&self) -> Result<Vec<Server>> {
-        let mut servers = fetch_server_list().await?;
+    async fn fetch_servers(&self) -> Result<Vec<Server>> {
+        Ok(fetch_server_list(|server| self.finalize_server(server)).await?)
+    }
 
-        for server in servers.iter_mut() {
-            if server.build_id != self.game.build_id() {
-                server.validity.insert(Validity::INVALID_BUILD);
-            }
-            if !is_valid_ip(server.ip()) {
-                server.validity.insert(Validity::INVALID_ADDR);
-            }
-            if !is_valid_port(server.port) {
-                server.validity.insert(Validity::INVALID_PORT);
-            }
+    fn finalize_server(&self, mut server: Server) -> Server {
+        server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
+            server.reported_ip
+        } else {
+            server.observed_ip.unwrap()
+        };
+
+        if server.name.is_empty() {
+            server.name = server.host();
         }
 
-        Ok(servers)
+        if server.build_id != self.game.build_id() {
+            server.validity.insert(Validity::INVALID_BUILD);
+        }
+        if !is_valid_ip(server.ip()) {
+            server.validity.insert(Validity::INVALID_ADDR);
+        }
+        if !is_valid_port(server.port) {
+            server.validity.insert(Validity::INVALID_PORT);
+        }
+
+        server
     }
 }
 

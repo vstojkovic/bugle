@@ -1,13 +1,13 @@
 use futures::future::try_join_all;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Result};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
 use crate::servers::Server;
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
-pub async fn fetch_server_list() -> Result<Vec<Server>> {
+pub async fn fetch_server_list(finalizer: impl Fn(Server) -> Server) -> Result<Vec<Server>> {
     let client = make_client()?;
     let bucket_list = client
         .get(format!(
@@ -34,29 +34,14 @@ pub async fn fetch_server_list() -> Result<Vec<Server>> {
         .into_iter()
         .map(|list| list.servers)
         .flatten()
-        .map(|item| item.server)
+        .map(finalizer)
         .collect::<Vec<Server>>())
-}
-
-#[derive(Debug)]
-struct BucketItem {
-    server: Server,
-}
-
-impl<'de> Deserialize<'de> for BucketItem {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        let mut server = Server::deserialize(deserializer)?;
-        if server.name.is_empty() {
-            server.name = server.host();
-        }
-        Ok(Self { server })
-    }
 }
 
 #[derive(Debug, Deserialize)]
 struct ServersBucket {
     #[serde(rename = "sessions")]
-    pub servers: Vec<BucketItem>,
+    pub servers: Vec<Server>,
 }
 
 #[derive(Debug, Deserialize)]
