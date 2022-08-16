@@ -43,20 +43,11 @@ impl ListPane {
 
         let sorted_col = sort_key_to_column(initial_sort.key);
 
-        for (idx, (header, width)) in SERVER_LIST_COLS.iter().enumerate() {
+        for (idx, col) in SERVER_LIST_COLS.iter().enumerate() {
             let idx = idx as _;
-            if column_to_sort_key(idx).is_some() {
-                table.set_col_header_value(
-                    idx,
-                    &sortable_column_header(
-                        idx,
-                        if idx == sorted_col { Some(initial_sort.ascending) } else { None },
-                    ),
-                )
-            } else {
-                table.set_col_header_value(idx, header);
-            }
-            table.set_col_width(idx, *width);
+            let ascending = if idx == sorted_col { Some(initial_sort.ascending) } else { None };
+            table.set_col_header_value(idx, &col.header(ascending));
+            table.set_col_width(idx, col.width);
         }
 
         table.end();
@@ -195,11 +186,11 @@ impl ListPane {
         };
         if old_criteria.key != new_criteria.key {
             let old_col = sort_key_to_column(old_criteria.key);
-            table.set_col_header_value(old_col, &sortable_column_header(old_col, None));
+            table.set_col_header_value(old_col, &SERVER_LIST_COLS[old_col as usize].header(None));
         }
         table.set_col_header_value(
             col,
-            &sortable_column_header(col, Some(new_criteria.ascending)),
+            &SERVER_LIST_COLS[col as usize].header(Some(new_criteria.ascending)),
         );
         *self.sort_criteria.borrow_mut() = new_criteria;
         self.on_sort_changed.borrow()(new_criteria);
@@ -221,81 +212,119 @@ impl ListPane {
     }
 }
 
-const SERVER_LIST_COLS: &[(&str, i32)] = &[
-    (glyph::WARNING, 20),
-    (glyph::LOCK, 20),
-    ("Server Name", 380),
-    ("Map", 150),
-    ("Mode", 80),
-    ("Region", 80),
-    ("Players", 70),
-    ("Age", 60),
-    ("Ping", 60),
-    ("BattlEye", 60),
+struct Column {
+    header: &'static str,
+    width: i32,
+    sort_key: Option<SortKey>,
+    value_fn: fn(&Server) -> String,
+}
+
+impl Column {
+    const fn new(
+        header: &'static str,
+        width: i32,
+        sort_key: Option<SortKey>,
+        value_fn: fn(&Server) -> String,
+    ) -> Self {
+        Self {
+            header,
+            width,
+            sort_key,
+            value_fn,
+        }
+    }
+
+    fn value_for(&self, server: &Server) -> String {
+        (self.value_fn)(server)
+    }
+
+    fn header(&self, ascending: Option<bool>) -> String {
+        if self.sort_key.is_none() {
+            return self.header.to_string();
+        }
+
+        format!(
+            "{} {}",
+            self.header,
+            match ascending {
+                None => glyph::UNSORTED,
+                Some(false) => glyph::DESC,
+                Some(true) => glyph::ASC,
+            }
+        )
+    }
+}
+
+macro_rules! col {
+    ($header:expr, $width:expr, $sort_key:expr, $value_fn:expr) => {
+        Column::new($header, $width, $sort_key, $value_fn)
+    };
+}
+
+#[rustfmt::skip]
+const SERVER_LIST_COLS: &[Column] = &[
+    col!(glyph::WARNING, 20, None, |server| str_if(!server.is_valid(), glyph::WARNING)),
+    col!(glyph::LOCK, 20, None, |server| str_if(server.password_protected, glyph::LOCK)),
+    col!(glyph::FLAG, 20, None, |server| str_if(server.is_official(), glyph::FLAG)),
+    col!(glyph::EYE, 20, None, |server| str_if(server.battleye_required, glyph::EYE)),
+    col!("Server Name", 380, Some(SortKey::Name), |server| server.name.clone()),
+    col!("Map", 150, Some(SortKey::Map), |server| server.map.clone()),
+    col!("Mode", 80, Some(SortKey::Mode), |server| mode_name(server.mode()).to_string()),
+    col!("Region", 80, Some(SortKey::Region), |server| region_name(server.region).to_string()),
+    col!("Players", 70, Some(SortKey::Players), |server| players_col_value(server)),
+    col!("Age", 60, Some(SortKey::Age), |server| age_col_value(server)),
+    col!("Ping", 60, Some(SortKey::Ping), |server| ping_col_value(server)),
 ];
 
 lazy_static! {
-    static ref COLUMN_TO_SORT_KEY: HashMap<i32, SortKey> = {
-        use strum::IntoEnumIterator;
+    static ref SORT_KEY_TO_COLUMN: HashMap<SortKey, i32> = {
         let mut map = HashMap::new();
-        for sort_key in SortKey::iter() {
-            map.insert(sort_key_to_column(sort_key), sort_key);
+        for col in 0..SERVER_LIST_COLS.len() {
+            let col = col as _;
+            if let Some(sort_key) = column_to_sort_key(col) {
+                map.insert(sort_key, col);
+            }
         }
         map
     };
 }
 
 fn sort_key_to_column(sort_key: SortKey) -> i32 {
-    match sort_key {
-        SortKey::Name => 2,
-        SortKey::Map => 3,
-        SortKey::Mode => 4,
-        SortKey::Region => 5,
-        SortKey::Players => 6,
-        SortKey::Age => 7,
-        SortKey::Ping => 8,
-    }
+    *SORT_KEY_TO_COLUMN.get(&sort_key).unwrap()
 }
 
 fn column_to_sort_key(col: i32) -> Option<SortKey> {
-    COLUMN_TO_SORT_KEY.get(&col).copied()
+    SERVER_LIST_COLS[col as usize].sort_key
 }
 
-fn sortable_column_header(col: i32, ascending: Option<bool>) -> String {
-    format!(
-        "{} {}",
-        SERVER_LIST_COLS[col as usize].0,
-        match ascending {
-            None => glyph::UNSORTED,
-            Some(false) => glyph::DESC,
-            Some(true) => glyph::ASC,
-        }
-    )
+fn str_if(condition: bool, str_true: &str) -> String {
+    (if condition { str_true } else { "" }).to_string()
+}
+
+fn players_col_value(server: &Server) -> String {
+    match server.connected_players {
+        Some(players) => format!("{}/{}", players, server.max_players),
+        None => format!("?/{}", server.max_players),
+    }
+}
+
+fn age_col_value(server: &Server) -> String {
+    match server.age {
+        Some(age) => format!("{}", age.as_secs() / 86400),
+        None => "????".to_string(),
+    }
+}
+
+fn ping_col_value(server: &Server) -> String {
+    match server.ping {
+        Some(ping) => format!("{}", ping.as_millis()),
+        None => "????".to_string(),
+    }
 }
 
 fn make_server_row(server: &Server) -> Vec<String> {
-    let players = match server.connected_players {
-        Some(players) => format!("{}/{}", players, server.max_players),
-        None => format!("?/{}", server.max_players),
-    };
-    let age = match server.age {
-        Some(age) => format!("{}", age.as_secs() / 86400),
-        None => "????".to_string(),
-    };
-    let ping = match server.ping {
-        Some(ping) => format!("{}", ping.as_millis()),
-        None => "????".to_string(),
-    };
-    vec![
-        (if server.is_valid() { "" } else { glyph::WARNING }).to_string(),
-        (if server.password_protected { glyph::LOCK } else { "" }).to_string(),
-        server.name.clone(),
-        server.map.clone(),
-        mode_name(server.mode()).to_string(),
-        region_name(server.region).to_string(),
-        players,
-        age,
-        ping,
-        (if server.battleye_required { glyph::YES } else { glyph::NO }).to_string(),
-    ]
+    SERVER_LIST_COLS
+        .iter()
+        .map(|col| col.value_for(server))
+        .collect()
 }

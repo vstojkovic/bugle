@@ -140,4 +140,8 @@ impl Server {
     pub fn is_valid(&self) -> bool {
         self.validity.is_valid()
     }
+
+    pub fn is_official(&self) -> bool {
+        self.ownership == Ownership::Official
+    }
 }

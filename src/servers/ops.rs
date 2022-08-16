@@ -6,7 +6,7 @@ use strum_macros::EnumIter;
 use super::containers::Indexer;
 use super::{Mode, Region, Server, ServerList};
 
-#[derive(Clone, Copy, Debug, EnumIter, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, EnumIter, Hash, PartialEq, Eq)]
 pub enum SortKey {
     Name,
     Map,
