@@ -232,7 +232,6 @@ const SERVER_LIST_COLS: &[(&str, i32)] = &[
     ("Age", 60),
     ("Ping", 60),
     ("BattlEye", 60),
-    ("Level", 50),
 ];
 
 lazy_static! {
@@ -298,6 +297,5 @@ fn make_server_row(server: &Server) -> Vec<String> {
         age,
         ping,
         (if server.battleye_required { glyph::YES } else { glyph::NO }).to_string(),
-        "??".to_string(), // TODO: Level
     ]
 }
