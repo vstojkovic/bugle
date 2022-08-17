@@ -10,6 +10,7 @@ use crate::config;
 pub struct Game {
     root: PathBuf,
     build_id: u32,
+    game_ini_path: PathBuf,
 }
 
 impl Game {
@@ -21,14 +22,10 @@ impl Game {
     }
 
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let mut engine_ini_path = path.as_ref().to_path_buf();
-        engine_ini_path.extend([
-            "ConanSandbox",
-            "Saved",
-            "Config",
-            "WindowsNoEditor",
-            "Engine.ini",
-        ]);
+        let mut config_path = path.as_ref().to_path_buf();
+        config_path.extend(["ConanSandbox", "Saved", "Config", "WindowsNoEditor"]);
+
+        let engine_ini_path = config_path.join("Engine.ini");
 
         let engine_ini = config::load_ini(engine_ini_path)?;
         let build_id = engine_ini
@@ -39,6 +36,7 @@ impl Game {
         Ok(Self {
             root: path.as_ref().into(),
             build_id,
+            game_ini_path: config_path.join("Game.ini"),
         })
     }
 
@@ -65,23 +63,14 @@ impl Game {
     }
 
     pub fn join_server(&self, addr: SocketAddr, enable_battleye: bool) -> Result<Child> {
-        let mut game_ini_path = self.root.clone();
-        game_ini_path.extend([
-            "ConanSandbox",
-            "Saved",
-            "Config",
-            "WindowsNoEditor",
-            "Game.ini",
-        ]);
-
-        let mut game_ini = config::load_ini(&game_ini_path)?;
+        let mut game_ini = config::load_ini(&self.game_ini_path)?;
         game_ini
             .with_section(Some("SavedServers"))
             .set("LastConnected", addr.to_string());
         game_ini
             .with_section(Some("SavedCoopData"))
             .set("StartedListenServerSession", "False");
-        config::save_ini(&game_ini, &game_ini_path)?;
+        config::save_ini(&game_ini, &self.game_ini_path)?;
 
         self.continue_session(enable_battleye)
     }
