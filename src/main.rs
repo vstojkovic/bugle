@@ -63,6 +63,11 @@ impl Launcher {
 
     fn on_action(self: &Arc<Self>, action: Action) -> Result<()> {
         match action {
+            Action::Launch => {
+                let _ = self.game.launch(true, &[])?;
+                app::quit();
+                Ok(())
+            }
             Action::Continue => {
                 let _ = self.game.continue_session(true)?;
                 app::quit();

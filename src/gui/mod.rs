@@ -19,6 +19,7 @@ use self::server_browser::ServerBrowser;
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 
 pub enum Action {
+    Launch,
     Continue,
     ServerBrowser(ServerBrowserAction),
 }
@@ -99,6 +100,11 @@ impl LauncherWindow {
             Rc::new(RefCell::new(Box::new(move || {
                 welcome_group.hide();
             })));
+
+        {
+            let on_action = Rc::clone(&on_action);
+            main_menu.set_on_launch(move || on_action(Action::Launch));
+        }
 
         {
             let on_action = Rc::clone(&on_action);

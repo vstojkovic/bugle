@@ -1,22 +1,23 @@
 use fltk::app;
 use fltk::button::{Button, RadioButton};
-use fltk::dialog;
 use fltk::enums::FrameType;
 use fltk::group::Group;
 use fltk::prelude::*;
 
-use super::not_implemented_callback;
 use super::prelude::LayoutExt;
+use super::{alert_error, not_implemented_callback};
 
 pub(super) struct MainMenu {
+    launch_btn: Button,
     continue_btn: Button,
     online_btn: RadioButton,
 }
 
 impl MainMenu {
-    pub(super) fn new() -> Self {
+    pub fn new() -> Self {
         let group = Group::default_fill();
 
+        let launch_btn = make_button(Button::default_fill, "Launch");
         let continue_btn = make_button(Button::default_fill, "Continue");
         let online_btn = make_button(RadioButton::default_fill, "Online");
         let mut singleplayer_btn = make_button(Button::default_fill, "Singleplayer");
@@ -46,24 +47,29 @@ impl MainMenu {
         exit_btn.set_callback(|_| app::quit());
 
         Self {
+            launch_btn,
             continue_btn,
             online_btn,
         }
     }
 
-    pub(super) fn set_on_continue(
-        &mut self,
-        on_continue: impl Fn() -> anyhow::Result<()> + 'static,
-    ) {
+    pub fn set_on_launch(&mut self, on_launch: impl Fn() -> anyhow::Result<()> + 'static) {
+        self.launch_btn.set_callback(move |_| {
+            if let Err(err) = on_launch() {
+                alert_error("Failed to launch Conan Exiles.", &err);
+            }
+        })
+    }
+
+    pub fn set_on_continue(&mut self, on_continue: impl Fn() -> anyhow::Result<()> + 'static) {
         self.continue_btn.set_callback(move |_| {
-            // FIXME: Change this to alert_error
             if let Err(err) = on_continue() {
-                dialog::alert_default(&format!("Failed to launch Conan Exiles:\n{}", err))
+                alert_error("Failed to launch Conan Exiles.", &err);
             }
         });
     }
 
-    pub(super) fn set_on_online(&mut self, mut on_online: impl FnMut() + 'static) {
+    pub fn set_on_online(&mut self, mut on_online: impl FnMut() + 'static) {
         self.online_btn.set_callback(move |_| on_online());
     }
 }
