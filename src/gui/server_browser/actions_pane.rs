@@ -7,10 +7,12 @@ use fltk::prelude::*;
 
 use crate::gui::prelude::*;
 use crate::gui::{button_row_height, widget_auto_height, widget_auto_width};
+use crate::servers::Server;
 
 pub enum Action {
     DirectConnect,
     Refresh,
+    ToggleFavorite,
     Ping,
     Join,
     ScrollLock(bool),
@@ -20,6 +22,7 @@ pub(super) struct ActionsPane {
     root: Group,
     direct_conn_button: Button,
     refresh_button: Button,
+    toggle_favorite_button: Button,
     ping_button: Button,
     join_button: Button,
     scroll_lock_check: CheckButton,
@@ -31,11 +34,13 @@ impl ActionsPane {
 
         let direct_conn_button = Button::default().with_label("Direct Connect...");
         let refresh_button = Button::default().with_label("Refresh");
+        let toggle_favorite_button = Button::default().with_label("Unfavorite");
         let ping_button = Button::default().with_label("Ping");
         let join_button = Button::default().with_label("Join");
         let button_height = button_row_height(&[
             &direct_conn_button,
             &refresh_button,
+            &toggle_favorite_button,
             &ping_button,
             &join_button,
         ]);
@@ -66,6 +71,12 @@ impl ActionsPane {
             .with_size(ping_width, button_height)
             .left_of(&join_button, 10);
         ping_button.deactivate();
+        let toggle_favorite_width = widget_auto_width(&toggle_favorite_button);
+        let mut toggle_favorite_button = toggle_favorite_button
+            .with_size(toggle_favorite_width, button_height)
+            .left_of(&ping_button, 10);
+        toggle_favorite_button.deactivate();
+        toggle_favorite_button.set_label("Favorite");
 
         let scroll_lock_check = scroll_lock_check
             .with_size(scroll_lock_width, scroll_lock_height)
@@ -77,6 +88,7 @@ impl ActionsPane {
             root,
             direct_conn_button,
             refresh_button,
+            toggle_favorite_button,
             ping_button,
             join_button,
             scroll_lock_check,
@@ -87,14 +99,22 @@ impl ActionsPane {
         &self.root
     }
 
-    pub fn set_server_actions_enabled(&self, enabled: bool) {
+    pub fn server_selected(&self, server: Option<&Server>) {
+        let mut toggle_favorite_button = self.toggle_favorite_button.clone();
         let mut ping_button = self.ping_button.clone();
         let mut join_button = self.join_button.clone();
 
-        if enabled {
-            ping_button.activate();
-            join_button.activate();
+        if let Some(server) = server {
+            toggle_favorite_button.activate();
+            toggle_favorite_button.set_label(if server.favorite {
+                "Unfavorite"
+            } else {
+                "Favorite"
+            });
+            ping_button.set_activated(server.is_valid());
+            join_button.set_activated(server.is_valid());
         } else {
+            toggle_favorite_button.deactivate();
             ping_button.deactivate();
             join_button.deactivate();
         }
@@ -111,6 +131,11 @@ impl ActionsPane {
             let mut refresh_button = self.refresh_button.clone();
             let on_action = Rc::clone(&on_action);
             refresh_button.set_callback(move |_| on_action(Action::Refresh));
+        }
+        {
+            let mut toggle_favorite_button = self.toggle_favorite_button.clone();
+            let on_action = Rc::clone(&on_action);
+            toggle_favorite_button.set_callback(move |_| on_action(Action::ToggleFavorite));
         }
         {
             let mut ping_button = self.ping_button.clone();

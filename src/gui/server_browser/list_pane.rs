@@ -96,14 +96,28 @@ impl ListPane {
 
     pub fn update(&self, indices: impl IntoIterator<Item = usize>) {
         let mut table = self.table.clone();
+
         let servers_ref = self.server_list.borrow();
         let servers = servers_ref.borrow();
+
+        let selection = self.selection.borrow();
+        let mut reselect = false;
+
         let data_ref = table.data_ref();
-        let mut data = data_ref.lock().unwrap();
-        for idx in indices.into_iter() {
-            data[idx] = make_server_row(&servers[idx]);
+        {
+            let mut data = data_ref.lock().unwrap();
+            for idx in indices.into_iter() {
+                data[idx] = make_server_row(&servers[idx]);
+                if Some(idx) == selection.index {
+                    reselect = true;
+                }
+            }
         }
         table.redraw();
+
+        if reselect {
+            self.on_server_selected.borrow()(Some(&servers[selection.index.unwrap()]));
+        }
     }
 
     pub fn set_on_sort_changed(&self, on_sort_changed: impl Fn(SortCriteria) + 'static) {
@@ -267,6 +281,7 @@ const SERVER_LIST_COLS: &[Column] = &[
     col!(glyph::LOCK, 20, None, |server| str_if(server.password_protected, glyph::LOCK)),
     col!(glyph::FLAG, 20, None, |server| str_if(server.is_official(), glyph::FLAG)),
     col!(glyph::EYE, 20, None, |server| str_if(server.battleye_required, glyph::EYE)),
+    col!(glyph::HEART, 20, None, |server| str_if(server.favorite, glyph::HEART)),
     col!("Server Name", 380, Some(SortKey::Name), |server| server.name.clone()),
     col!("Map", 150, Some(SortKey::Map), |server| server.map.clone()),
     col!("Mode", 80, Some(SortKey::Mode), |server| mode_name(server.mode()).to_string()),

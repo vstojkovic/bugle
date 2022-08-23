@@ -1,5 +1,19 @@
 use fltk::prelude::*;
 
+pub(super) trait WidgetConvenienceExt {
+    fn set_activated(&mut self, activated: bool);
+}
+
+impl<T: WidgetExt> WidgetConvenienceExt for T {
+    fn set_activated(&mut self, activated: bool) {
+        if activated {
+            self.activate()
+        } else {
+            self.deactivate()
+        }
+    }
+}
+
 pub(super) trait LayoutExt {
     fn inside_of<W: WidgetExt>(self, widget: &W, dx: i32, dy: i32) -> Self;
     fn inside_parent(self, dx: i32, dy: i32) -> Self;

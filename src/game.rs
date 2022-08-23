@@ -3,9 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 
 use anyhow::Result;
+use ini::Properties;
 use steamlocate::SteamDir;
 
-use crate::config;
+use crate::config::{self, save_ini};
+use crate::servers::{FavoriteServer, FavoriteServers};
 
 pub struct Game {
     root: PathBuf,
@@ -42,6 +44,39 @@ impl Game {
 
     pub fn build_id(&self) -> u32 {
         self.build_id
+    }
+
+    pub fn load_favorites(&self) -> Result<FavoriteServers> {
+        let game_ini = config::load_ini(&self.game_ini_path)?;
+        let mut favorites = FavoriteServers::new();
+
+        if let Some(section) = game_ini.section(Some("FavoriteServers")) {
+            for (key, value) in section.iter() {
+                if key != "ServersList" {
+                    continue;
+                }
+                if let Ok(favorite) = FavoriteServer::parse(value) {
+                    favorites.insert(favorite);
+                }
+            }
+        }
+
+        Ok(favorites)
+    }
+
+    pub fn save_favorites(
+        &self,
+        favorites: impl IntoIterator<Item = FavoriteServer>,
+    ) -> Result<()> {
+        let mut game_ini = config::load_ini(&self.game_ini_path)?;
+        let section = game_ini
+            .entry(Some("FavoriteServers".to_string()))
+            .or_insert_with(Properties::new);
+        section.remove_all("ServersList");
+        for favorite in favorites {
+            section.append("ServersList", favorite.to_string());
+        }
+        save_ini(&game_ini, &self.game_ini_path)
     }
 
     pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Child> {

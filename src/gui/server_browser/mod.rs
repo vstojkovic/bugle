@@ -10,8 +10,8 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
 use crate::servers::{
-    Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList, ServerListView,
-    SortCriteria, SortKey,
+    FavoriteServer, Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList,
+    ServerListView, SortCriteria, SortKey,
 };
 
 use self::actions_pane::{Action, ActionsPane};
@@ -31,6 +31,7 @@ pub enum ServerBrowserAction {
     LoadServers,
     JoinServer(SocketAddr),
     PingServer(PingRequest),
+    UpdateFavorites(Vec<FavoriteServer>),
 }
 
 pub enum ServerBrowserUpdate {
@@ -74,6 +75,10 @@ impl ServerBrowserState {
         Self {
             servers: sorted_servers,
         }
+    }
+
+    fn all_servers(&self) -> &Vec<Server> {
+        self.servers.source().source()
     }
 
     fn set_servers(&mut self, servers: Vec<Server>) {
@@ -232,10 +237,7 @@ impl ServerBrowser {
             list_pane.set_on_server_selected(move |server| {
                 if let Some(browser) = browser.upgrade() {
                     browser.details_pane.populate(server);
-                    let actions_enabled = server.map(Server::is_valid).unwrap_or(false);
-                    browser
-                        .actions_pane
-                        .set_server_actions_enabled(actions_enabled);
+                    browser.actions_pane.server_selected(server);
                 }
             });
         }
@@ -262,6 +264,37 @@ impl ServerBrowser {
                                 let request = PingRequest::for_server(source_idx, server).unwrap();
                                 let action = ServerBrowserAction::PingServer(request);
                                 (browser.on_action)(action).unwrap();
+                            }
+                        }
+                        Action::ToggleFavorite => {
+                            if let Some(server_idx) = browser.list_pane.selected_index() {
+                                let src_idx = browser.state.borrow().to_source_index(server_idx);
+                                browser.update_servers(
+                                    1,
+                                    |all_servers, updated_indices, _| {
+                                        all_servers[src_idx].favorite =
+                                            !all_servers[src_idx].favorite;
+                                        updated_indices.push(src_idx);
+                                        false
+                                    },
+                                    |_| false,
+                                );
+                                let state = browser.state.borrow_mut();
+                                let favorites = state
+                                    .all_servers()
+                                    .iter()
+                                    .filter_map(|server| {
+                                        if server.favorite {
+                                            Some(FavoriteServer::from_server(server))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .collect();
+                                let action = ServerBrowserAction::UpdateFavorites(favorites);
+                                if let Err(err) = (browser.on_action)(action) {
+                                    alert_error(ERR_UPDATING_FAVORITES, &err);
+                                }
                             }
                         }
                         Action::Refresh => {
@@ -317,10 +350,10 @@ impl ServerBrowser {
                 Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
             },
             ServerBrowserUpdate::UpdateServer(response) => {
-                self.update_servers(&[response]);
+                self.update_pinged_servers(&[response]);
             }
             ServerBrowserUpdate::BatchUpdateServers(responses) => {
-                self.update_servers(&responses);
+                self.update_pinged_servers(&responses);
             }
         }
     }
@@ -330,32 +363,45 @@ impl ServerBrowser {
         self.list_pane.populate(self.state.clone());
     }
 
-    fn update_servers(&self, updates: &[PingResponse]) {
+    fn update_pinged_servers(&self, updates: &[PingResponse]) {
+        self.update_servers(
+            updates.len(),
+            |all_servers, updated_indices, filter| {
+                let mut should_reindex = false;
+                for update in updates {
+                    let server = match all_servers.get_mut(update.server_idx) {
+                        Some(server) => server,
+                        None => continue,
+                    };
+                    updated_indices.push(update.server_idx);
+                    if Self::update_server(server, update, filter) {
+                        should_reindex = true;
+                    }
+                }
+                should_reindex
+            },
+            |sort_criteria| {
+                (sort_criteria.key == SortKey::Players)
+                    || (sort_criteria.key == SortKey::Age)
+                    || (sort_criteria.key == SortKey::Ping)
+            },
+        );
+    }
+
+    fn update_servers(
+        &self,
+        count_hint: usize,
+        mutator: impl FnOnce(&mut Vec<Server>, &mut Vec<usize>, &Filter) -> bool,
+        should_sort: impl FnOnce(&SortCriteria) -> bool,
+    ) {
         let selected_idx = self.selected_server_index();
 
-        let mut updated_indices: Vec<usize> = Vec::with_capacity(updates.len());
+        let mut updated_indices: Vec<usize> = Vec::with_capacity(count_hint);
         let repopulate = {
             let mut state = self.state.borrow_mut();
             state.update_servers(
-                |all_servers, filter| {
-                    let mut should_reindex = false;
-                    for update in updates {
-                        let server = match all_servers.get_mut(update.server_idx) {
-                            Some(server) => server,
-                            None => continue,
-                        };
-                        updated_indices.push(update.server_idx);
-                        if Self::update_server(server, update, filter) {
-                            should_reindex = true;
-                        }
-                    }
-                    should_reindex
-                },
-                |sort_criteria| {
-                    (sort_criteria.key == SortKey::Players)
-                        || (sort_criteria.key == SortKey::Age)
-                        || (sort_criteria.key == SortKey::Ping)
-                },
+                |all_servers, filter| mutator(all_servers, &mut updated_indices, filter),
+                should_sort,
             )
         };
 
@@ -410,6 +456,7 @@ impl FilterHolder for ServerBrowser {
 const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
 const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
 const ERR_INVALID_ADDR: &str = "Invalid server address.";
+const ERR_UPDATING_FAVORITES: &str = "Error while updating favorites.";
 
 fn mode_name(mode: Mode) -> &'static str {
     match mode {

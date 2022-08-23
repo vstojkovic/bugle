@@ -114,6 +114,9 @@ pub struct Server {
     pub ping: Option<Duration>,
 
     #[serde(skip)]
+    pub favorite: bool,
+
+    #[serde(skip)]
     pub validity: Validity,
 }
 

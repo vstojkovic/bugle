@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
+use servers::FavoriteServers;
 use tokio::task::JoinHandle;
 
 mod config;
@@ -84,6 +85,9 @@ impl Launcher {
             Action::ServerBrowser(ServerBrowserAction::PingServer(request)) => {
                 self.on_ping_server(request)
             }
+            Action::ServerBrowser(ServerBrowserAction::UpdateFavorites(favorites)) => {
+                self.game.save_favorites(favorites)
+            }
         }
     }
 
@@ -153,10 +157,11 @@ impl Launcher {
     }
 
     async fn fetch_servers(&self) -> Result<Vec<Server>> {
-        Ok(fetch_server_list(|server| self.finalize_server(server)).await?)
+        let favorites = self.game.load_favorites()?;
+        Ok(fetch_server_list(|server| self.finalize_server(server, &favorites)).await?)
     }
 
-    fn finalize_server(&self, mut server: Server) -> Server {
+    fn finalize_server(&self, mut server: Server, favorites: &FavoriteServers) -> Server {
         server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
             server.reported_ip
         } else {
@@ -166,6 +171,8 @@ impl Launcher {
         if server.name.is_empty() {
             server.name = server.host();
         }
+
+        server.favorite = favorites.contains(&server);
 
         if server.build_id != self.game.build_id() {
             server.validity.insert(Validity::INVALID_BUILD);
