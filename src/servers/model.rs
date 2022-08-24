@@ -104,6 +104,9 @@ pub struct Server {
     #[serde(rename = "buildId")]
     pub build_id: u32,
 
+    #[serde(rename = "S17")]
+    pub mods: Option<String>,
+
     #[serde(skip)]
     pub connected_players: Option<usize>,
 

@@ -2,6 +2,9 @@ use std::borrow::Cow;
 
 use fltk::prelude::*;
 use fltk_table::{SmartTable, TableOpts};
+use nom::character::complete::{char, digit1};
+use nom::sequence::separated_pair;
+use nom::IResult;
 
 use crate::servers::Server;
 
@@ -61,4 +64,21 @@ const SERVER_DETAILS_ROWS: &[(&str, fn(&Server) -> Cow<str>)] = &[
     ("Map Name", |server| Cow::from(&server.map)),
     ("Mode", |server| Cow::from(mode_name(server.mode()))),
     ("Region", |server| Cow::from(region_name(server.region))),
+    ("Mods", mods_cell_value),
 ];
+
+fn mods_cell_value(server: &Server) -> Cow<str> {
+    if let Some(mods) = &server.mods {
+        if let Ok((_, (steam_mods, non_steam_mods))) = parse_mod_counts(mods) {
+            format!("Steam: {}, Non-Steam: {}", steam_mods, non_steam_mods).into()
+        } else {
+            "????".into()
+        }
+    } else {
+        "".into()
+    }
+}
+
+fn parse_mod_counts(input: &str) -> IResult<&str, (&str, &str), ()> {
+    separated_pair(digit1, char(':'), digit1)(input)
+}
