@@ -281,6 +281,7 @@ macro_rules! col {
 const SERVER_LIST_COLS: &[Column] = &[
     col!(glyph::WARNING, 20, None, |server| str_if(!server.is_valid(), glyph::WARNING)),
     col!(glyph::LOCK, 20, None, |server| str_if(server.password_protected, glyph::LOCK)),
+    col!(glyph::TOOLS, 20, None, |server| str_if(server.is_modded(), glyph::TOOLS)),
     col!(glyph::FLAG, 20, None, |server| str_if(server.is_official(), glyph::FLAG)),
     col!(glyph::EYE, 20, None, |server| str_if(server.battleye_required, glyph::EYE)),
     col!(glyph::HEART, 20, None, |server| str_if(server.favorite, glyph::HEART)),

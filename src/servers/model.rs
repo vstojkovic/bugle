@@ -164,4 +164,8 @@ impl Server {
     pub fn is_official(&self) -> bool {
         self.ownership == Ownership::Official
     }
+
+    pub fn is_modded(&self) -> bool {
+        self.mods.is_some()
+    }
 }

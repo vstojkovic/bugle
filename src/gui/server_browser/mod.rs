@@ -10,8 +10,8 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
 use crate::servers::{
-    FavoriteServer, Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList,
-    ServerListView, SortCriteria, SortKey, Community,
+    Community, FavoriteServer, Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList,
+    ServerListView, SortCriteria, SortKey,
 };
 
 use self::actions_pane::{Action, ActionsPane};

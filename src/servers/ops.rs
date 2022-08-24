@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use regex::{Regex, RegexBuilder};
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, FromRepr};
 
 use super::containers::Indexer;
 use super::{Mode, Region, Server, ServerList};
@@ -100,21 +100,53 @@ impl<S: ServerList> Indexer<S> for SortCriteria {
     }
 }
 
+#[derive(Clone, Copy, Debug, EnumIter, FromRepr)]
+pub enum TypeFilter {
+    All,
+    Official,
+    Private,
+    Favorite,
+}
+
+impl TypeFilter {
+    fn matches(&self, server: &Server) -> bool {
+        match self {
+            Self::All => true,
+            Self::Official => server.is_official(),
+            Self::Private => !server.is_official(),
+            Self::Favorite => server.favorite,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Filter {
     name: String,
     name_re: Regex,
     map: String,
     map_re: Regex,
+    type_filter: TypeFilter,
     mode: Option<Mode>,
     region: Option<Region>,
+    battleye_required: Option<bool>,
     build_id: Option<u32>,
     password_protected: bool,
+    modded: bool,
 }
 
 impl Default for Filter {
     fn default() -> Self {
-        Filter::new(String::new(), String::new(), None, None, None, false)
+        Filter::new(
+            String::new(),
+            String::new(),
+            TypeFilter::All,
+            None,
+            None,
+            None,
+            None,
+            false,
+            false,
+        )
     }
 }
 
@@ -122,10 +154,13 @@ impl Filter {
     pub fn new(
         name: String,
         map: String,
+        type_filter: TypeFilter,
         mode: impl Into<Option<Mode>>,
         region: impl Into<Option<Region>>,
+        battleye_required: impl Into<Option<bool>>,
         build_id: impl Into<Option<u32>>,
         password_protected: bool,
+        modded: bool,
     ) -> Self {
         let name_re = Self::regex(&name);
         let map_re = Self::regex(&map);
@@ -134,10 +169,13 @@ impl Filter {
             name_re,
             map,
             map_re,
+            type_filter,
             mode: mode.into(),
             region: region.into(),
+            battleye_required: battleye_required.into(),
             build_id: build_id.into(),
             password_protected,
+            modded,
         }
     }
 
@@ -165,6 +203,14 @@ impl Filter {
         self.map = map;
     }
 
+    pub fn type_filter(&self) -> TypeFilter {
+        self.type_filter
+    }
+
+    pub fn set_type_filter(&mut self, type_filter: TypeFilter) {
+        self.type_filter = type_filter;
+    }
+
     pub fn mode(&self) -> Option<Mode> {
         self.mode
     }
@@ -179,6 +225,14 @@ impl Filter {
 
     pub fn set_region(&mut self, region: impl Into<Option<Region>>) {
         self.region = region.into();
+    }
+
+    pub fn battleye_required(&self) -> Option<bool> {
+        self.battleye_required
+    }
+
+    pub fn set_battleye_required(&mut self, battleye_required: impl Into<Option<bool>>) {
+        self.battleye_required = battleye_required.into();
     }
 
     pub fn build_id(&self) -> Option<u32> {
@@ -197,13 +251,22 @@ impl Filter {
         self.password_protected = password_protected;
     }
 
+    pub fn set_modded(&mut self, modded: bool) {
+        self.modded = modded;
+    }
+
     pub fn matches(&self, server: &Server) -> bool {
         self.name_re.is_match(&server.name)
             && self.map_re.is_match(&server.map)
+            && self.type_filter.matches(server)
             && self.mode.map_or(true, |mode| server.mode() == mode)
             && self.region.map_or(true, |region| server.region == region)
+            && self
+                .battleye_required
+                .map_or(true, |required| server.battleye_required == required)
             && self.build_id.map_or(true, |id| server.build_id == id)
             && self.password_protected >= server.password_protected
+            && self.modded >= server.is_modded()
     }
 
     fn regex(text: &str) -> Regex {
