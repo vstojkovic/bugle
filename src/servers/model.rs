@@ -26,6 +26,17 @@ pub enum Ownership {
     Official,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum Community {
+    Unspecified,
+    Purist,
+    Relaxed,
+    Hardcore,
+    RolePlaying,
+    Experimental,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Kind {
@@ -103,6 +114,9 @@ pub struct Server {
 
     #[serde(rename = "buildId")]
     pub build_id: u32,
+
+    #[serde(rename = "Su")]
+    pub community: Community,
 
     #[serde(rename = "S17")]
     pub mods: Option<String>,

@@ -11,7 +11,7 @@ use fltk::prelude::*;
 
 use crate::servers::{
     FavoriteServer, Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList,
-    ServerListView, SortCriteria, SortKey,
+    ServerListView, SortCriteria, SortKey, Community,
 };
 
 use self::actions_pane::{Action, ActionsPane};
@@ -474,5 +474,16 @@ fn region_name(region: Region) -> &'static str {
         Region::Oceania => "Oceania",
         Region::LATAM => "LATAM",
         Region::Japan => "Japan",
+    }
+}
+
+fn community_name(community: Community) -> &'static str {
+    match community {
+        Community::Unspecified => "",
+        Community::Purist => "Purist",
+        Community::Relaxed => "Relaxed",
+        Community::Hardcore => "Hardcore",
+        Community::RolePlaying => "Role Playing",
+        Community::Experimental => "Experimental",
     }
 }

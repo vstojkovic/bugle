@@ -8,7 +8,7 @@ use nom::IResult;
 
 use crate::servers::Server;
 
-use super::{mode_name, region_name};
+use super::{community_name, mode_name, region_name};
 
 pub(super) struct DetailsPane {
     table: SmartTable,
@@ -64,6 +64,9 @@ const SERVER_DETAILS_ROWS: &[(&str, fn(&Server) -> Cow<str>)] = &[
     ("Map Name", |server| Cow::from(&server.map)),
     ("Mode", |server| Cow::from(mode_name(server.mode()))),
     ("Region", |server| Cow::from(region_name(server.region))),
+    ("Community", |server| {
+        Cow::from(community_name(server.community))
+    }),
     ("Mods", mods_cell_value),
 ];
 
