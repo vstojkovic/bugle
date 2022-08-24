@@ -23,7 +23,6 @@ pub(super) struct ListPane {
     selection: RefCell<Selection>,
 }
 
-#[derive(Default)]
 struct Selection {
     index: Option<usize>,
     scroll_lock: bool,
@@ -58,7 +57,10 @@ impl ListPane {
             server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
             on_sort_changed: RefCell::new(Box::new(|_| ())),
             on_server_selected: RefCell::new(Box::new(|_| ())),
-            selection: RefCell::new(Default::default()),
+            selection: RefCell::new(Selection {
+                index: None,
+                scroll_lock: true,
+            }),
         });
 
         {

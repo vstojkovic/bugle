@@ -81,6 +81,7 @@ impl ActionsPane {
         let scroll_lock_check = scroll_lock_check
             .with_size(scroll_lock_width, scroll_lock_height)
             .center_of_parent();
+        scroll_lock_check.set_checked(true);
 
         root.end();
 
