@@ -84,7 +84,9 @@ impl SortCriteria {
         };
         let tie_breaker = cmp_values!(self.ascending, id);
         Box::new(move |lhs: &Server, rhs: &Server| {
-            cmp(lhs, rhs).then_with(|| tie_breaker(lhs, rhs))
+            rhs.favorite
+                .cmp(&lhs.favorite)
+                .then_with(|| cmp(lhs, rhs).then_with(|| tie_breaker(lhs, rhs)))
         })
     }
 }

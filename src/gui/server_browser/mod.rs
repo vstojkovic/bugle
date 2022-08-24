@@ -277,7 +277,7 @@ impl ServerBrowser {
                                         updated_indices.push(src_idx);
                                         false
                                     },
-                                    |_| false,
+                                    |_| true,
                                 );
                                 let state = browser.state.borrow_mut();
                                 let favorites = state
