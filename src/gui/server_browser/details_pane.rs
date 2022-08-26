@@ -6,7 +6,7 @@ use nom::character::complete::{char, digit1};
 use nom::sequence::separated_pair;
 use nom::IResult;
 
-use crate::servers::Server;
+use crate::servers::{Server, Weekday};
 
 use super::{community_name, mode_name, region_name};
 
@@ -64,8 +64,152 @@ const SERVER_DETAILS_ROWS: &[(&str, fn(&Server) -> Cow<str>)] = &[
     ("Map Name", |server| Cow::from(&server.map)),
     ("Mode", |server| Cow::from(mode_name(server.mode()))),
     ("Region", |server| Cow::from(region_name(server.region))),
+    ("Max Clan Size", |server| {
+        Cow::from(
+            server
+                .max_clan_size
+                .map(|size| size.to_string())
+                .unwrap_or_default(),
+        )
+    }),
+    ("On Death", |server| {
+        Cow::from(if server.survival.drop_items_on_death { "drop items" } else { "keep items" })
+    }),
+    ("Player Corpse", |server| {
+        Cow::from(if server.survival.anyone_can_loot_corpse {
+            "can be looted by anyone"
+        } else {
+            "can only be looted by owner"
+        })
+    }),
+    ("Offline Characters", |server| {
+        Cow::from(if server.survival.offline_chars_in_world {
+            "stay in the world"
+        } else {
+            "disappear from the world"
+        })
+    }),
+    ("Harvest Amount Multiplier", |server| {
+        Cow::from(server.harvesting.harvest_amount_mult.to_string())
+    }),
+    ("XP Rate Multiplier", |server| {
+        Cow::from(server.xp_rate_mult.to_string())
+    }),
+    ("Crafting Time Multiplier", |server| {
+        Cow::from(server.crafting.crafting_time_mult.to_string())
+    }),
+    ("Thrall Crafting Time Multiplier", |server| {
+        Cow::from(server.crafting.thrall_crafting_time_mult.to_string())
+    }),
+    ("Raid Hours (Mon)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Mon)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Raid Hours (Tue)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Tue)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Raid Hours (Wed)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Wed)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Raid Hours (Thu)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Thu)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Raid Hours (Fri)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Fri)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Raid Hours (Sat)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Sat)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Raid Hours (Sun)", |server| {
+        Cow::from(
+            server
+                .raid_hours
+                .get(Weekday::Sun)
+                .map(|(start, end)| format!("{} - {}", start.to_string(), end.to_string()))
+                .unwrap_or_default(),
+        )
+    }),
+    ("Stamina Cost Multiplier", |server| {
+        Cow::from(server.survival.stamina_cost_mult.to_string())
+    }),
+    ("Item Spoil Rate Scale", |server| {
+        Cow::from(server.harvesting.item_spoil_rate_mult.to_string())
+    }),
+    ("Resource Respawn Speed Multiplier", |server| {
+        Cow::from(server.harvesting.rsrc_respawn_speed_mult.to_string())
+    }),
+    ("Idle Thirst Multiplier", |server| {
+        Cow::from(server.survival.idle_thirst_mult.to_string())
+    }),
+    ("Active Thirst Multiplier", |server| {
+        Cow::from(server.survival.active_thirst_mult.to_string())
+    }),
+    ("Idle Hunger Multiplier", |server| {
+        Cow::from(server.survival.idle_hunger_mult.to_string())
+    }),
+    ("Active Hunger Multiplier", |server| {
+        Cow::from(server.survival.active_hunger_mult.to_string())
+    }),
+    ("Durability Multiplier", |server| {
+        Cow::from(server.combat.durability_mult.to_string())
+    }),
+    ("Thrall Wakeup Time", |server| {
+        Cow::from(format!("{} secs", server.combat.thrall_wakeup_time_secs()))
+    }),
+    ("Day Cycle Speed", |server| {
+        Cow::from(server.daylight.day_cycle_speed_mult.to_string())
+    }),
+    ("Dawn/Dusk Time Speed", |server| {
+        Cow::from(server.daylight.dawn_dusk_speed_mult.to_string())
+    }),
+    ("Use Catch Up Time", |server| {
+        Cow::from(if server.daylight.use_catch_up_time { "Yes" } else { "No" })
+    }),
     ("Community", |server| {
         Cow::from(community_name(server.community))
+    }),
+    ("Max Ping", |server| {
+        Cow::from(
+            server
+                .max_ping
+                .map(|ping| ping.to_string())
+                .unwrap_or_default(),
+        )
     }),
     ("Mods", mods_cell_value),
 ];
