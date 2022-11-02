@@ -4,6 +4,7 @@ use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
 use servers::FavoriteServers;
+use slog::{info, o, Logger};
 use tokio::task::JoinHandle;
 
 mod config;
@@ -18,6 +19,7 @@ use self::net::{is_valid_ip, is_valid_port};
 use self::servers::{fetch_server_list, PingClient, PingRequest, Server, Validity};
 
 struct Launcher {
+    logger: Logger,
     app: App,
     game: Game,
     tx: app::Sender<Update>,
@@ -26,9 +28,10 @@ struct Launcher {
 }
 
 impl Launcher {
-    fn new(app: App, game: Game) -> Arc<Self> {
+    fn new(logger: Logger, app: App, game: Game) -> Arc<Self> {
         let (tx, rx) = app::channel();
         Arc::new(Self {
+            logger,
             app,
             game,
             tx,
@@ -145,20 +148,26 @@ impl Launcher {
     }
 
     fn make_ping_client(self: Arc<Self>, generation: u32) -> Result<PingClient> {
-        Ok(PingClient::new(self.game.build_id(), move |response| {
-            if self.server_loader.lock().unwrap().generation != generation {
-                return;
-            }
-            self.tx
-                .send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
-                    response,
-                )));
-        })?)
+        let ping_logger = self.logger.new(o!("ping_generation" => generation));
+        Ok(PingClient::new(
+            ping_logger,
+            self.game.build_id(),
+            move |response| {
+                if self.server_loader.lock().unwrap().generation != generation {
+                    return;
+                }
+                self.tx
+                    .send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
+                        response,
+                    )));
+            },
+        )?)
     }
 
     async fn fetch_servers(&self) -> Result<Vec<Server>> {
         let favorites = self.game.load_favorites()?;
-        Ok(fetch_server_list(|server| self.finalize_server(server, &favorites)).await?)
+        let finalizer = |server| self.finalize_server(server, &favorites);
+        Ok(fetch_server_list(self.logger.clone(), finalizer).await?)
     }
 
     fn finalize_server(&self, mut server: Server, favorites: &FavoriteServers) -> Server {
@@ -202,9 +211,20 @@ enum ServerLoaderState {
     Pinging(PingClient),
 }
 
+fn create_root_logger() -> Logger {
+    use slog::Drain;
+
+    let drain = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(drain).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+    Logger::root(drain, o!())
+}
+
 #[tokio::main]
 async fn main() {
     let app = App::default();
+
+    let root_logger = create_root_logger();
 
     let game_root = match Game::locate() {
         Some(root) => root,
@@ -216,7 +236,7 @@ async fn main() {
             return;
         }
     };
-    let game = match Game::new(game_root) {
+    let game = match Game::new(root_logger.clone(), game_root) {
         Ok(game) => game,
         Err(err) => {
             gui::alert_error(
@@ -227,6 +247,8 @@ async fn main() {
         }
     };
 
-    let launcher = Launcher::new(app, game);
+    let launcher = Launcher::new(root_logger.clone(), app, game);
     launcher.run();
+
+    info!(root_logger, "Shutting down launcher");
 }

@@ -10,6 +10,7 @@ use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::Quota;
 use linked_hash_map::{Entry, LinkedHashMap};
+use slog::{info, warn, Logger};
 use tokio::net::UdpSocket;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -49,8 +50,12 @@ pub struct PingClient {
 }
 
 impl PingClient {
-    pub fn new(build_id: u32, on_response: impl Fn(PingResponse) + Send + 'static) -> Result<Self> {
-        ClientImpl::new(build_id, on_response).map(|client_impl| Self { client_impl })
+    pub fn new(
+        logger: Logger,
+        build_id: u32,
+        on_response: impl Fn(PingResponse) + Send + 'static,
+    ) -> Result<Self> {
+        ClientImpl::new(logger, build_id, on_response).map(|client_impl| Self { client_impl })
     }
 }
 
@@ -65,16 +70,19 @@ impl Drop for PingClient {
     fn drop(&mut self) {
         let mut pending = self.client_impl.pending.lock().unwrap();
         if let Some(task) = pending.task.take() {
+            info!(self.logger, "Stopping ping receiver");
             task.abort();
         }
         let mut unsent = self.client_impl.unsent.lock().unwrap();
         if let Some(task) = unsent.task.take() {
+            info!(self.logger, "Stopping ping sender");
             task.abort();
         }
     }
 }
 
 pub struct ClientImpl {
+    logger: Logger,
     build_id: u32,
     socket: UdpSocket,
     unsent: Mutex<UnsentRequests>,
@@ -83,6 +91,7 @@ pub struct ClientImpl {
 
 impl ClientImpl {
     fn new(
+        logger: Logger,
         build_id: u32,
         on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> Result<Arc<Self>> {
@@ -94,6 +103,7 @@ impl ClientImpl {
         };
 
         let client = Arc::new(Self {
+            logger,
             build_id,
             socket,
             unsent: Mutex::new(UnsentRequests::new()),
@@ -130,10 +140,12 @@ impl ClientImpl {
         self: Arc<Self>,
         on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> JoinHandle<()> {
+        info!(self.logger, "Starting ping receiver");
         tokio::spawn(Receiver::new(self, on_response).run())
     }
 
     fn spawn_sender(self: Arc<Self>) -> JoinHandle<()> {
+        info!(self.logger, "Starting ping sender");
         tokio::spawn(Sender::new(self).run())
     }
 }
@@ -190,6 +202,7 @@ impl Sender {
 
     async fn run(self) {
         let req_packet = self.client.build_id.to_be_bytes();
+        let mut pings_sent = 0;
         loop {
             let next = {
                 let mut unsent = self.client.unsent.lock().unwrap();
@@ -197,7 +210,7 @@ impl Sender {
                     Some(request) => request,
                     None => {
                         unsent.task = None;
-                        return;
+                        break;
                     }
                 }
             };
@@ -206,21 +219,22 @@ impl Sender {
                 if let Entry::Occupied(mut entry) = pending.requests.entry(next.addr) {
                     if entry.get().idx == next.server_idx {
                         entry.get_mut().should_retry = true;
-                    } // TODO: Else log
+                    } else {
+                        warn!(
+                            self.client.logger,
+                            "Discarding ping request for duplicate address {addr}",
+                            addr = next.addr
+                        );
+                    }
                     continue;
                 }
             }
             self.rate_limiter.until_ready().await;
-            if self
-                .client
-                .socket
-                .send_to(&req_packet, next.addr)
-                .await
-                .is_err()
-            {
-                // TODO: Log
+            if let Err(err) = self.client.socket.send_to(&req_packet, next.addr).await {
+                warn!(self.client.logger, "Failed to send ping request"; "error" => err);
                 continue;
             }
+            pings_sent += 1;
             let sent_timestamp = Instant::now();
             {
                 let mut pending = self.client.pending.lock().unwrap();
@@ -234,6 +248,7 @@ impl Sender {
                     });
             }
         }
+        info!(self.client.logger, "Finished sending {pings_sent} pings");
     }
 }
 

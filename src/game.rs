@@ -4,12 +4,14 @@ use std::process::{Child, Command};
 
 use anyhow::Result;
 use ini::Properties;
+use slog::{info, Logger};
 use steamlocate::SteamDir;
 
 use crate::config::{self, save_ini};
 use crate::servers::{FavoriteServer, FavoriteServers};
 
 pub struct Game {
+    logger: Logger,
     root: PathBuf,
     build_id: u32,
     game_ini_path: PathBuf,
@@ -23,7 +25,7 @@ impl Game {
         Some(app.path.clone())
     }
 
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(logger: Logger, path: P) -> Result<Self> {
         let mut config_path = path.as_ref().to_path_buf();
         config_path.extend(["ConanSandbox", "Saved", "Config", "WindowsNoEditor"]);
 
@@ -35,7 +37,15 @@ impl Game {
             .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
             .and_then(|s| Ok(s.parse::<u32>()?))?;
 
+        info!(
+            logger,
+            "Valid Conan Exiles installation found";
+            "path" => path.as_ref().display(),
+            "build_id" => build_id,
+        );
+
         Ok(Self {
+            logger,
             root: path.as_ref().into(),
             build_id,
             game_ini_path: config_path.join("Game.ini"),
@@ -76,6 +86,7 @@ impl Game {
         for favorite in favorites {
             section.append("ServersList", favorite.to_string());
         }
+        info!(self.logger, "Saving favorites");
         save_ini(&game_ini, &self.game_ini_path)
     }
 
@@ -89,6 +100,8 @@ impl Game {
         if enable_battleye {
             cmd.arg("-BattlEye");
         }
+
+        info!(self.logger, "Launching Conan Exiles"; "command" => format!("{:?}", cmd));
 
         Ok(cmd.spawn()?)
     }

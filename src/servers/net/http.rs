@@ -2,12 +2,17 @@ use futures::future::try_join_all;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Result};
 use serde::Deserialize;
+use slog::{info, Logger};
 
 use crate::servers::Server;
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
-pub async fn fetch_server_list(finalizer: impl Fn(Server) -> Server) -> Result<Vec<Server>> {
+pub async fn fetch_server_list(
+    logger: Logger,
+    finalizer: impl Fn(Server) -> Server,
+) -> Result<Vec<Server>> {
+    info!(logger, "Fetching server bucket list");
     let client = make_client()?;
     let bucket_list = client
         .get(format!(
@@ -18,6 +23,12 @@ pub async fn fetch_server_list(finalizer: impl Fn(Server) -> Server) -> Result<V
         .await?
         .json::<BucketList>()
         .await?;
+
+    info!(
+        logger,
+        "Fetching servers from {num_buckets} buckets",
+        num_buckets = bucket_list.buckets.len()
+    );
     let responses = try_join_all(bucket_list.buckets.iter().map(|bucket| {
         client
             .get(format!("{}/buckets/{}", SERVER_DIRECTORY_URL, bucket))
