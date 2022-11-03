@@ -1,8 +1,9 @@
+use anyhow::anyhow;
 use futures::future::try_join_all;
 use reqwest::header::{HeaderMap, HeaderValue};
-use reqwest::{Client, Result};
+use reqwest::{Client, Response, Result};
 use serde::Deserialize;
-use slog::{info, Logger};
+use slog::{info, warn, Logger};
 
 use crate::servers::Server;
 
@@ -11,7 +12,7 @@ const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 pub async fn fetch_server_list(
     logger: Logger,
     finalizer: impl Fn(Server) -> Server,
-) -> Result<Vec<Server>> {
+) -> anyhow::Result<Vec<Server>> {
     info!(logger, "Fetching server bucket list");
     let client = make_client()?;
     let bucket_list = client
@@ -38,21 +39,15 @@ pub async fn fetch_server_list(
     let servers = try_join_all(
         responses
             .into_iter()
-            .map(|response| response.json::<ServersBucket>()),
+            .map(|response| parse_servers(&logger, response)),
     )
     .await?;
+
     Ok(servers
         .into_iter()
-        .map(|list| list.servers)
         .flatten()
         .map(finalizer)
         .collect::<Vec<Server>>())
-}
-
-#[derive(Debug, Deserialize)]
-struct ServersBucket {
-    #[serde(rename = "sessions")]
-    pub servers: Vec<Server>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,4 +69,27 @@ fn make_client() -> Result<Client> {
         .default_headers(default_headers)
         .gzip(true)
         .build()
+}
+
+async fn parse_servers(logger: &Logger, response: Response) -> anyhow::Result<Vec<Server>> {
+    let json = response.json::<serde_json::Value>().await?;
+    let json = json
+        .as_object()
+        .ok_or(anyhow!("expected a JSON object in response"))?;
+    let json = json
+        .get("sessions")
+        .ok_or(anyhow!("cannot find 'sessions' key in response"))?;
+    let json = json
+        .as_array()
+        .ok_or(anyhow!("expected a JSON array in 'sessions' key"))?;
+
+    let mut result = Vec::with_capacity(json.len());
+    for server in json {
+        match Server::deserialize(server) {
+            Ok(server) => result.push(server),
+            Err(err) => warn!(logger, "Error parsing server"; "error" => %err, "server" => %server),
+        }
+    }
+
+    Ok(result)
 }
