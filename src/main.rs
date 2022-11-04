@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
-use servers::FavoriteServers;
+use servers::DeserializationContext;
 use slog::{info, o, Logger};
 use tokio::task::JoinHandle;
 
@@ -15,8 +15,7 @@ mod servers;
 
 use self::game::Game;
 use self::gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
-use self::net::{is_valid_ip, is_valid_port};
-use self::servers::{fetch_server_list, PingClient, PingRequest, Server, Validity};
+use self::servers::{fetch_server_list, PingClient, PingRequest, Server};
 
 struct Launcher {
     logger: Logger,
@@ -166,34 +165,14 @@ impl Launcher {
 
     async fn fetch_servers(&self) -> Result<Vec<Server>> {
         let favorites = self.game.load_favorites()?;
-        let finalizer = |server| self.finalize_server(server, &favorites);
-        Ok(fetch_server_list(self.logger.clone(), finalizer).await?)
-    }
-
-    fn finalize_server(&self, mut server: Server, favorites: &FavoriteServers) -> Server {
-        server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
-            server.reported_ip
-        } else {
-            server.observed_ip.unwrap()
-        };
-
-        if server.name.is_empty() {
-            server.name = server.host();
-        }
-
-        server.favorite = favorites.contains(&server);
-
-        if server.build_id != self.game.build_id() {
-            server.validity.insert(Validity::INVALID_BUILD);
-        }
-        if !is_valid_ip(server.ip()) {
-            server.validity.insert(Validity::INVALID_ADDR);
-        }
-        if !is_valid_port(server.port) {
-            server.validity.insert(Validity::INVALID_PORT);
-        }
-
-        server
+        Ok(fetch_server_list(
+            self.logger.clone(),
+            DeserializationContext {
+                build_id: self.game.build_id(),
+                favorites: &&favorites,
+            },
+        )
+        .await?)
     }
 }
 

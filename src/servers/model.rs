@@ -7,6 +7,10 @@ use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use strum_macros::{EnumIter, FromRepr};
 
+use crate::net::{is_valid_ip, is_valid_port};
+
+use super::FavoriteServers;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Server {
     #[serde(rename = "EXTERNAL_SERVER_UID")]
@@ -103,7 +107,43 @@ pub struct Server {
     pub validity: Validity,
 }
 
+pub struct DeserializationContext<'dc> {
+    pub build_id: u32,
+    pub favorites: &'dc FavoriteServers,
+}
+
 impl Server {
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+        ctx: &DeserializationContext,
+    ) -> Result<Self, D::Error> {
+        let mut server = <Server as Deserialize>::deserialize(deserializer)?;
+
+        server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
+            server.reported_ip
+        } else {
+            server.observed_ip.unwrap()
+        };
+
+        if server.name.is_empty() {
+            server.name = server.host();
+        }
+
+        server.favorite = ctx.favorites.contains(&server);
+
+        if server.build_id != ctx.build_id {
+            server.validity.insert(Validity::INVALID_BUILD);
+        }
+        if !is_valid_ip(server.ip()) {
+            server.validity.insert(Validity::INVALID_ADDR);
+        }
+        if !is_valid_port(server.port) {
+            server.validity.insert(Validity::INVALID_PORT);
+        }
+
+        Ok(server)
+    }
+
     pub fn mode(&self) -> Mode {
         if self.pvp_enabled {
             match self.kind {

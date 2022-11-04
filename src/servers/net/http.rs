@@ -5,13 +5,13 @@ use reqwest::{Client, Response, Result};
 use serde::Deserialize;
 use slog::{info, warn, Logger};
 
-use crate::servers::Server;
+use crate::servers::{DeserializationContext, Server};
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
-pub async fn fetch_server_list(
+pub async fn fetch_server_list<'dc>(
     logger: Logger,
-    finalizer: impl Fn(Server) -> Server,
+    ctx: DeserializationContext<'dc>,
 ) -> anyhow::Result<Vec<Server>> {
     info!(logger, "Fetching server bucket list");
     let client = make_client()?;
@@ -39,15 +39,11 @@ pub async fn fetch_server_list(
     let servers = try_join_all(
         responses
             .into_iter()
-            .map(|response| parse_servers(&logger, response)),
+            .map(|response| parse_servers(&logger, response, &ctx)),
     )
     .await?;
 
-    Ok(servers
-        .into_iter()
-        .flatten()
-        .map(finalizer)
-        .collect::<Vec<Server>>())
+    Ok(servers.into_iter().flatten().collect::<Vec<Server>>())
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,21 +67,23 @@ fn make_client() -> Result<Client> {
         .build()
 }
 
-async fn parse_servers(logger: &Logger, response: Response) -> anyhow::Result<Vec<Server>> {
+async fn parse_servers<'dc>(
+    logger: &Logger,
+    response: Response,
+    ctx: &'dc DeserializationContext<'dc>,
+) -> anyhow::Result<Vec<Server>> {
     let json = response.json::<serde_json::Value>().await?;
     let json = json
         .as_object()
-        .ok_or(anyhow!("expected a JSON object in response"))?;
-    let json = json
+        .ok_or(anyhow!("expected a JSON object in response"))?
         .get("sessions")
-        .ok_or(anyhow!("cannot find 'sessions' key in response"))?;
-    let json = json
+        .ok_or(anyhow!("cannot find 'sessions' key in response"))?
         .as_array()
         .ok_or(anyhow!("expected a JSON array in 'sessions' key"))?;
 
     let mut result = Vec::with_capacity(json.len());
     for server in json {
-        match Server::deserialize(server) {
+        match Server::deserialize(server, ctx) {
             Ok(server) => result.push(server),
             Err(err) => warn!(logger, "Error parsing server"; "error" => %err, "server" => %server),
         }
