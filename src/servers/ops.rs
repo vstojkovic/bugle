@@ -129,9 +129,9 @@ pub struct Filter {
     mode: Option<Mode>,
     region: Option<Region>,
     battleye_required: Option<bool>,
-    build_id: Option<u32>,
-    password_protected: bool,
-    modded: bool,
+    include_invalid: bool,
+    include_password_protected: bool,
+    include_modded: bool,
 }
 
 impl Default for Filter {
@@ -143,7 +143,7 @@ impl Default for Filter {
             None,
             None,
             None,
-            None,
+            false,
             false,
             false,
         )
@@ -158,9 +158,9 @@ impl Filter {
         mode: impl Into<Option<Mode>>,
         region: impl Into<Option<Region>>,
         battleye_required: impl Into<Option<bool>>,
-        build_id: impl Into<Option<u32>>,
-        password_protected: bool,
-        modded: bool,
+        include_invalid: bool,
+        include_password_protected: bool,
+        include_modded: bool,
     ) -> Self {
         let name_re = Self::regex(&name);
         let map_re = Self::regex(&map);
@@ -173,9 +173,9 @@ impl Filter {
             mode: mode.into(),
             region: region.into(),
             battleye_required: battleye_required.into(),
-            build_id: build_id.into(),
-            password_protected,
-            modded,
+            include_invalid,
+            include_password_protected,
+            include_modded,
         }
     }
 
@@ -235,24 +235,28 @@ impl Filter {
         self.battleye_required = battleye_required.into();
     }
 
-    pub fn build_id(&self) -> Option<u32> {
-        self.build_id
+    pub fn include_invalid(&self) -> bool {
+        self.include_invalid
     }
 
-    pub fn set_build_id(&mut self, build_id: impl Into<Option<u32>>) {
-        self.build_id = build_id.into();
+    pub fn set_include_invalid(&mut self, include_invalid: bool) {
+        self.include_invalid = include_invalid;
     }
 
-    pub fn password_protected(&self) -> bool {
-        self.password_protected
+    pub fn include_password_protected(&self) -> bool {
+        self.include_password_protected
     }
 
-    pub fn set_password_protected(&mut self, password_protected: bool) {
-        self.password_protected = password_protected;
+    pub fn set_include_password_protected(&mut self, include_password_protected: bool) {
+        self.include_password_protected = include_password_protected;
     }
 
-    pub fn set_modded(&mut self, modded: bool) {
-        self.modded = modded;
+    pub fn include_modded(&self) -> bool {
+        self.include_modded
+    }
+
+    pub fn set_include_modded(&mut self, include_modded: bool) {
+        self.include_modded = include_modded;
     }
 
     pub fn matches(&self, server: &Server) -> bool {
@@ -264,9 +268,9 @@ impl Filter {
             && self
                 .battleye_required
                 .map_or(true, |required| server.battleye_required == required)
-            && self.build_id.map_or(true, |id| server.build_id == id)
-            && self.password_protected >= server.password_protected
-            && self.modded >= server.is_modded()
+            && self.include_invalid >= !server.is_valid()
+            && self.include_password_protected >= server.password_protected
+            && self.include_modded >= server.is_modded()
     }
 
     fn regex(text: &str) -> Regex {

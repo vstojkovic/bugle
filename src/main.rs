@@ -40,7 +40,7 @@ impl Launcher {
     }
 
     fn run(self: Arc<Self>) {
-        let mut main_win = LauncherWindow::new(self.game.build_id(), {
+        let mut main_win = LauncherWindow::new({
             let this = Arc::clone(&self);
             move |action| this.on_action(action)
         });

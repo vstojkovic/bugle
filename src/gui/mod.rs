@@ -58,7 +58,7 @@ impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 type CleanupFn = Box<dyn FnMut()>;
 
 impl LauncherWindow {
-    pub fn new(build_id: u32, on_action: impl Handler<Action> + 'static) -> Self {
+    pub fn new(on_action: impl Handler<Action> + 'static) -> Self {
         let on_action: Rc<dyn Handler<Action>> = Rc::new(on_action);
 
         let mut window = Window::default().with_size(1280, 760);
@@ -85,7 +85,7 @@ impl LauncherWindow {
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
-            ServerBrowser::new(build_id, move |browser_action| {
+            ServerBrowser::new(move |browser_action| {
                 on_action(Action::ServerBrowser(browser_action))
             })
         };

@@ -6,7 +6,7 @@ use nom::character::complete::{char, digit1};
 use nom::sequence::separated_pair;
 use nom::IResult;
 
-use crate::servers::{Server, Weekday};
+use crate::servers::{Server, Weekday, Validity};
 
 use super::{community_name, mode_name, region_name};
 
@@ -212,6 +212,7 @@ const SERVER_DETAILS_ROWS: &[(&str, fn(&Server) -> Cow<str>)] = &[
         )
     }),
     ("Mods", mods_cell_value),
+    ("Problems", problems_cell_value),
 ];
 
 fn mods_cell_value(server: &Server) -> Cow<str> {
@@ -228,4 +229,22 @@ fn mods_cell_value(server: &Server) -> Cow<str> {
 
 fn parse_mod_counts(input: &str) -> IResult<&str, (&str, &str), ()> {
     separated_pair(digit1, char(':'), digit1)(input)
+}
+
+fn problems_cell_value(server: &Server) -> Cow<str> {
+    if server.is_valid() {
+        "".into()
+    } else {
+        let mut problems = Vec::new();
+        if server.validity.contains(Validity::INVALID_BUILD) {
+            problems.push("version mismatch");
+        }
+        if server.validity.contains(Validity::INVALID_ADDR) {
+            problems.push("invalid IP address");
+        }
+        if server.validity.contains(Validity::INVALID_PORT) {
+            problems.push("version port");
+        }
+        problems.join(", ").into()
+    }
 }

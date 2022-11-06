@@ -168,12 +168,10 @@ pub(super) struct ServerBrowser {
 }
 
 impl ServerBrowser {
-    pub fn new(build_id: u32, on_action: impl Handler<ServerBrowserAction> + 'static) -> Rc<Self> {
-        let mut filter: Filter = Default::default();
-        filter.set_build_id(build_id);
+    pub fn new(on_action: impl Handler<ServerBrowserAction> + 'static) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
             Vec::new(),
-            filter,
+            Default::default(),
             SortCriteria {
                 key: SortKey::Name,
                 ascending: true,
@@ -182,7 +180,7 @@ impl ServerBrowser {
 
         let mut root = Group::default_fill();
 
-        let filter_pane = FilterPane::new(build_id);
+        let filter_pane = FilterPane::new();
 
         let actions_pane = ActionsPane::new();
 

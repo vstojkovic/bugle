@@ -32,11 +32,10 @@ pub(super) struct FilterPane {
     invalid_check: CheckButton,
     pwd_prot_check: CheckButton,
     modded_check: CheckButton,
-    build_id: u32,
 }
 
 impl FilterPane {
-    pub fn new(build_id: u32) -> Self {
+    pub fn new() -> Self {
         let mut root = Group::default_fill();
         let label_align = Align::Right | Align::Inside;
         let name_label = Frame::default()
@@ -148,7 +147,6 @@ impl FilterPane {
             invalid_check,
             pwd_prot_check,
             modded_check,
-            build_id,
         }
     }
 
@@ -188,10 +186,13 @@ impl FilterPane {
             });
         self.invalid_check
             .clone()
-            .set_checked(filter.build_id().is_none());
+            .set_checked(filter.include_invalid());
         self.pwd_prot_check
             .clone()
-            .set_checked(filter.password_protected());
+            .set_checked(filter.include_password_protected());
+        self.modded_check
+            .clone()
+            .set_checked(filter.include_modded());
     }
 
     fn set_callbacks(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
@@ -280,13 +281,12 @@ impl FilterPane {
         }
         {
             let filter_holder = Rc::downgrade(&filter_holder);
-            let build_id = self.build_id;
             let mut invalid_check = self.invalid_check.clone();
             invalid_check.set_trigger(CallbackTrigger::Changed);
             invalid_check.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    let build_id = if input.is_checked() { None } else { Some(build_id) };
-                    filter_holder.mutate_filter(|filter| filter.set_build_id(build_id));
+                    filter_holder
+                        .mutate_filter(|filter| filter.set_include_invalid(input.is_checked()));
                 }
             })
         }
@@ -296,8 +296,9 @@ impl FilterPane {
             pwd_prot_check.set_trigger(CallbackTrigger::Changed);
             pwd_prot_check.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder
-                        .mutate_filter(|filter| filter.set_password_protected(input.is_checked()));
+                    filter_holder.mutate_filter(|filter| {
+                        filter.set_include_password_protected(input.is_checked())
+                    });
                 }
             })
         }
@@ -307,7 +308,8 @@ impl FilterPane {
             modded_check.set_trigger(CallbackTrigger::Changed);
             modded_check.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder.mutate_filter(|filter| filter.set_modded(input.is_checked()));
+                    filter_holder
+                        .mutate_filter(|filter| filter.set_include_modded(input.is_checked()));
                 }
             })
         }
