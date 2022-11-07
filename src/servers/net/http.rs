@@ -41,9 +41,18 @@ pub async fn fetch_server_list<'dc>(
             .into_iter()
             .map(|response| parse_servers(&logger, response, &ctx)),
     )
-    .await?;
+    .await?
+    .into_iter()
+    .flatten()
+    .collect::<Vec<Server>>();
 
-    Ok(servers.into_iter().flatten().collect::<Vec<Server>>())
+    info!(
+        logger,
+        "Fetched {num_servers} servers",
+        num_servers = servers.len()
+    );
+
+    Ok(servers)
 }
 
 #[derive(Debug, Deserialize)]
