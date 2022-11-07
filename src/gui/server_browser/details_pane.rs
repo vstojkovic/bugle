@@ -6,7 +6,7 @@ use nom::character::complete::{char, digit1};
 use nom::sequence::separated_pair;
 use nom::IResult;
 
-use crate::servers::{Server, Weekday, Validity};
+use crate::servers::{Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name};
 
