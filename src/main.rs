@@ -205,7 +205,7 @@ async fn main() {
 
     let root_logger = create_root_logger();
 
-    let game_root = match Game::locate() {
+    let game_location = match Game::locate() {
         Some(root) => root,
         None => {
             dialog::alert_default(
@@ -215,7 +215,7 @@ async fn main() {
             return;
         }
     };
-    let game = match Game::new(root_logger.clone(), game_root) {
+    let game = match Game::new(root_logger.clone(), game_location) {
         Ok(game) => game,
         Err(err) => {
             gui::alert_error(

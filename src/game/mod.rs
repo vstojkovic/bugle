@@ -1,33 +1,46 @@
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use ini::Properties;
 use slog::{info, Logger};
 use steamlocate::SteamDir;
 
+mod engine;
+mod mod_info;
+
 use crate::config::{self, save_ini};
 use crate::servers::{FavoriteServer, FavoriteServers};
+
+use self::mod_info::ModInfo;
 
 pub struct Game {
     logger: Logger,
     root: PathBuf,
     build_id: u32,
     game_ini_path: PathBuf,
+    installed_mods: Vec<ModInfo>,
 }
 
 impl Game {
-    pub fn locate() -> Option<PathBuf> {
+    pub fn locate() -> Option<GameLocation> {
         let mut steam = SteamDir::locate()?;
         let app = steam.app(&440900)?;
+        let game_path = app.path.clone();
 
-        Some(app.path.clone())
+        let workshop_path = steam
+            .libraryfolders()
+            .paths
+            .iter()
+            .find(|path| game_path.starts_with(path))?
+            .join("workshop");
+
+        Some(GameLocation { game_path, workshop_path })
     }
 
-    pub fn new<P: AsRef<Path>>(logger: Logger, path: P) -> Result<Self> {
-        let mut config_path = path.as_ref().to_path_buf();
-        config_path.extend(["ConanSandbox", "Saved", "Config", "WindowsNoEditor"]);
+    pub fn new(logger: Logger, location: GameLocation) -> Result<Self> {
+        let config_path = location.game_path.join("ConanSandbox/Saved/Config/WindowsNoEditor");
 
         let engine_ini_path = config_path.join("Engine.ini");
 
@@ -37,18 +50,21 @@ impl Game {
             .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
             .and_then(|s| Ok(s.parse::<u32>()?))?;
 
+        let installed_mods = location.collect_mods()?;
+
         info!(
             logger,
             "Valid Conan Exiles installation found";
-            "path" => path.as_ref().display(),
+            "path" => location.game_path.display(),
             "build_id" => build_id,
         );
 
         Ok(Self {
             logger,
-            root: path.as_ref().into(),
+            root: location.game_path,
             build_id,
             game_ini_path: config_path.join("Game.ini"),
+            installed_mods,
         })
     }
 
@@ -122,4 +138,45 @@ impl Game {
 
         self.continue_session(enable_battleye)
     }
+}
+
+pub struct GameLocation {
+    pub game_path: PathBuf,
+    workshop_path: PathBuf,
+}
+
+impl GameLocation {
+    fn collect_mods(&self) -> Result<Vec<ModInfo>> {
+        // TODO: Log warnings for recoverable errors
+
+        let manifest = steamy_vdf::load(self.workshop_path.join("appworkshop_440900.acf"))?;
+        let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
+
+        let mut path = self.workshop_path.join("content/440900");
+        let mut mods = Vec::with_capacity(mod_ids.len());
+        for mod_id in mod_ids {
+            path.push(mod_id);
+            for pak_path in std::fs::read_dir(&path)? {
+                let pak_path = pak_path?.path();
+                match pak_path.extension() {
+                    Some(ext) if ext == "pak" => {
+                        mods.push(ModInfo::new(pak_path)?);
+                    }
+                    _ => (),
+                };
+            }
+            path.pop();
+        }
+    
+        Ok(mods)
+    }
+}
+
+fn collect_mod_ids(manifest: &steamy_vdf::Entry) -> Option<Vec<&String>> {
+    Some(manifest
+        .lookup("AppWorkshop.WorkshopItemsInstalled")?
+        .as_table()?
+        .keys()
+        .into_iter()
+        .collect())
 }
