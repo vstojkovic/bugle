@@ -9,10 +9,12 @@ use fltk::window::Window;
 
 pub mod glyph;
 mod main_menu;
+mod mod_manager;
 mod prelude;
 mod server_browser;
 
 use self::main_menu::MainMenu;
+use self::mod_manager::ModManager;
 use self::prelude::*;
 use self::server_browser::ServerBrowser;
 
@@ -90,6 +92,8 @@ impl LauncherWindow {
             })
         };
 
+        let mod_manager = ModManager::new();
+
         content_group.end();
 
         root.end();
@@ -116,6 +120,14 @@ impl LauncherWindow {
             let server_browser = Rc::clone(&server_browser);
             main_menu.set_on_online(move || {
                 switch_content(&old_cleanup, || server_browser.show());
+            });
+        }
+
+        {
+            let old_cleanup = Rc::clone(&active_content_cleanup_fn);
+            let mod_manager = Rc::clone(&mod_manager);
+            main_menu.set_on_mods(move || {
+                switch_content(&old_cleanup, || mod_manager.show());
             });
         }
 
