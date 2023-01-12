@@ -18,16 +18,19 @@ use self::mod_manager::ModManager;
 use self::prelude::*;
 use self::server_browser::ServerBrowser;
 
+pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 
 pub enum Action {
     Launch,
     Continue,
     ServerBrowser(ServerBrowserAction),
+    ModManager(ModManagerAction),
 }
 
 pub enum Update {
     ServerBrowser(ServerBrowserUpdate),
+    ModManager(ModManagerUpdate),
 }
 
 impl Update {
@@ -36,6 +39,7 @@ impl Update {
             (Self::ServerBrowser(this), Self::ServerBrowser(other)) => {
                 Self::consolidation_result(this.try_consolidate(other))
             }
+            (this, other) => Err((this, other)),
         }
     }
 
@@ -52,6 +56,7 @@ impl Update {
 pub struct LauncherWindow {
     window: Window,
     server_browser: Rc<ServerBrowser>,
+    mod_manager: Rc<ModManager>,
 }
 
 pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
@@ -92,7 +97,10 @@ impl LauncherWindow {
             })
         };
 
-        let mod_manager = ModManager::new();
+        let mod_manager = {
+            let on_action = Rc::clone(&on_action);
+            ModManager::new(move |mod_mgr_action| on_action(Action::ModManager(mod_mgr_action)))
+        };
 
         content_group.end();
 
@@ -134,6 +142,7 @@ impl LauncherWindow {
         Self {
             window,
             server_browser,
+            mod_manager,
         }
     }
 
@@ -144,6 +153,7 @@ impl LauncherWindow {
     pub fn handle_update(&mut self, update: Update) {
         match update {
             Update::ServerBrowser(update) => self.server_browser.handle_update(update),
+            Update::ModManager(update) => self.mod_manager.handle_update(update),
         }
     }
 }

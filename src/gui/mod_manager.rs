@@ -1,5 +1,8 @@
+use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
+use bit_vec::BitVec;
 use fltk::button::Button;
 use fltk::enums::{FrameType, Shortcut};
 use fltk::group::{Group, Tile};
@@ -7,15 +10,39 @@ use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
 use fltk_table::{SmartTable, TableOpts};
 
-use super::CleanupFn;
+use crate::game::ModInfo;
+
+use super::{alert_error, CleanupFn, Handler};
 use super::{button_row_height, prelude::*, widget_col_width};
+
+pub enum ModManagerAction {
+    LoadModList,
+}
+
+pub enum ModManagerUpdate {
+    PopulateModList {
+        installed_mods: Arc<Vec<ModInfo>>,
+        active_mods: Vec<usize>,
+    },
+}
+
+#[derive(Default)]
+struct ModListState {
+    installed: Arc<Vec<ModInfo>>,
+    available: Vec<usize>,
+    active: Vec<usize>,
+}
 
 pub(super) struct ModManager {
     root: Group,
+    on_action: Box<dyn Handler<ModManagerAction>>,
+    available_list: SmartTable,
+    active_list: SmartTable,
+    state: RefCell<ModListState>,
 }
 
 impl ModManager {
-    pub fn new() -> Rc<Self> {
+    pub fn new(on_action: impl Handler<ModManagerAction> + 'static) -> Rc<Self> {
         let mut root = Group::default_fill();
 
         let tiles = Tile::default_fill();
@@ -38,7 +65,7 @@ impl ModManager {
         available_list.set_row_header(false);
         available_list.set_col_resize(true);
         available_list.set_col_header_value(0, "Available Mods");
-        available_list.set_col_width(0, 350);
+        available_list.set_col_width(0, 345);
         available_list.set_col_header_value(1, "Version");
         available_list.set_col_header_value(2, "Author");
 
@@ -55,13 +82,14 @@ impl ModManager {
         button_group.make_resizable(true);
         button_group.set_frame(FrameType::FlatBox);
 
-        let activate_button = Button::default().with_label("@>");
-        let deactivate_button = Button::default().with_label("@<");
-        let move_top_button = Button::default().with_label("@#8>|");
-        let move_up_button = Button::default().with_label("@#8>");
-        let move_down_button = Button::default().with_label("@#2>");
-        let move_bottom_button = Button::default().with_label("@#2>|");
+        let activate_button = make_button("@>");
+        let deactivate_button = make_button("@<");
+        let move_top_button = make_button("@#8>|");
+        let move_up_button = make_button("@#8>");
+        let move_down_button = make_button("@#2>");
+        let move_bottom_button = make_button("@#2>|");
         let mut more_info_button = MenuButton::default().with_label("\u{1f4dc}");
+        more_info_button.deactivate();
         more_info_button.add("Description", Shortcut::None, MenuFlag::Normal, |_| ());
         more_info_button.add("Change Notes", Shortcut::None, MenuFlag::Normal, |_| ());
 
@@ -170,7 +198,13 @@ impl ModManager {
             });
         }
 
-        let manager = Rc::new(Self { root });
+        let manager = Rc::new(Self {
+            root,
+            on_action: Box::new(on_action),
+            available_list,
+            active_list,
+            state: Default::default(),
+        });
 
         manager
     }
@@ -179,8 +213,86 @@ impl ModManager {
         let mut root = self.root.clone();
         root.show();
 
+        if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
+            alert_error(ERR_LOADING_MOD_LIST, &err);
+        }
+
         Box::new(move || {
             root.hide();
         })
     }
+
+    pub fn handle_update(&self, update: ModManagerUpdate) {
+        match update {
+            ModManagerUpdate::PopulateModList {
+                installed_mods,
+                active_mods,
+            } => {
+                self.populate_state(installed_mods, active_mods);
+                self.populate_tables();
+            }
+        }
+    }
+
+    fn populate_state(&self, installed_mods: Arc<Vec<ModInfo>>, active_mods: Vec<usize>) {
+        let mod_count = installed_mods.len();
+
+        let mut state = self.state.borrow_mut();
+        state.installed = installed_mods;
+        state.available = Vec::with_capacity(mod_count);
+        state.active = Vec::with_capacity(mod_count);
+
+        let mut available_set = BitVec::from_elem(mod_count, true);
+        for mod_idx in active_mods {
+            available_set.set(mod_idx, false);
+            state.active.push(mod_idx);
+        }
+
+        for mod_idx in 0..mod_count {
+            if available_set[mod_idx] {
+                state.available.push(mod_idx);
+            }
+        }
+    }
+
+    fn populate_tables(&self) {
+        let state = self.state.borrow();
+
+        populate_table(
+            &mut self.available_list.clone(),
+            &state.installed,
+            &state.available,
+        );
+        populate_table(
+            &mut self.active_list.clone(),
+            &state.installed,
+            &state.active,
+        );
+    }
+}
+
+const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
+
+fn make_button(text: &str) -> Button {
+    let mut button = Button::default().with_label(text);
+    button.deactivate();
+    button
+}
+
+fn populate_table(table: &mut SmartTable, mods: &Vec<ModInfo>, indices: &Vec<usize>) {
+    let mut rows = Vec::with_capacity(mods.len());
+    for idx in indices {
+        rows.push(make_mod_row(&mods[*idx]));
+    }
+    *table.data_ref().lock().unwrap() = rows;
+    table.set_rows(indices.len() as _);
+    table.redraw();
+}
+
+fn make_mod_row(mod_info: &ModInfo) -> Vec<String> {
+    vec![
+        mod_info.name.clone(),
+        mod_info.version.to_string(),
+        mod_info.author.clone(),
+    ]
 }

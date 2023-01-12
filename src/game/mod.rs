@@ -1,8 +1,12 @@
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use ini::Properties;
 use slog::{info, Logger};
 use steamlocate::SteamDir;
@@ -13,14 +17,16 @@ mod mod_info;
 use crate::config::{self, save_ini};
 use crate::servers::{FavoriteServer, FavoriteServers};
 
-use self::mod_info::ModInfo;
+pub use self::mod_info::ModInfo;
 
 pub struct Game {
     logger: Logger,
     root: PathBuf,
     build_id: u32,
     game_ini_path: PathBuf,
-    installed_mods: Vec<ModInfo>,
+    mod_list_path: PathBuf,
+    installed_mods: Arc<Vec<ModInfo>>,
+    mod_lookup: HashMap<Arc<PathBuf>, usize>,
 }
 
 impl Game {
@@ -36,11 +42,16 @@ impl Game {
             .find(|path| game_path.starts_with(path))?
             .join("workshop");
 
-        Some(GameLocation { game_path, workshop_path })
+        Some(GameLocation {
+            game_path,
+            workshop_path,
+        })
     }
 
     pub fn new(logger: Logger, location: GameLocation) -> Result<Self> {
-        let config_path = location.game_path.join("ConanSandbox/Saved/Config/WindowsNoEditor");
+        let config_path = location
+            .game_path
+            .join("ConanSandbox/Saved/Config/WindowsNoEditor");
 
         let engine_ini_path = config_path.join("Engine.ini");
 
@@ -50,7 +61,13 @@ impl Game {
             .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
             .and_then(|s| Ok(s.parse::<u32>()?))?;
 
-        let installed_mods = location.collect_mods()?;
+        let mod_list_path = location.game_path.join("ConanSandbox/Mods/modlist.txt");
+        let mut installed_mods = location.collect_mods()?;
+        installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
+        let mut mod_lookup = HashMap::with_capacity(installed_mods.len());
+        for (idx, mod_info) in installed_mods.iter().enumerate() {
+            mod_lookup.insert(Arc::clone(&mod_info.pak_path), idx);
+        }
 
         info!(
             logger,
@@ -64,12 +81,18 @@ impl Game {
             root: location.game_path,
             build_id,
             game_ini_path: config_path.join("Game.ini"),
-            installed_mods,
+            mod_list_path,
+            installed_mods: Arc::new(installed_mods),
+            mod_lookup,
         })
     }
 
     pub fn build_id(&self) -> u32 {
         self.build_id
+    }
+
+    pub fn installed_mods(&self) -> &Arc<Vec<ModInfo>> {
+        &self.installed_mods
     }
 
     pub fn load_favorites(&self) -> Result<FavoriteServers> {
@@ -104,6 +127,26 @@ impl Game {
         }
         info!(self.logger, "Saving favorites");
         save_ini(&game_ini, &self.game_ini_path)
+    }
+
+    pub fn load_mod_list(&self) -> Result<Vec<usize>> {
+        if !self.mod_list_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let file = File::open(&self.mod_list_path)?;
+        let mut mod_list = Vec::new();
+        for line in BufReader::new(file).lines() {
+            // TODO: Logging?
+            if let Ok(mod_path) = line {
+                let mod_path: PathBuf = mod_path.into();
+                if let Some(mod_idx) = self.mod_lookup.get(&mod_path) {
+                    mod_list.push(*mod_idx);
+                }
+            }
+        }
+
+        Ok(mod_list)
     }
 
     pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Child> {
@@ -167,16 +210,18 @@ impl GameLocation {
             }
             path.pop();
         }
-    
+
         Ok(mods)
     }
 }
 
 fn collect_mod_ids(manifest: &steamy_vdf::Entry) -> Option<Vec<&String>> {
-    Some(manifest
-        .lookup("AppWorkshop.WorkshopItemsInstalled")?
-        .as_table()?
-        .keys()
-        .into_iter()
-        .collect())
+    Some(
+        manifest
+            .lookup("AppWorkshop.WorkshopItemsInstalled")?
+            .as_table()?
+            .keys()
+            .into_iter()
+            .collect(),
+    )
 }

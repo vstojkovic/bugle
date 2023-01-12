@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
+use gui::ModManagerAction;
 use servers::DeserializationContext;
 use slog::{info, o, Logger};
 use tokio::task::JoinHandle;
@@ -12,6 +13,8 @@ mod game;
 mod gui;
 mod net;
 mod servers;
+
+use crate::gui::ModManagerUpdate;
 
 use self::game::Game;
 use self::gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
@@ -89,6 +92,15 @@ impl Launcher {
             }
             Action::ServerBrowser(ServerBrowserAction::UpdateFavorites(favorites)) => {
                 self.game.save_favorites(favorites)
+            }
+            Action::ModManager(ModManagerAction::LoadModList) => {
+                let active_mods = self.game.load_mod_list()?;
+                self.tx
+                    .send(Update::ModManager(ModManagerUpdate::PopulateModList {
+                        installed_mods: Arc::clone(self.game.installed_mods()),
+                        active_mods,
+                    }));
+                Ok(())
             }
         }
     }
