@@ -1,7 +1,7 @@
 use std::io::{Read, Seek, SeekFrom};
 
 use anyhow::Result;
-use binread::{BinRead, BinReaderExt, ReadOptions, BinResult};
+use binread::{BinRead, BinReaderExt, BinResult, ReadOptions};
 
 pub(super) mod pak;
 
@@ -36,14 +36,21 @@ impl BinRead for UString {
         if len < 0 {
             let len = (-len - 1) as usize;
 
-            let ucs2_buf = (0..len).map(|_| reader.read_le()).collect::<BinResult<Vec<u16>>>()?;
+            let ucs2_buf = (0..len)
+                .map(|_| reader.read_le())
+                .collect::<BinResult<Vec<u16>>>()?;
             reader.read_le::<u16>()?;
 
             let mut utf8_bytes = vec![0u8; len * 3];
-            let len = ucs2::decode(&ucs2_buf, &mut utf8_bytes)
-                .map_err(|err| binread::Error::Custom { pos, err: Box::new(err) })?;
+            let len =
+                ucs2::decode(&ucs2_buf, &mut utf8_bytes).map_err(|err| binread::Error::Custom {
+                    pos,
+                    err: Box::new(err),
+                })?;
 
-            return Ok(Self(String::from_utf8_lossy(&utf8_bytes[0..len]).into_owned()));
+            return Ok(Self(
+                String::from_utf8_lossy(&utf8_bytes[0..len]).into_owned(),
+            ));
         }
 
         let len = (len - 1) as usize;
@@ -84,7 +91,12 @@ impl<R: Read + Seek> ReaderSection<R> {
 
         inner.seek(SeekFrom::Start(start))?;
 
-        Ok(Self { inner, start, end, pos: start })
+        Ok(Self {
+            inner,
+            start,
+            end,
+            pos: start,
+        })
     }
 }
 

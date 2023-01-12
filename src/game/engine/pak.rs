@@ -1,10 +1,10 @@
 use std::borrow::Borrow;
-use std::cell::{RefMut, RefCell};
+use std::cell::{RefCell, RefMut};
 use std::collections::HashSet;
 use std::fs::File;
 use std::hash::Hash;
-use std::io::{Read, Seek, SeekFrom, Cursor};
-use std::path::{PathBuf, Path};
+use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 use binread::{BinRead, BinReaderExt, BinResult};
@@ -89,7 +89,11 @@ impl<'a> ArchiveEntryReader<'a> {
                     decoder.read_to_end(&mut uncompressed)?;
                 }
 
-                Ok(Self { entry, inner: Box::new(Cursor::new(uncompressed)), _guard: None })
+                Ok(Self {
+                    entry,
+                    inner: Box::new(Cursor::new(uncompressed)),
+                    _guard: None,
+                })
             }
             Compression::Unsupported(compression) => {
                 bail!("unsupported compression: {}", compression);
@@ -142,7 +146,12 @@ impl Archive {
 
         let index = read_index(&mut file, index_offset, index_size)?;
 
-        Ok(Self { path: path.as_ref().to_path_buf(), file, file_lock: RefCell::new(()), index })
+        Ok(Self {
+            path: path.as_ref().to_path_buf(),
+            file,
+            file_lock: RefCell::new(()),
+            index,
+        })
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &ArchiveEntry> {
@@ -219,7 +228,13 @@ fn read_index(file: &mut File, offset: u64, size: u64) -> Result<HashSet<Archive
         // skip unknown Conan Exiles field
         cursor.seek(SeekFrom::Current(4))?;
 
-        entries.insert(ArchiveEntry { path, offset, size, compression, encrypted });
+        entries.insert(ArchiveEntry {
+            path,
+            offset,
+            size,
+            compression,
+            encrypted,
+        });
     }
 
     Ok(entries)
