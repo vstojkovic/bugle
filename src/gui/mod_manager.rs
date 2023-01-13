@@ -3,11 +3,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bit_vec::BitVec;
+use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{FrameType, Shortcut};
+use fltk::enums::{FrameType, Shortcut, Event};
 use fltk::group::{Group, Tile};
 use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
+use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
 
 use crate::game::ModInfo;
@@ -26,11 +28,35 @@ pub enum ModManagerUpdate {
     },
 }
 
+enum Selection {
+    Available(usize),
+    Active(usize),
+}
+
 #[derive(Default)]
 struct ModListState {
     installed: Arc<Vec<ModInfo>>,
     available: Vec<usize>,
     active: Vec<usize>,
+    selection: Option<Selection>,
+}
+
+impl ModListState {
+    fn get_selected_available(&self) -> Option<usize> {
+        if let Some(Selection::Available(idx)) = self.selection {
+            Some(idx)
+        } else {
+            None
+        }
+    }
+
+    fn get_selected_active(&self) -> Option<usize> {
+        if let Some(Selection::Active(idx)) = self.selection {
+            Some(idx)
+        } else {
+            None
+        }
+    }
 }
 
 pub(super) struct ModManager {
@@ -38,6 +64,13 @@ pub(super) struct ModManager {
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: SmartTable,
     active_list: SmartTable,
+    activate_button: Button,
+    deactivate_button: Button,
+    move_top_button: Button,
+    move_up_button: Button,
+    move_down_button: Button,
+    move_bottom_button: Button,
+    more_info_button: MenuButton,
     state: RefCell<ModListState>,
 }
 
@@ -90,8 +123,8 @@ impl ModManager {
         let move_bottom_button = make_button("@#2>|");
         let mut more_info_button = MenuButton::default().with_label("\u{1f4dc}");
         more_info_button.deactivate();
-        more_info_button.add("Description", Shortcut::None, MenuFlag::Normal, |_| ());
-        more_info_button.add("Change Notes", Shortcut::None, MenuFlag::Normal, |_| ());
+        more_info_button.add("Description", Shortcut::None, MenuFlag::Normal, |_| todo!());
+        more_info_button.add("Change Notes", Shortcut::None, MenuFlag::Normal, |_| todo!());
 
         let button_width = widget_col_width(&[
             &activate_button,
@@ -100,6 +133,7 @@ impl ModManager {
             &move_up_button,
             &move_down_button,
             &move_bottom_button,
+            &more_info_button,
         ]);
         let button_height = button_row_height(&[
             &activate_button,
@@ -135,7 +169,7 @@ impl ModManager {
         let move_bottom_button = move_bottom_button
             .below_of(&move_down_button, 10)
             .with_size(button_width, button_height);
-        let _more_info_button = more_info_button
+        let more_info_button = more_info_button
             .below_of(&move_bottom_button, button_height)
             .with_size(button_width, button_height);
 
@@ -201,10 +235,36 @@ impl ModManager {
         let manager = Rc::new(Self {
             root,
             on_action: Box::new(on_action),
-            available_list,
-            active_list,
+            available_list: available_list.clone(),
+            active_list: active_list.clone(),
+            activate_button: activate_button.clone(),
+            deactivate_button: deactivate_button.clone(),
+            move_top_button: move_top_button.clone(),
+            move_up_button: move_up_button.clone(),
+            move_down_button: move_down_button.clone(),
+            move_bottom_button: move_bottom_button.clone(),
+            more_info_button,
             state: Default::default(),
         });
+
+        manager.set_callback(&*available_list, |this, table| {
+            if (app::event() == Event::Released) && app::event_is_click() && table.callback_context() == TableContext::Cell {
+                this.available_clicked();
+            }
+        });
+
+        manager.set_callback(&*active_list, |this, table| {
+            if (app::event() == Event::Released) && app::event_is_click() && table.callback_context() == TableContext::Cell {
+                this.active_clicked();
+            }
+        });
+
+        manager.set_callback(&activate_button, |this, _| this.activate_clicked());
+        manager.set_callback(&deactivate_button, |this, _| this.deactivate_clicked());
+        manager.set_callback(&move_top_button, |this, _| this.move_top_clicked());
+        manager.set_callback(&move_up_button, |this, _| this.move_up_clicked());
+        manager.set_callback(&move_down_button, |this, _| this.move_down_clicked());
+        manager.set_callback(&move_bottom_button, |this, _| this.move_bottom_clicked());
 
         manager
     }
@@ -232,6 +292,15 @@ impl ModManager {
                 self.populate_tables();
             }
         }
+    }
+
+    fn set_callback<W: WidgetExt + Clone, C: FnMut(&Self, &mut W) + 'static>(self: &Rc<Self>, widget: &W, mut cb: C) {
+        let this = Rc::downgrade(self);
+        widget.clone().set_callback(move |w| {
+            if let Some(this) = this.upgrade() {
+                cb(&*this, w);
+            }
+        });
     }
 
     fn populate_state(&self, installed_mods: Arc<Vec<ModInfo>>, active_mods: Vec<usize>) {
@@ -269,6 +338,147 @@ impl ModManager {
             &state.active,
         );
     }
+
+    fn available_clicked(&self) {
+        let mut table = self.available_list.clone();
+        let _ = table.take_focus();
+
+        self.set_selection(Some(Selection::Available(table.callback_row() as _)));
+    }
+
+    fn active_clicked(&self) {
+        let mut table = self.active_list.clone();
+        let _ = table.take_focus();
+
+        self.set_selection(Some(Selection::Active(table.callback_row() as _)));
+    }
+
+    fn set_selection(&self, selection: Option<Selection>) {
+        let mut state = self.state.borrow_mut();
+        state.selection = selection;
+        match state.selection {
+            None => {
+                self.available_list.clone().unset_selection();
+                self.active_list.clone().unset_selection();
+            }
+            Some(Selection::Available(_)) => self.active_list.clone().unset_selection(),
+            Some(Selection::Active(_)) => self.available_list.clone().unset_selection(),
+        }
+        drop(state);
+        self.update_actions();
+    }
+
+    fn update_actions(&self) {
+        let state = self.state.borrow();
+        let (activate, deactivate, move_up, move_down, more_info) = match state.selection {
+            None => (false, false, false, false, false),
+            Some(Selection::Available(_)) => (true, false, false, false, true),
+            Some(Selection::Active(idx)) => {
+                let last_idx = state.active.len() - 1;
+                (false, true, idx > 0, idx < last_idx, true)
+            }
+        };
+
+        self.activate_button.clone().set_activated(activate);
+        self.deactivate_button.clone().set_activated(deactivate);
+        self.move_top_button.clone().set_activated(move_up);
+        self.move_up_button.clone().set_activated(move_up);
+        self.move_down_button.clone().set_activated(move_down);
+        self.move_bottom_button.clone().set_activated(move_down);
+        self.more_info_button.clone().set_activated(more_info);
+    }
+
+    fn activate_clicked(&self) {
+        let mut state = self.state.borrow_mut();
+        let row_idx = state.get_selected_available().unwrap();
+
+        let mod_idx = state.available.remove(row_idx);
+        state.active.push(mod_idx);
+
+        let row = mutate_table(&mut self.available_list.clone(), |data| data.remove(row_idx));
+        mutate_table(&mut self.active_list.clone(), |data| data.push(row));
+
+        drop(state);
+
+        self.set_selection(None);
+    }
+
+    fn deactivate_clicked(&self) {
+        let mut state = self.state.borrow_mut();
+        let row_idx = state.get_selected_active().unwrap();
+
+        let mod_idx = state.active.remove(row_idx);
+        let dest_row_idx = state.available.binary_search(&mod_idx).unwrap_err();
+        state.available.insert(dest_row_idx, mod_idx);
+
+        let row = mutate_table(&mut self.active_list.clone(), |data| data.remove(row_idx));
+        mutate_table(&mut self.available_list.clone(), |data| data.insert(dest_row_idx, row));
+
+        drop(state);
+
+        self.set_selection(None);
+    }
+
+    fn move_top_clicked(&self) {
+        let mut state = self.state.borrow_mut();
+        let row_idx = state.get_selected_active().unwrap();
+        state.active[0..(row_idx+1)].rotate_right(1);
+
+        let mut active_list = self.active_list.clone();
+        mutate_table(&mut active_list, |data| data[0..(row_idx+1)].rotate_right(1));
+        let (_, left, _, right) = active_list.get_selection();
+        active_list.set_selection(0, left, 0, right);
+
+        drop(state);
+        
+        self.set_selection(Some(Selection::Active(0)));
+    }
+
+    fn move_up_clicked(&self) {
+        let mut state = self.state.borrow_mut();
+        let row_idx = state.get_selected_active().unwrap();
+        state.active.swap(row_idx - 1, row_idx);
+
+        let mut active_list = self.active_list.clone();
+        mutate_table(&mut active_list, |data| data.swap(row_idx - 1, row_idx));
+        let (_, left, _, right) = active_list.get_selection();
+        active_list.set_selection((row_idx - 1) as _, left, (row_idx - 1) as _, right);
+
+        drop(state);
+        
+        self.set_selection(Some(Selection::Active(row_idx - 1)));
+    }
+
+    fn move_down_clicked(&self) {
+        let mut state = self.state.borrow_mut();
+        let row_idx = state.get_selected_active().unwrap();
+        state.active.swap(row_idx + 1, row_idx);
+
+        let mut active_list = self.active_list.clone();
+        mutate_table(&mut active_list, |data| data.swap(row_idx + 1, row_idx));
+        let (_, left, _, right) = active_list.get_selection();
+        active_list.set_selection((row_idx + 1) as _, left, (row_idx + 1) as _, right);
+
+        drop(state);
+        
+        self.set_selection(Some(Selection::Active(row_idx + 1)));
+    }
+
+    fn move_bottom_clicked(&self) {
+        let mut state = self.state.borrow_mut();
+        let row_idx = state.get_selected_active().unwrap();
+        state.active[row_idx..].rotate_left(1);
+
+        let mut active_list = self.active_list.clone();
+        mutate_table(&mut active_list, |data| data[row_idx..].rotate_left(1));
+        let last_idx = state.active.len() - 1;
+        let (_, left, _, right) = active_list.get_selection();
+        active_list.set_selection(last_idx as _, left, last_idx as _, right);
+
+        drop(state);
+        
+        self.set_selection(Some(Selection::Active(last_idx)));
+    }
 }
 
 const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
@@ -295,4 +505,13 @@ fn make_mod_row(mod_info: &ModInfo) -> Vec<String> {
         mod_info.version.to_string(),
         mod_info.author.clone(),
     ]
+}
+
+fn mutate_table<R>(table: &mut SmartTable, mutator: impl FnOnce(&mut Vec<Vec<String>>) -> R) -> R {
+    let data_ref = table.data_ref();
+    let mut data = data_ref.lock().unwrap();
+    let result = mutator(&mut data);
+    table.set_rows(data.len() as _);
+    table.redraw();
+    result
 }
