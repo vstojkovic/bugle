@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{FrameType, Shortcut, Event};
+use fltk::enums::{Event, FrameType, Shortcut};
 use fltk::group::{Group, Tile};
 use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
@@ -19,6 +19,10 @@ use super::{button_row_height, prelude::*, widget_col_width};
 
 pub enum ModManagerAction {
     LoadModList,
+    SaveModList {
+        installed_mods: Arc<Vec<ModInfo>>,
+        active_mods: Vec<usize>,
+    },
 }
 
 pub enum ModManagerUpdate {
@@ -124,7 +128,12 @@ impl ModManager {
         let mut more_info_button = MenuButton::default().with_label("\u{1f4dc}");
         more_info_button.deactivate();
         more_info_button.add("Description", Shortcut::None, MenuFlag::Normal, |_| todo!());
-        more_info_button.add("Change Notes", Shortcut::None, MenuFlag::Normal, |_| todo!());
+        more_info_button.add(
+            "Change Notes",
+            Shortcut::None,
+            MenuFlag::Normal,
+            |_| todo!(),
+        );
 
         let button_width = widget_col_width(&[
             &activate_button,
@@ -248,13 +257,19 @@ impl ModManager {
         });
 
         manager.set_callback(&*available_list, |this, table| {
-            if (app::event() == Event::Released) && app::event_is_click() && table.callback_context() == TableContext::Cell {
+            if (app::event() == Event::Released)
+                && app::event_is_click()
+                && table.callback_context() == TableContext::Cell
+            {
                 this.available_clicked();
             }
         });
 
         manager.set_callback(&*active_list, |this, table| {
-            if (app::event() == Event::Released) && app::event_is_click() && table.callback_context() == TableContext::Cell {
+            if (app::event() == Event::Released)
+                && app::event_is_click()
+                && table.callback_context() == TableContext::Cell
+            {
                 this.active_clicked();
             }
         });
@@ -294,7 +309,11 @@ impl ModManager {
         }
     }
 
-    fn set_callback<W: WidgetExt + Clone, C: FnMut(&Self, &mut W) + 'static>(self: &Rc<Self>, widget: &W, mut cb: C) {
+    fn set_callback<W: WidgetExt + Clone, C: FnMut(&Self, &mut W) + 'static>(
+        self: &Rc<Self>,
+        widget: &W,
+        mut cb: C,
+    ) {
         let this = Rc::downgrade(self);
         widget.clone().set_callback(move |w| {
             if let Some(this) = this.upgrade() {
@@ -395,12 +414,15 @@ impl ModManager {
         let mod_idx = state.available.remove(row_idx);
         state.active.push(mod_idx);
 
-        let row = mutate_table(&mut self.available_list.clone(), |data| data.remove(row_idx));
+        let row = mutate_table(&mut self.available_list.clone(), |data| {
+            data.remove(row_idx)
+        });
         mutate_table(&mut self.active_list.clone(), |data| data.push(row));
 
         drop(state);
 
         self.set_selection(None);
+        self.save_mod_list();
     }
 
     fn deactivate_clicked(&self) {
@@ -412,26 +434,32 @@ impl ModManager {
         state.available.insert(dest_row_idx, mod_idx);
 
         let row = mutate_table(&mut self.active_list.clone(), |data| data.remove(row_idx));
-        mutate_table(&mut self.available_list.clone(), |data| data.insert(dest_row_idx, row));
+        mutate_table(&mut self.available_list.clone(), |data| {
+            data.insert(dest_row_idx, row)
+        });
 
         drop(state);
 
         self.set_selection(None);
+        self.save_mod_list();
     }
 
     fn move_top_clicked(&self) {
         let mut state = self.state.borrow_mut();
         let row_idx = state.get_selected_active().unwrap();
-        state.active[0..(row_idx+1)].rotate_right(1);
+        state.active[0..(row_idx + 1)].rotate_right(1);
 
         let mut active_list = self.active_list.clone();
-        mutate_table(&mut active_list, |data| data[0..(row_idx+1)].rotate_right(1));
+        mutate_table(&mut active_list, |data| {
+            data[0..(row_idx + 1)].rotate_right(1)
+        });
         let (_, left, _, right) = active_list.get_selection();
         active_list.set_selection(0, left, 0, right);
 
         drop(state);
-        
+
         self.set_selection(Some(Selection::Active(0)));
+        self.save_mod_list();
     }
 
     fn move_up_clicked(&self) {
@@ -445,8 +473,9 @@ impl ModManager {
         active_list.set_selection((row_idx - 1) as _, left, (row_idx - 1) as _, right);
 
         drop(state);
-        
+
         self.set_selection(Some(Selection::Active(row_idx - 1)));
+        self.save_mod_list();
     }
 
     fn move_down_clicked(&self) {
@@ -460,8 +489,9 @@ impl ModManager {
         active_list.set_selection((row_idx + 1) as _, left, (row_idx + 1) as _, right);
 
         drop(state);
-        
+
         self.set_selection(Some(Selection::Active(row_idx + 1)));
+        self.save_mod_list();
     }
 
     fn move_bottom_clicked(&self) {
@@ -476,12 +506,24 @@ impl ModManager {
         active_list.set_selection(last_idx as _, left, last_idx as _, right);
 
         drop(state);
-        
+
         self.set_selection(Some(Selection::Active(last_idx)));
+        self.save_mod_list();
+    }
+
+    fn save_mod_list(&self) {
+        let state = self.state.borrow();
+        if let Err(err) = (self.on_action)(ModManagerAction::SaveModList {
+            installed_mods: Arc::clone(&state.installed),
+            active_mods: state.active.clone(),
+        }) {
+            alert_error(ERR_SAVING_MOD_LIST, &err);
+        }
     }
 }
 
 const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
+const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 
 fn make_button(text: &str) -> Button {
     let mut button = Button::default().with_label(text);

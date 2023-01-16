@@ -102,6 +102,12 @@ impl Launcher {
                     }));
                 Ok(())
             }
+            Action::ModManager(ModManagerAction::SaveModList {
+                installed_mods,
+                active_mods,
+            }) => self
+                .game
+                .save_mod_list(active_mods.into_iter().map(|idx| &installed_mods[idx])),
         }
     }
 

@@ -149,6 +149,17 @@ impl Game {
         Ok(mod_list)
     }
 
+    pub fn save_mod_list<'m>(&self, mod_list: impl IntoIterator<Item = &'m ModInfo>) -> Result<()> {
+        use std::io::Write;
+
+        let mut file = File::create(&self.mod_list_path)?;
+        for mod_info in mod_list {
+            writeln!(&mut file, "{}", mod_info.pak_path.display())?;
+        }
+
+        Ok(())
+    }
+
     pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Child> {
         let mut exe_path = self.root.clone();
         exe_path.extend(["ConanSandbox", "Binaries", "Win64"]);
