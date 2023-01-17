@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use bbscope::BBCode;
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
@@ -10,7 +11,10 @@ use fltk::group::{Group, Tile};
 use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
 use fltk::table::TableContext;
+use fltk::window::Window;
 use fltk_table::{SmartTable, TableOpts};
+use fltk_webview::Webview;
+use lazy_static::lazy_static;
 
 use crate::game::ModInfo;
 
@@ -59,6 +63,14 @@ impl ModListState {
             Some(idx)
         } else {
             None
+        }
+    }
+
+    fn selected_mod_info(&self) -> Option<&ModInfo> {
+        match self.selection {
+            None => None,
+            Some(Selection::Available(idx)) => Some(&self.installed[self.available[idx]]),
+            Some(Selection::Active(idx)) => Some(&self.installed[self.active[idx]]),
         }
     }
 }
@@ -127,13 +139,6 @@ impl ModManager {
         let move_bottom_button = make_button("@#2>|");
         let mut more_info_button = MenuButton::default().with_label("\u{1f4dc}");
         more_info_button.deactivate();
-        more_info_button.add("Description", Shortcut::None, MenuFlag::Normal, |_| todo!());
-        more_info_button.add(
-            "Change Notes",
-            Shortcut::None,
-            MenuFlag::Normal,
-            |_| todo!(),
-        );
 
         let button_width = widget_col_width(&[
             &activate_button,
@@ -160,25 +165,25 @@ impl ModManager {
             .stretch_to_parent(0, 0);
         let button_group = button_group.with_size(button_width, button_height * 9 + 40);
         let button_group = button_group.center_of_parent();
-        let activate_button = activate_button
+        let mut activate_button = activate_button
             .inside_parent(0, 0)
             .with_size(button_width, button_height);
-        let deactivate_button = deactivate_button
+        let mut deactivate_button = deactivate_button
             .below_of(&activate_button, 10)
             .with_size(button_width, button_height);
-        let move_top_button = move_top_button
+        let mut move_top_button = move_top_button
             .below_of(&deactivate_button, button_height)
             .with_size(button_width, button_height);
-        let move_up_button = move_up_button
+        let mut move_up_button = move_up_button
             .below_of(&move_top_button, 10)
             .with_size(button_width, button_height);
-        let move_down_button = move_down_button
+        let mut move_down_button = move_down_button
             .below_of(&move_up_button, 10)
             .with_size(button_width, button_height);
-        let move_bottom_button = move_bottom_button
+        let mut move_bottom_button = move_bottom_button
             .below_of(&move_down_button, 10)
             .with_size(button_width, button_height);
-        let more_info_button = more_info_button
+        let mut more_info_button = more_info_button
             .below_of(&move_bottom_button, button_height)
             .with_size(button_width, button_height);
 
@@ -252,34 +257,47 @@ impl ModManager {
             move_up_button: move_up_button.clone(),
             move_down_button: move_down_button.clone(),
             move_bottom_button: move_bottom_button.clone(),
-            more_info_button,
+            more_info_button: more_info_button.clone(),
             state: Default::default(),
         });
 
-        manager.set_callback(&*available_list, |this, table| {
+        available_list.set_callback(manager.callback(|this| {
             if (app::event() == Event::Released)
                 && app::event_is_click()
-                && table.callback_context() == TableContext::Cell
+                && this.available_list.callback_context() == TableContext::Cell
             {
                 this.available_clicked();
             }
-        });
+        }));
 
-        manager.set_callback(&*active_list, |this, table| {
+        active_list.set_callback(manager.callback(|this| {
             if (app::event() == Event::Released)
                 && app::event_is_click()
-                && table.callback_context() == TableContext::Cell
+                && this.active_list.callback_context() == TableContext::Cell
             {
                 this.active_clicked();
             }
-        });
+        }));
 
-        manager.set_callback(&activate_button, |this, _| this.activate_clicked());
-        manager.set_callback(&deactivate_button, |this, _| this.deactivate_clicked());
-        manager.set_callback(&move_top_button, |this, _| this.move_top_clicked());
-        manager.set_callback(&move_up_button, |this, _| this.move_up_clicked());
-        manager.set_callback(&move_down_button, |this, _| this.move_down_clicked());
-        manager.set_callback(&move_bottom_button, |this, _| this.move_bottom_clicked());
+        activate_button.set_callback(manager.callback(Self::activate_clicked));
+        deactivate_button.set_callback(manager.callback(Self::deactivate_clicked));
+        move_top_button.set_callback(manager.callback(Self::move_top_clicked));
+        move_up_button.set_callback(manager.callback(Self::move_up_clicked));
+        move_down_button.set_callback(manager.callback(Self::move_down_clicked));
+        move_bottom_button.set_callback(manager.callback(Self::move_bottom_clicked));
+
+        more_info_button.add(
+            "Description",
+            Shortcut::None,
+            MenuFlag::Normal,
+            manager.callback(Self::show_description),
+        );
+        more_info_button.add(
+            "Change Notes",
+            Shortcut::None,
+            MenuFlag::Normal,
+            manager.callback(Self::show_change_notes),
+        );
 
         manager
     }
@@ -309,17 +327,13 @@ impl ModManager {
         }
     }
 
-    fn set_callback<W: WidgetExt + Clone, C: FnMut(&Self, &mut W) + 'static>(
-        self: &Rc<Self>,
-        widget: &W,
-        mut cb: C,
-    ) {
+    fn callback<A, C: FnMut(&Self) + 'static>(self: &Rc<Self>, mut cb: C) -> impl FnMut(&mut A) {
         let this = Rc::downgrade(self);
-        widget.clone().set_callback(move |w| {
+        move |_| {
             if let Some(this) = this.upgrade() {
-                cb(&*this, w);
+                cb(&*this)
             }
-        });
+        }
     }
 
     fn populate_state(&self, installed_mods: Arc<Vec<ModInfo>>, active_mods: Vec<usize>) {
@@ -520,10 +534,79 @@ impl ModManager {
             alert_error(ERR_SAVING_MOD_LIST, &err);
         }
     }
+
+    fn show_description(&self) {
+        let state = self.state.borrow();
+        let mod_info = state.selected_mod_info().unwrap();
+        self.show_bbcode(
+            &format!("Description: {}", &mod_info.name),
+            &mod_info.description,
+        );
+    }
+
+    fn show_change_notes(&self) {
+        let state = self.state.borrow();
+        let mod_info = state.selected_mod_info().unwrap();
+        self.show_bbcode(
+            &format!("Change Notes: {}", &mod_info.name),
+            &mod_info.change_notes,
+        );
+    }
+
+    fn show_bbcode(&self, title: &str, content: &str) {
+        let mut html = BBCODE.parse(content);
+        html = html.replace("\n", "<br>");
+        html = format!(
+            "<html><head><style>{}</style></head><body>{}</body></html",
+            CSS_INFO_BODY, html
+        );
+        html = urlencoding::encode(&html).to_string();
+
+        let mut popup = Window::default().with_label(title).with_size(800, 600);
+        popup.make_modal(true);
+        popup.make_resizable(true);
+        popup.end();
+        popup.show();
+
+        let webview = Webview::create(false, &mut popup);
+        webview.set_html(&html);
+
+        while popup.shown() {
+            app::wait();
+        }
+    }
 }
 
 const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
 const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
+const CSS_INFO_BODY: &str = include_str!("mod_info.css");
+
+lazy_static! {
+    static ref BBCODE: BBCode = {
+        use bbscope::{MatchType, ScopeInfo};
+
+        let mut matchers = BBCode::basics().unwrap();
+        matchers.append(&mut BBCode::extras().unwrap());
+
+        for matcher in matchers.iter_mut() {
+            if matcher.id == "url" {
+                if let MatchType::Open(ref mut info) = matcher.match_type {
+                    if let Some(only) = &info.only {
+                        let mut new_only = only.clone();
+                        new_only.push("img");
+                        *info = Arc::new(ScopeInfo {
+                            only: Some(new_only),
+                            double_closes: info.double_closes,
+                            emit: Arc::clone(&info.emit),
+                        });
+                    }
+                }
+            }
+        }
+
+        BBCode::from_matchers(matchers)
+    };
+}
 
 fn make_button(text: &str) -> Button {
     let mut button = Button::default().with_label(text);

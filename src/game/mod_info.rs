@@ -12,6 +12,10 @@ use super::engine::pak::Archive;
 pub struct ModInfo {
     pub name: String,
     pub description: String,
+
+    #[serde(rename = "changeNote")]
+    pub change_notes: String,
+
     pub author: String,
 
     #[serde(rename = "authorUrl")]

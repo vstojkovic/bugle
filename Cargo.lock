@@ -71,6 +71,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "bbscope"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97647888ab46738b2cc7f62e67a947c47251225ab92d5804267ef8a4237a766d"
+dependencies = [
+ "html-escape",
+ "regex",
+]
+
+[[package]]
 name = "binread"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -136,12 +146,14 @@ name = "bugle"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bbscope",
  "binread",
  "bit-vec",
  "bitflags",
  "flate2",
  "fltk",
  "fltk-table",
+ "fltk-webview",
  "futures",
  "governor",
  "lazy_static",
@@ -162,6 +174,7 @@ dependencies = [
  "strum_macros",
  "tokio",
  "ucs2",
+ "urlencoding",
  "winapi",
 ]
 
@@ -365,23 +378,22 @@ dependencies = [
 
 [[package]]
 name = "fltk"
-version = "1.3.11"
+version = "1.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70544ba95a9b037f0a8f65181f7e893377c1cd5499ff2950034e87728ae7e68e"
+checksum = "ff21e9605f9dceb6b3670d9e2fc37aae325f8540d0024c1d0e6cc24ca3124cac"
 dependencies = [
  "bitflags",
  "crossbeam-channel",
  "fltk-sys",
- "lazy_static",
  "paste",
  "ttf-parser",
 ]
 
 [[package]]
 name = "fltk-sys"
-version = "1.3.11"
+version = "1.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cad0d5dac441caee8f153304bd0dbaf677e8a9a7d1b201471cf9e851e1c781c6"
+checksum = "e16701f41181024343409bd4768ef7053a29b3ee423cd660b371cecb89bd837b"
 dependencies = [
  "cmake",
 ]
@@ -393,6 +405,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef371756e95f36df13b16cfb20ddf2c097ef9d711b794939f508b1eceba63fd"
 dependencies = [
  "fltk",
+]
+
+[[package]]
+name = "fltk-webview"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c083c618f2ff9cb78fdf312b3e7c1cc2fd11008f4ef9d6d99f1919352efd47e"
+dependencies = [
+ "fltk",
+ "fltk-webview-sys",
+]
+
+[[package]]
+name = "fltk-webview-sys"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6c6bb81f833b55daf10bb0ebebddc422d79eced4509da177259d0e5545d5d96"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
 
 [[package]]
@@ -599,6 +631,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "html-escape"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
+dependencies = [
+ "utf8-width",
 ]
 
 [[package]]
@@ -1649,9 +1690,9 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "ttf-parser"
-version = "0.15.2"
+version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b3e06c9b9d80ed6b745c7159c40b311ad2916abb34a49e9be2653b90db0d8dd"
+checksum = "0609f771ad9c6155384897e1df4d948e692667cc0588548b68eb44d052b27633"
 
 [[package]]
 name = "typenum"
@@ -1706,6 +1747,18 @@ dependencies = [
  "matches",
  "percent-encoding",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8db7427f936968176eaa7cdf81b7f98b980b18495ec28f1b5791ac3bfe3eea9"
+
+[[package]]
+name = "utf8-width"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5190c9442dcdaf0ddd50f37420417d219ae5261bbf5db120d0f9bab996c9cba1"
 
 [[package]]
 name = "vcpkg"
