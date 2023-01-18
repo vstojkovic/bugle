@@ -3,12 +3,14 @@ use std::net::SocketAddr;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::Result;
 use fltk::dialog;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
+use crate::game::MapInfo;
 use crate::servers::{
     Community, FavoriteServer, Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList,
     ServerListView, SortCriteria, SortKey,
@@ -168,7 +170,10 @@ pub(super) struct ServerBrowser {
 }
 
 impl ServerBrowser {
-    pub fn new(on_action: impl Handler<ServerBrowserAction> + 'static) -> Rc<Self> {
+    pub fn new(
+        maps: Arc<Vec<MapInfo>>,
+        on_action: impl Handler<ServerBrowserAction> + 'static,
+    ) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
             Vec::new(),
             Default::default(),
@@ -180,7 +185,7 @@ impl ServerBrowser {
 
         let mut root = Group::default_fill();
 
-        let filter_pane = FilterPane::new();
+        let filter_pane = FilterPane::new(maps);
 
         let actions_pane = ActionsPane::new();
 

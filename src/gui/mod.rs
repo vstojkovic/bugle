@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use fltk::dialog;
 use fltk::group::Group;
@@ -12,6 +13,8 @@ mod main_menu;
 mod mod_manager;
 mod prelude;
 mod server_browser;
+
+use crate::game::Game;
 
 use self::main_menu::MainMenu;
 use self::mod_manager::ModManager;
@@ -65,7 +68,7 @@ impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 type CleanupFn = Box<dyn FnMut()>;
 
 impl LauncherWindow {
-    pub fn new(on_action: impl Handler<Action> + 'static) -> Self {
+    pub fn new(game: &Game, on_action: impl Handler<Action> + 'static) -> Self {
         let on_action: Rc<dyn Handler<Action>> = Rc::new(on_action);
 
         let mut window = Window::default().with_size(1280, 760);
@@ -92,7 +95,7 @@ impl LauncherWindow {
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
-            ServerBrowser::new(move |browser_action| {
+            ServerBrowser::new(Arc::clone(game.maps()), move |browser_action| {
                 on_action(Action::ServerBrowser(browser_action))
             })
         };

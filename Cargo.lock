@@ -150,6 +150,7 @@ dependencies = [
  "binread",
  "bit-vec",
  "bitflags",
+ "crc32fast",
  "flate2",
  "fltk",
  "fltk-table",

@@ -3,7 +3,11 @@ use std::io::{Read, Seek, SeekFrom};
 use anyhow::Result;
 use binread::{BinRead, BinReaderExt, BinResult, ReadOptions};
 
+pub(super) mod map;
+mod name;
 pub(super) mod pak;
+mod property;
+mod uasset;
 
 struct UString(String);
 

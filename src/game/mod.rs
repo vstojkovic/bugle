@@ -17,6 +17,8 @@ mod mod_info;
 use crate::config::{self, save_ini};
 use crate::servers::{FavoriteServer, FavoriteServers};
 
+use self::engine::map::MapExtractor;
+pub use self::engine::map::MapInfo;
 pub use self::mod_info::ModInfo;
 
 pub struct Game {
@@ -27,6 +29,7 @@ pub struct Game {
     mod_list_path: PathBuf,
     installed_mods: Arc<Vec<ModInfo>>,
     mod_lookup: HashMap<Arc<PathBuf>, usize>,
+    maps: Arc<Vec<MapInfo>>,
 }
 
 impl Game {
@@ -69,6 +72,20 @@ impl Game {
             mod_lookup.insert(Arc::clone(&mod_info.pak_path), idx);
         }
 
+        let mut maps = Vec::new();
+        let map_extractor = MapExtractor::new();
+
+        // TODO: Improved error handling
+        map_extractor.extract_base_game_maps(
+            &location
+                .game_path
+                .join("ConanSandbox/Content/Paks/Base.pak"),
+            &mut maps,
+        )?;
+        for mod_info in installed_mods.iter() {
+            map_extractor.extract_mod_maps(&*mod_info.pak_path, &mut maps)?;
+        }
+
         info!(
             logger,
             "Valid Conan Exiles installation found";
@@ -84,6 +101,7 @@ impl Game {
             mod_list_path,
             installed_mods: Arc::new(installed_mods),
             mod_lookup,
+            maps: Arc::new(maps),
         })
     }
 
@@ -93,6 +111,10 @@ impl Game {
 
     pub fn installed_mods(&self) -> &Arc<Vec<ModInfo>> {
         &self.installed_mods
+    }
+
+    pub fn maps(&self) -> &Arc<Vec<MapInfo>> {
+        &self.maps
     }
 
     pub fn load_favorites(&self) -> Result<FavoriteServers> {

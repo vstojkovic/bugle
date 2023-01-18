@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use fltk::button::CheckButton;
 use fltk::enums::{Align, CallbackTrigger};
@@ -10,6 +11,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use strum::IntoEnumIterator;
 
+use crate::game::MapInfo;
 use crate::gui::{glyph, prelude::*};
 use crate::gui::{widget_auto_height, widget_col_width};
 use crate::servers::{Filter, Mode, Region, TypeFilter};
@@ -24,7 +26,7 @@ pub(super) trait FilterHolder {
 pub(super) struct FilterPane {
     root: Group,
     name_input: Input,
-    map_input: Input,
+    map_input: InputChoice,
     type_input: InputChoice,
     mode_input: InputChoice,
     region_input: InputChoice,
@@ -35,7 +37,7 @@ pub(super) struct FilterPane {
 }
 
 impl FilterPane {
-    pub fn new() -> Self {
+    pub fn new(maps: Arc<Vec<MapInfo>>) -> Self {
         let mut root = Group::default_fill();
         let label_align = Align::Right | Align::Inside;
         let name_label = Frame::default()
@@ -71,9 +73,12 @@ impl FilterPane {
         let map_label = map_label
             .with_size(mid_width, height)
             .right_of(&name_input, 10);
-        let map_input = Input::default()
+        let mut map_input = InputChoice::default()
             .with_size(input_width, height)
             .right_of(&map_label, 10);
+        for map in maps.iter() {
+            map_input.add(&map.display_name);
+        }
         let invalid_check = invalid_check
             .with_size(right_width, height)
             .right_of(&map_input, 10);
@@ -212,7 +217,8 @@ impl FilterPane {
             map_input.set_trigger(CallbackTrigger::Changed);
             map_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder.mutate_filter(|filter| filter.set_map(input.value()));
+                    filter_holder
+                        .mutate_filter(|filter| filter.set_map(input.value().unwrap_or_default()));
                 }
             });
         }
