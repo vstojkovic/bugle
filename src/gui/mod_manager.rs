@@ -583,7 +583,7 @@ const CSS_INFO_BODY: &str = include_str!("mod_info.css");
 
 lazy_static! {
     static ref BBCODE: BBCode = {
-        use bbscope::{MatchType, ScopeInfo};
+        use bbscope::MatchType;
 
         let mut matchers = BBCode::basics().unwrap();
         matchers.append(&mut BBCode::extras().unwrap());
@@ -591,14 +591,8 @@ lazy_static! {
         for matcher in matchers.iter_mut() {
             if matcher.id == "url" {
                 if let MatchType::Open(ref mut info) = matcher.match_type {
-                    if let Some(only) = &info.only {
-                        let mut new_only = only.clone();
-                        new_only.push("img");
-                        *info = Arc::new(ScopeInfo {
-                            only: Some(new_only),
-                            double_closes: info.double_closes,
-                            emit: Arc::clone(&info.emit),
-                        });
+                    if let Some(ref mut only) = Arc::get_mut(info).unwrap().only {
+                        only.push("img");
                     }
                 }
             }
