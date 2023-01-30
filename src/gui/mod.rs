@@ -14,6 +14,7 @@ mod main_menu;
 mod mod_manager;
 mod prelude;
 mod server_browser;
+mod single_player;
 
 use crate::game::Game;
 
@@ -24,6 +25,7 @@ use self::server_browser::ServerBrowser;
 
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
+use self::single_player::SinglePlayer;
 
 pub enum Action {
     Launch,
@@ -60,6 +62,7 @@ impl Update {
 pub struct LauncherWindow {
     window: Window,
     server_browser: Rc<ServerBrowser>,
+    single_player: Rc<SinglePlayer>,
     mod_manager: Rc<ModManager>,
 }
 
@@ -101,6 +104,8 @@ impl LauncherWindow {
             })
         };
 
+        let single_player = SinglePlayer::new(Arc::clone(game.maps()));
+
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
             ModManager::new(move |mod_mgr_action| on_action(Action::ModManager(mod_mgr_action)))
@@ -137,6 +142,14 @@ impl LauncherWindow {
 
         {
             let old_cleanup = Rc::clone(&active_content_cleanup_fn);
+            let single_player = Rc::clone(&single_player);
+            main_menu.set_on_single_player(move || {
+                switch_content(&old_cleanup, || single_player.show());
+            });
+        }
+
+        {
+            let old_cleanup = Rc::clone(&active_content_cleanup_fn);
             let mod_manager = Rc::clone(&mod_manager);
             main_menu.set_on_mods(move || {
                 switch_content(&old_cleanup, || mod_manager.show());
@@ -146,6 +159,7 @@ impl LauncherWindow {
         Self {
             window,
             server_browser,
+            single_player,
             mod_manager,
         }
     }

@@ -11,6 +11,7 @@ pub(super) struct MainMenu {
     launch_btn: Button,
     continue_btn: Button,
     online_btn: RadioButton,
+    single_player_btn: RadioButton,
     mods_btn: RadioButton,
 }
 
@@ -21,7 +22,7 @@ impl MainMenu {
         let launch_btn = make_button(Button::default_fill, "Launch");
         let continue_btn = make_button(Button::default_fill, "Continue");
         let online_btn = make_button(RadioButton::default_fill, "Online");
-        let mut singleplayer_btn = make_button(Button::default_fill, "Singleplayer");
+        let single_player_btn = make_button(RadioButton::default_fill, "Singleplayer");
         let mut coop_btn = make_button(Button::default_fill, "Co-op");
         let mods_btn = make_button(RadioButton::default_fill, "Mods");
         let mut settings_btn = make_button(Button::default_fill, "Settings");
@@ -41,7 +42,6 @@ impl MainMenu {
 
         group.end();
 
-        singleplayer_btn.set_callback(not_implemented_callback);
         coop_btn.set_callback(not_implemented_callback);
         settings_btn.set_callback(not_implemented_callback);
         exit_btn.set_callback(|_| app::quit());
@@ -50,6 +50,7 @@ impl MainMenu {
             launch_btn,
             continue_btn,
             online_btn,
+            single_player_btn,
             mods_btn,
         }
     }
@@ -72,6 +73,11 @@ impl MainMenu {
 
     pub fn set_on_online(&mut self, mut on_online: impl FnMut() + 'static) {
         self.online_btn.set_callback(move |_| on_online());
+    }
+
+    pub fn set_on_single_player(&mut self, mut on_single_player: impl FnMut() + 'static) {
+        self.single_player_btn
+            .set_callback(move |_| on_single_player());
     }
 
     pub fn set_on_mods(&mut self, mut on_mods: impl FnMut() + 'static) {
