@@ -11,7 +11,7 @@ use fltk_table::{SmartTable, TableOpts};
 use crate::game::MapInfo;
 
 use super::prelude::LayoutExt;
-use super::{widget_auto_width, CleanupFn, widget_col_width, button_row_height};
+use super::{button_row_height, widget_auto_width, widget_col_width, CleanupFn};
 
 pub struct SinglePlayer {
     root: Group,
@@ -30,7 +30,7 @@ impl SinglePlayer {
         let save_button = Button::default().with_label("Save");
         let save_as_button = Button::default().with_label("Save As...");
         let delete_button = Button::default().with_label("Delete");
-        
+
         let button_width = widget_col_width(&[
             &new_button,
             &continue_button,
@@ -48,28 +48,40 @@ impl SinglePlayer {
             &delete_button,
         ]);
 
-        let delete_button = delete_button.with_size(button_width, row_height).inside_parent(-button_width, 0);
-        let save_as_button = save_as_button.with_size(button_width, row_height).left_of(&delete_button, 10);
-        let save_button = save_button.with_size(button_width, row_height).left_of(&save_as_button, 10);
-        let load_button = load_button.with_size(button_width, row_height).left_of(&save_button, 10);
-        let continue_button = continue_button.with_size(button_width, row_height).left_of(&load_button, 10);
-        let new_button = new_button.with_size(button_width, row_height).left_of(&continue_button, 10);
+        let delete_button = delete_button
+            .with_size(button_width, row_height)
+            .inside_parent(-button_width, 0);
+        let save_as_button = save_as_button
+            .with_size(button_width, row_height)
+            .left_of(&delete_button, 10);
+        let save_button = save_button
+            .with_size(button_width, row_height)
+            .left_of(&save_as_button, 10);
+        let load_button = load_button
+            .with_size(button_width, row_height)
+            .left_of(&save_button, 10);
+        let continue_button = continue_button
+            .with_size(button_width, row_height)
+            .left_of(&load_button, 10);
+        let new_button = new_button
+            .with_size(button_width, row_height)
+            .left_of(&continue_button, 10);
 
         let map_label = map_label
             .inside_parent(0, 0)
             .with_size(label_width, row_height);
-        let map_input = InputChoice::default_fill()
-            .right_of(&map_label, 10);
+        let map_input = InputChoice::default_fill().right_of(&map_label, 10);
         let map_input_width = new_button.x() - map_input.x() - 10;
-        let mut map_input = map_input
-            .with_size(map_input_width, row_height);
+        let mut map_input = map_input.with_size(map_input_width, row_height);
         for map in maps.iter() {
             map_input.add(&map.display_name);
         }
         map_input.input().set_readonly(true);
         map_input.input().clear_visible_focus();
 
-        let db_pane = Group::default_fill().below_of(&map_input, 10).stretch_to_parent(0, 0);
+        let db_pane = Group::default_fill()
+            .below_of(&map_input, 10)
+            .stretch_to_parent(0, 0);
 
         let mut db_list = SmartTable::default_fill().with_opts(TableOpts {
             rows: 2,
