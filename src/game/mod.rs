@@ -8,15 +8,16 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use ini::Properties;
-use slog::{info, Logger};
+use slog::{info, warn, Logger};
 use steamlocate::SteamDir;
 
 mod engine;
 mod mod_info;
 
-use crate::config::{self, save_ini};
+use crate::config;
 use crate::servers::{FavoriteServer, FavoriteServers};
 
+pub use self::engine::db::GameDB;
 use self::engine::map::MapExtractor;
 pub use self::engine::map::MapInfo;
 pub use self::mod_info::ModInfo;
@@ -25,6 +26,7 @@ pub struct Game {
     logger: Logger,
     root: PathBuf,
     build_id: u32,
+    save_path: PathBuf,
     game_ini_path: PathBuf,
     mod_list_path: PathBuf,
     installed_mods: Arc<Vec<ModInfo>>,
@@ -52,9 +54,8 @@ impl Game {
     }
 
     pub fn new(logger: Logger, location: GameLocation) -> Result<Self> {
-        let config_path = location
-            .game_path
-            .join("ConanSandbox/Saved/Config/WindowsNoEditor");
+        let save_path = location.game_path.join("ConanSandbox/Saved");
+        let config_path = save_path.join("Config/WindowsNoEditor");
 
         let engine_ini_path = config_path.join("Engine.ini");
 
@@ -97,6 +98,7 @@ impl Game {
             logger,
             root: location.game_path,
             build_id,
+            save_path,
             game_ini_path: config_path.join("Game.ini"),
             mod_list_path,
             installed_mods: Arc::new(installed_mods),
@@ -148,7 +150,7 @@ impl Game {
             section.append("ServersList", favorite.to_string());
         }
         info!(self.logger, "Saving favorites");
-        save_ini(&game_ini, &self.game_ini_path)
+        config::save_ini(&game_ini, &self.game_ini_path)
     }
 
     pub fn load_mod_list(&self) -> Result<Vec<usize>> {
@@ -180,6 +182,41 @@ impl Game {
         }
 
         Ok(())
+    }
+
+    pub fn load_saved_games(&self) -> Result<Vec<GameDB>> {
+        // TODO: Don't build the hashmap every time
+        let mut map_lookup = HashMap::with_capacity(self.maps.len());
+        for (idx, map) in self.maps.iter().enumerate() {
+            map_lookup.insert(map.object_name.clone(), idx);
+        }
+
+        let mut saves = Vec::new();
+
+        for entry in std::fs::read_dir(&self.save_path)? {
+            let entry = if let Ok(entry) = entry {
+                entry
+            } else {
+                continue;
+            };
+
+            let db_path = entry.path();
+            if db_path.extension() != Some("db".as_ref()) {
+                continue;
+            }
+
+            match GameDB::new(&db_path, |key| map_lookup.get(key).map(|idx| *idx)) {
+                Ok(game_db) => saves.push(game_db),
+                Err(err) => warn!(
+                    self.logger,
+                    "Error parsing the saved game {path}",
+                    path = db_path.display();
+                    "error" => err.to_string()
+                ),
+            }
+        }
+
+        Ok(saves)
     }
 
     pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Child> {
