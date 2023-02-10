@@ -11,7 +11,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use strum::IntoEnumIterator;
 
-use crate::game::MapInfo;
+use crate::game::Maps;
 use crate::gui::{glyph, prelude::*};
 use crate::gui::{widget_auto_height, widget_col_width};
 use crate::servers::{Mode, Region};
@@ -38,7 +38,7 @@ pub(super) struct FilterPane {
 }
 
 impl FilterPane {
-    pub fn new(maps: Arc<Vec<MapInfo>>) -> Self {
+    pub fn new(maps: Arc<Maps>) -> Self {
         let mut root = Group::default_fill();
         let label_align = Align::Right | Align::Inside;
         let name_label = Frame::default()

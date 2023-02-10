@@ -19,7 +19,7 @@ use crate::servers::{FavoriteServer, FavoriteServers};
 
 pub use self::engine::db::GameDB;
 use self::engine::map::MapExtractor;
-pub use self::engine::map::MapInfo;
+pub use self::engine::map::{MapInfo, Maps};
 pub use self::mod_info::ModInfo;
 
 pub struct Game {
@@ -31,7 +31,7 @@ pub struct Game {
     mod_list_path: PathBuf,
     installed_mods: Arc<Vec<ModInfo>>,
     mod_lookup: HashMap<Arc<PathBuf>, usize>,
-    maps: Arc<Vec<MapInfo>>,
+    maps: Arc<Maps>,
 }
 
 impl Game {
@@ -103,7 +103,7 @@ impl Game {
             mod_list_path,
             installed_mods: Arc::new(installed_mods),
             mod_lookup,
-            maps: Arc::new(maps),
+            maps: Arc::new(Maps::new(maps)),
         })
     }
 
@@ -115,7 +115,7 @@ impl Game {
         &self.installed_mods
     }
 
-    pub fn maps(&self) -> &Arc<Vec<MapInfo>> {
+    pub fn maps(&self) -> &Arc<Maps> {
         &self.maps
     }
 
@@ -185,12 +185,6 @@ impl Game {
     }
 
     pub fn load_saved_games(&self) -> Result<Vec<GameDB>> {
-        // TODO: Don't build the hashmap every time
-        let mut map_lookup = HashMap::with_capacity(self.maps.len());
-        for (idx, map) in self.maps.iter().enumerate() {
-            map_lookup.insert(map.object_name.clone(), idx);
-        }
-
         let mut saves = Vec::new();
 
         for entry in std::fs::read_dir(&self.save_path)? {
@@ -205,7 +199,9 @@ impl Game {
                 continue;
             }
 
-            match GameDB::new(&db_path, |key| map_lookup.get(key).map(|idx| *idx)) {
+            match GameDB::new(&db_path, |key| {
+                self.maps.by_object_name(key).map(|map| map.id)
+            }) {
                 Ok(game_db) => saves.push(game_db),
                 Err(err) => warn!(
                     self.logger,

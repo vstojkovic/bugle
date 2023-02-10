@@ -9,7 +9,7 @@ use fltk::dialog;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
-use crate::game::MapInfo;
+use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{Community, FavoriteServer, Mode, PingRequest, PingResponse, Region, Server};
 
@@ -78,7 +78,7 @@ pub(super) struct ServerBrowser {
 
 impl ServerBrowser {
     pub fn new(
-        maps: Arc<Vec<MapInfo>>,
+        maps: Arc<Maps>,
         on_action: impl Handler<ServerBrowserAction> + 'static,
     ) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(

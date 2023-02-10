@@ -8,7 +8,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk_table::{SmartTable, TableOpts};
 
-use crate::game::MapInfo;
+use crate::game::Maps;
 
 use super::prelude::LayoutExt;
 use super::{button_row_height, widget_auto_width, widget_col_width, CleanupFn};
@@ -18,7 +18,7 @@ pub struct SinglePlayer {
 }
 
 impl SinglePlayer {
-    pub fn new(maps: Arc<Vec<MapInfo>>) -> Rc<Self> {
+    pub fn new(maps: Arc<Maps>) -> Rc<Self> {
         let mut root = Group::default_fill();
 
         let map_label = Frame::default().with_label("Map:");

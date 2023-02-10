@@ -1,3 +1,7 @@
+use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::io::{Seek, SeekFrom};
 use std::path::Path;
 
@@ -12,10 +16,46 @@ use super::UString;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct MapInfo {
+    pub id: usize,
     pub display_name: String,
     pub asset_path: String,
     pub object_name: String,
     pub db_name: String,
+}
+
+#[derive(Debug)]
+pub struct Maps {
+    maps: Vec<MapInfo>,
+    by_object_name: HashMap<String, usize>,
+}
+
+impl Maps {
+    pub fn new(maps: Vec<MapInfo>) -> Self {
+        let mut by_object_name = HashMap::with_capacity(maps.len());
+
+        for map in maps.iter() {
+            by_object_name.insert(map.object_name.clone(), map.id);
+        }
+
+        Self {
+            maps,
+            by_object_name,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &MapInfo> {
+        self.maps.iter()
+    }
+
+    pub fn by_object_name<Q>(&self, object_name: &Q) -> Option<&MapInfo>
+    where
+        Q: Hash + Eq + ?Sized,
+        String: Borrow<Q>,
+    {
+        self.by_object_name
+            .get(object_name)
+            .and_then(|id| self.maps.get(*id))
+    }
 }
 
 struct InterredNames {
@@ -261,6 +301,7 @@ impl MapExtractor {
         };
 
         maps.push(MapInfo {
+            id: maps.len(),
             display_name,
             asset_path,
             object_name,

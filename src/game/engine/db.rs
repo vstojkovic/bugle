@@ -30,7 +30,7 @@ impl Deref for UnixTimestamp {
 #[derive(Debug)]
 pub struct GameDB {
     pub file_path: PathBuf,
-    pub map_idx: usize,
+    pub map_id: usize,
     pub last_played_char: Option<Character>,
 }
 
@@ -49,18 +49,18 @@ impl GameDB {
     ) -> Result<Self> {
         let file_path = file_path.as_ref();
         let db = Connection::open_with_flags(file_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-        let map_idx = get_db_map_idx(&db, map_resolver)?;
+        let map_id = get_db_map_id(&db, map_resolver)?;
         let last_played_char = get_db_last_played_char(&db)?;
 
         Ok(GameDB {
             file_path: file_path.into(),
-            map_idx,
+            map_id,
             last_played_char,
         })
     }
 }
 
-fn get_db_map_idx<F: Fn(&str) -> Option<usize>>(db: &Connection, map_resolver: F) -> Result<usize> {
+fn get_db_map_id<F: Fn(&str) -> Option<usize>>(db: &Connection, map_resolver: F) -> Result<usize> {
     let mut query = db.prepare("SELECT DISTINCT map FROM actor_position")?;
     let mut rows = query.query([])?;
 
@@ -71,8 +71,8 @@ fn get_db_map_idx<F: Fn(&str) -> Option<usize>>(db: &Connection, map_resolver: F
     };
 
     let map_obj_name: String = row.get(0)?;
-    let map_idx = if let Some(idx) = map_resolver(&map_obj_name) {
-        idx
+    let map_id = if let Some(id) = map_resolver(&map_obj_name) {
+        id
     } else {
         bail!("Unrecognized map found in game database.")
     };
@@ -81,7 +81,7 @@ fn get_db_map_idx<F: Fn(&str) -> Option<usize>>(db: &Connection, map_resolver: F
         bail!("Multiple maps found in game database.");
     };
 
-    Ok(map_idx)
+    Ok(map_id)
 }
 
 fn get_db_last_played_char(db: &Connection) -> Result<Option<Character>> {
