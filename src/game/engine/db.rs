@@ -29,7 +29,7 @@ impl Deref for UnixTimestamp {
 
 #[derive(Debug)]
 pub struct GameDB {
-    pub file_path: PathBuf,
+    pub file_name: PathBuf,
     pub map_id: usize,
     pub last_played_char: Option<Character>,
 }
@@ -53,7 +53,7 @@ impl GameDB {
         let last_played_char = get_db_last_played_char(&db)?;
 
         Ok(GameDB {
-            file_path: file_path.into(),
+            file_name: file_path.file_name().unwrap().into(),
             map_id,
             last_played_char,
         })
