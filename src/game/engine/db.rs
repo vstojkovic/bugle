@@ -1,8 +1,31 @@
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::{Connection, OpenFlags};
+
+#[derive(Debug)]
+pub struct UnixTimestamp(NaiveDateTime);
+
+impl FromSql for UnixTimestamp {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let millis = i64::column_result(value)? * 1000;
+        if let Some(ts) = NaiveDateTime::from_timestamp_millis(millis) {
+            Ok(Self(ts))
+        } else {
+            Err(FromSqlError::OutOfRange(millis))
+        }
+    }
+}
+
+impl Deref for UnixTimestamp {
+    type Target = NaiveDateTime;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Debug)]
 pub struct GameDB {
@@ -16,7 +39,7 @@ pub struct Character {
     pub name: String,
     pub clan: Option<String>,
     pub level: u32,
-    pub last_played_timestamp: NaiveDateTime,
+    pub last_played_timestamp: UnixTimestamp,
 }
 
 impl GameDB {
@@ -85,14 +108,7 @@ fn get_db_last_played_char(db: &Connection) -> Result<Option<Character>> {
     let name = row.get("name")?;
     let clan = row.get("clan")?;
     let level = row.get("level")?;
-    let secs: i64 = row.get("last_played_timestamp")?;
-
-    let last_played_timestamp = if let Some(ts) = NaiveDateTime::from_timestamp_millis(secs * 1000)
-    {
-        ts
-    } else {
-        bail!("Timestamp out of range.");
-    };
+    let last_played_timestamp = row.get("last_played_timestamp")?;
 
     Ok(Some(Character {
         name,
