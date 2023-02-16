@@ -372,14 +372,6 @@ impl RaidHours {
     pub fn get(&self, day: Weekday) -> Option<&(RaidTime, RaidTime)> {
         self.hours.get(&day)
     }
-
-    pub fn start(&self, day: Weekday) -> Option<&RaidTime> {
-        self.hours.get(&day).map(|hours| &hours.0)
-    }
-
-    pub fn end(&self, day: Weekday) -> Option<&RaidTime> {
-        self.hours.get(&day).map(|hours| &hours.1)
-    }
 }
 
 impl<'de> Deserialize<'de> for RaidHours {

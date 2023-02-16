@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::net::SocketAddr;
-use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -11,15 +10,14 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 
 use crate::game::MapInfo;
-use crate::servers::{
-    Community, FavoriteServer, Filter, Mode, PingRequest, PingResponse, Region, Server, ServerList,
-    ServerListView, SortCriteria, SortKey,
-};
+use crate::gui::data::{Reindex, RowFilter};
+use crate::servers::{Community, FavoriteServer, Mode, PingRequest, PingResponse, Region, Server};
 
 use self::actions_pane::{Action, ActionsPane};
 use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
+use self::state::{Filter, SortCriteria, SortKey, TypeFilter};
 
 use super::prelude::*;
 use super::{alert_error, CleanupFn, Handler};
@@ -28,6 +26,9 @@ mod actions_pane;
 mod details_pane;
 mod filter_pane;
 mod list_pane;
+mod state;
+
+use state::ServerBrowserState;
 
 pub enum ServerBrowserAction {
     LoadServers,
@@ -63,100 +64,6 @@ impl ServerBrowserUpdate {
 impl From<ServerBrowserUpdate> for super::Update {
     fn from(update: ServerBrowserUpdate) -> Self {
         Self::ServerBrowser(update)
-    }
-}
-
-struct ServerBrowserState {
-    servers: ServerListView<ServerListView<Vec<Server>, Filter>, SortCriteria>,
-}
-
-impl ServerBrowserState {
-    fn new(all_servers: Vec<Server>, filter: Filter, sort_criteria: SortCriteria) -> Self {
-        let filtered_servers = ServerListView::new(all_servers, filter);
-        let sorted_servers = ServerListView::new(filtered_servers, sort_criteria);
-        Self {
-            servers: sorted_servers,
-        }
-    }
-
-    fn all_servers(&self) -> &Vec<Server> {
-        self.servers.source().source()
-    }
-
-    fn set_servers(&mut self, servers: Vec<Server>) {
-        self.servers.mutate(move |filtered_servers, _| {
-            filtered_servers.mutate(move |all_servers, _| {
-                *all_servers = servers;
-                true
-            })
-        });
-    }
-
-    fn filter(&self) -> &Filter {
-        &self.servers.source().indexer()
-    }
-
-    fn change_filter(&mut self, mut mutator: impl FnMut(&mut Filter)) {
-        self.servers.mutate(move |filtered_servers, _| {
-            filtered_servers.mutate(move |_, filter| {
-                mutator(filter);
-                true
-            })
-        });
-    }
-
-    fn sort_criteria(&self) -> &SortCriteria {
-        &self.servers.indexer()
-    }
-
-    fn set_sort_criteria(&mut self, criteria: SortCriteria) {
-        self.servers.mutate(move |_, sort_criteria| {
-            *sort_criteria = criteria;
-            true
-        });
-    }
-
-    fn update_servers(
-        &mut self,
-        mutator: impl FnOnce(&mut Vec<Server>, &Filter) -> bool,
-        should_sort: impl FnOnce(&SortCriteria) -> bool,
-    ) -> bool {
-        self.servers.mutate(move |filtered_servers, sort_criteria| {
-            let should_reindex =
-                filtered_servers.mutate(move |all_servers, filter| mutator(all_servers, filter));
-            should_reindex || should_sort(sort_criteria)
-        })
-    }
-
-    fn to_display_index(&self, index: usize) -> Option<usize> {
-        self.servers
-            .source()
-            .from_source_index(index)
-            .and_then(|index| self.servers.from_source_index(index))
-    }
-
-    fn to_source_index(&self, index: usize) -> usize {
-        let index = self.servers.to_source_index(index);
-        self.servers.source().to_source_index(index)
-    }
-}
-
-impl Index<usize> for ServerBrowserState {
-    type Output = Server;
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.servers[index]
-    }
-}
-
-impl IndexMut<usize> for ServerBrowserState {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.servers[index]
-    }
-}
-
-impl ServerList for ServerBrowserState {
-    fn len(&self) -> usize {
-        self.servers.len()
     }
 }
 
@@ -197,7 +104,7 @@ impl ServerBrowser {
             .inside_parent(0, 0)
             .with_size_flex(0, tiles.height() * 3 / 4);
 
-        let list_pane = ListPane::new(state.borrow().sort_criteria());
+        let list_pane = ListPane::new(state.borrow().order());
 
         upper_tile.end();
 
@@ -229,7 +136,10 @@ impl ServerBrowser {
             list_pane.set_on_sort_changed(move |sort_criteria| {
                 if let Some(browser) = browser.upgrade() {
                     let selected_idx = browser.selected_server_index();
-                    browser.state.borrow_mut().set_sort_criteria(sort_criteria);
+                    browser
+                        .state
+                        .borrow_mut()
+                        .update_order(|criteria| *criteria = sort_criteria);
                     browser.list_pane.populate(browser.state.clone());
                     browser.set_selected_server_index(selected_idx, true);
                 }
@@ -274,17 +184,17 @@ impl ServerBrowser {
                                 let src_idx = browser.state.borrow().to_source_index(server_idx);
                                 browser.update_servers(
                                     1,
-                                    |all_servers, updated_indices, _| {
+                                    |all_servers, updated_indices, filter, _| {
                                         all_servers[src_idx].favorite =
                                             !all_servers[src_idx].favorite;
                                         updated_indices.push(src_idx);
-                                        false
+                                        Reindex::Order
+                                            .filter_if(filter.type_filter() == TypeFilter::Favorite)
                                     },
-                                    |_| true,
                                 );
                                 let state = browser.state.borrow_mut();
                                 let favorites = state
-                                    .all_servers()
+                                    .source()
                                     .iter()
                                     .filter_map(|server| {
                                         if server.favorite {
@@ -303,7 +213,7 @@ impl ServerBrowser {
                         Action::Refresh => {
                             {
                                 let mut state = browser.state.borrow_mut();
-                                state.set_servers(vec![]);
+                                state.update_source(Vec::clear);
                             }
                             browser.list_pane.populate(browser.state.clone());
                             browser.list_pane.set_selected_index(None, false);
@@ -362,15 +272,18 @@ impl ServerBrowser {
     }
 
     fn populate_servers(&self, all_servers: Vec<Server>) {
-        self.state.borrow_mut().set_servers(all_servers);
+        self.state.borrow_mut().update(|servers, _, _| {
+            *servers = all_servers;
+            Reindex::all()
+        });
         self.list_pane.populate(self.state.clone());
     }
 
     fn update_pinged_servers(&self, updates: &[PingResponse]) {
         self.update_servers(
             updates.len(),
-            |all_servers, updated_indices, filter| {
-                let mut should_reindex = false;
+            |all_servers, updated_indices, filter, sort_criteria| {
+                let mut reindex = Reindex::Nothing;
                 for update in updates {
                     let server = match all_servers.get_mut(update.server_idx) {
                         Some(server) => server,
@@ -378,15 +291,14 @@ impl ServerBrowser {
                     };
                     updated_indices.push(update.server_idx);
                     if Self::update_server(server, update, filter) {
-                        should_reindex = true;
+                        reindex = Reindex::Filter;
                     }
                 }
-                should_reindex
-            },
-            |sort_criteria| {
-                (sort_criteria.key == SortKey::Players)
-                    || (sort_criteria.key == SortKey::Age)
-                    || (sort_criteria.key == SortKey::Ping)
+                reindex.order_if(
+                    (sort_criteria.key == SortKey::Players)
+                        || (sort_criteria.key == SortKey::Age)
+                        || (sort_criteria.key == SortKey::Ping),
+                )
             },
         );
     }
@@ -394,21 +306,19 @@ impl ServerBrowser {
     fn update_servers(
         &self,
         count_hint: usize,
-        mutator: impl FnOnce(&mut Vec<Server>, &mut Vec<usize>, &Filter) -> bool,
-        should_sort: impl FnOnce(&SortCriteria) -> bool,
+        mutator: impl FnOnce(&mut Vec<Server>, &mut Vec<usize>, &Filter, &SortCriteria) -> Reindex,
     ) {
         let selected_idx = self.selected_server_index();
 
         let mut updated_indices: Vec<usize> = Vec::with_capacity(count_hint);
         let repopulate = {
             let mut state = self.state.borrow_mut();
-            state.update_servers(
-                |all_servers, filter| mutator(all_servers, &mut updated_indices, filter),
-                should_sort,
-            )
+            state.update(|all_servers, filter, sort_criteria| {
+                mutator(all_servers, &mut updated_indices, filter, sort_criteria)
+            })
         };
 
-        if repopulate {
+        if repopulate != Reindex::Nothing {
             self.list_pane.populate(self.state.clone());
             self.set_selected_server_index(selected_idx, false);
         } else {
@@ -416,7 +326,7 @@ impl ServerBrowser {
             self.list_pane.update(
                 updated_indices
                     .iter()
-                    .filter_map(|idx| state.to_display_index(*idx)),
+                    .filter_map(|&idx| state.from_source_index(idx)),
             );
         };
     }
@@ -437,7 +347,7 @@ impl ServerBrowser {
 
     fn set_selected_server_index(&self, index: Option<usize>, override_scroll_lock: bool) {
         self.list_pane.set_selected_index(
-            index.and_then(|index| self.state.borrow().to_display_index(index)),
+            index.and_then(|index| self.state.borrow().from_source_index(index)),
             override_scroll_lock,
         );
     }
@@ -448,9 +358,9 @@ impl FilterHolder for ServerBrowser {
         accessor(self.state.borrow().filter());
     }
 
-    fn mutate_filter(&self, mutator: impl FnMut(&mut Filter)) {
+    fn mutate_filter(&self, mutator: impl FnOnce(&mut Filter)) {
         let selected_idx = self.selected_server_index();
-        self.state.borrow_mut().change_filter(mutator);
+        self.state.borrow_mut().update_filter(mutator);
         self.list_pane.populate(self.state.clone());
         self.set_selected_server_index(selected_idx, false);
     }

@@ -8,6 +8,7 @@ use fltk::prelude::*;
 use fltk::text::TextDisplay;
 use fltk::window::Window;
 
+mod data;
 pub mod glyph;
 mod main_menu;
 mod mod_manager;

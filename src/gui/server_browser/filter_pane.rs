@@ -14,8 +14,9 @@ use strum::IntoEnumIterator;
 use crate::game::MapInfo;
 use crate::gui::{glyph, prelude::*};
 use crate::gui::{widget_auto_height, widget_col_width};
-use crate::servers::{Filter, Mode, Region, TypeFilter};
+use crate::servers::{Mode, Region};
 
+use super::state::{Filter, TypeFilter};
 use super::{mode_name, region_name};
 
 pub(super) trait FilterHolder {

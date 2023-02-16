@@ -1,106 +1,10 @@
-use std::cmp::Ordering;
-
 use regex::{Regex, RegexBuilder};
 use strum_macros::{EnumIter, FromRepr};
 
-use super::containers::Indexer;
-use super::{Mode, Region, Server, ServerList};
+use crate::gui::data::RowFilter;
+use crate::servers::{Mode, Region, Server};
 
-#[derive(Clone, Copy, Debug, EnumIter, Hash, PartialEq, Eq)]
-pub enum SortKey {
-    Name,
-    Map,
-    Mode,
-    Region,
-    Players,
-    Age,
-    Ping,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SortCriteria {
-    pub key: SortKey,
-    pub ascending: bool,
-}
-
-macro_rules! cmp_values {
-    ($ascending:expr, $($expr:tt)+) => {
-        if $ascending {
-            |lhs: &Server, rhs: &Server| lhs.$($expr)+.cmp(&rhs.$($expr)+)
-        } else {
-            |lhs: &Server, rhs: &Server| rhs.$($expr)+.cmp(&lhs.$($expr)+)
-        }
-    };
-}
-
-macro_rules! cmp_options {
-    ($ascending:expr, $($expr:tt)+) => {
-        if $ascending {
-            |lhs: &Server, rhs: &Server| cmp_options!(@template lhs, rhs, lv, rv, lv, rv, $($expr)+)
-        } else {
-            |lhs: &Server, rhs: &Server| cmp_options!(@template lhs, rhs, lv, rv, rv, lv, $($expr)+)
-        }
-    };
-    (@template $lhs:ident, $rhs:ident, $lbind:tt, $rbind:tt, $lval:tt, $rval:tt, $($expr:tt)+) => {
-        if let Some($lbind) = $lhs.$($expr)+ {
-            if let Some($rbind) = $rhs.$($expr)+ {
-                $lval.cmp(&$rval)
-            } else {
-                Ordering::Less
-            }
-        } else {
-            if $rhs.$($expr)+.is_some() {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        }
-    };
-}
-
-impl SortCriteria {
-    pub fn reversed(&self) -> Self {
-        Self {
-            key: self.key,
-            ascending: !self.ascending,
-        }
-    }
-
-    fn comparator(&self) -> Box<dyn for<'s> Fn(&'s Server, &'s Server) -> Ordering> {
-        let cmp: Box<dyn Fn(&Server, &Server) -> Ordering> = match self.key {
-            SortKey::Name => Box::new(cmp_values!(self.ascending, name)),
-            SortKey::Map => Box::new(cmp_values!(self.ascending, map)),
-            SortKey::Mode => Box::new(cmp_values!(self.ascending, mode())),
-            SortKey::Region => Box::new(cmp_values!(self.ascending, region)),
-            SortKey::Players => Box::new({
-                let connected_cmp = cmp_options!(self.ascending, connected_players);
-                let max_cmp = cmp_values!(self.ascending, max_players);
-                move |lhs: &Server, rhs: &Server| {
-                    connected_cmp(lhs, rhs).then_with(|| max_cmp(lhs, rhs))
-                }
-            }),
-            SortKey::Age => Box::new(cmp_options!(self.ascending, age)),
-            SortKey::Ping => Box::new(cmp_options!(self.ascending, ping)),
-        };
-        let tie_breaker = cmp_values!(self.ascending, id);
-        Box::new(move |lhs: &Server, rhs: &Server| {
-            rhs.favorite
-                .cmp(&lhs.favorite)
-                .then_with(|| cmp(lhs, rhs).then_with(|| tie_breaker(lhs, rhs)))
-        })
-    }
-}
-
-impl<S: ServerList> Indexer<S> for SortCriteria {
-    fn index_source(&self, source: &S) -> Vec<usize> {
-        let mut indices: Vec<usize> = (0..source.len()).collect();
-        let comparator = self.comparator();
-        indices.sort_unstable_by(|lidx, ridx| comparator(&source[*lidx], &source[*ridx]));
-        indices
-    }
-}
-
-#[derive(Clone, Copy, Debug, EnumIter, FromRepr)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, FromRepr)]
 pub enum TypeFilter {
     All,
     Official,
@@ -259,7 +163,16 @@ impl Filter {
         self.include_modded = include_modded;
     }
 
-    pub fn matches(&self, server: &Server) -> bool {
+    fn regex(text: &str) -> Regex {
+        RegexBuilder::new(&regex::escape(&text))
+            .case_insensitive(true)
+            .build()
+            .unwrap()
+    }
+}
+
+impl RowFilter<Server> for Filter {
+    fn matches(&self, server: &Server) -> bool {
         self.name_re.is_match(&server.name)
             && self.map_re.is_match(&server.map)
             && self.type_filter.matches(server)
@@ -271,22 +184,5 @@ impl Filter {
             && self.include_invalid >= !server.is_valid()
             && self.include_password_protected >= server.password_protected
             && self.include_modded >= server.is_modded()
-    }
-
-    fn regex(text: &str) -> Regex {
-        RegexBuilder::new(&regex::escape(&text))
-            .case_insensitive(true)
-            .build()
-            .unwrap()
-    }
-}
-
-impl<S: ServerList> Indexer<S> for Filter {
-    fn index_source(&self, source: &S) -> Vec<usize> {
-        let indices: Vec<usize> = (0..source.len())
-            .into_iter()
-            .filter(|idx| self.matches(&source[*idx]))
-            .collect();
-        indices
     }
 }

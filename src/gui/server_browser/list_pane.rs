@@ -9,15 +9,17 @@ use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
 use lazy_static::lazy_static;
 
+use crate::gui::data::{IterableTableSource, TableSource};
 use crate::gui::glyph;
-use crate::servers::{Server, ServerList, SortCriteria, SortKey};
+use crate::servers::Server;
 
+use super::state::{SortCriteria, SortKey};
 use super::{mode_name, region_name};
 
 pub(super) struct ListPane {
     table: SmartTable,
     sort_criteria: RefCell<SortCriteria>,
-    server_list: RefCell<Rc<RefCell<dyn ServerList>>>,
+    server_list: RefCell<Rc<RefCell<dyn TableSource<Output = Server>>>>,
     on_sort_changed: RefCell<Box<dyn Fn(SortCriteria)>>,
     on_server_selected: RefCell<Box<dyn Fn(Option<&Server>)>>,
     selection: RefCell<Selection>,
@@ -82,13 +84,13 @@ impl ListPane {
         list_pane
     }
 
-    pub fn populate(&self, server_list: Rc<RefCell<dyn ServerList>>) {
+    pub fn populate(&self, server_list: Rc<RefCell<dyn TableSource<Output = Server>>>) {
         let mut table = self.table.clone();
         {
             let servers = server_list.borrow();
             {
                 let data_ref = table.data_ref();
-                *data_ref.lock().unwrap() = servers.into_iter().map(make_server_row).collect();
+                *data_ref.lock().unwrap() = servers.iter().map(make_server_row).collect();
             }
             table.set_rows(servers.len() as _);
             table.redraw();
