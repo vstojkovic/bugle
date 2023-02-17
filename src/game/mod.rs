@@ -143,7 +143,7 @@ impl Game {
         let section = game_ini
             .entry(Some("FavoriteServers".to_string()))
             .or_insert_with(Properties::new);
-        section.remove_all("ServersList");
+        let _ = section.remove_all("ServersList");
         for favorite in favorites {
             section.append("ServersList", favorite.to_string());
         }
