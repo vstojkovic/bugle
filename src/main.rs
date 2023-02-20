@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
-use gui::ModManagerAction;
+use gui::{ModManagerAction, SinglePlayerAction};
 use servers::DeserializationContext;
 use slog::{info, o, Logger};
 use tokio::task::JoinHandle;
@@ -14,7 +14,7 @@ mod gui;
 mod net;
 mod servers;
 
-use crate::gui::ModManagerUpdate;
+use crate::gui::{ModManagerUpdate, SinglePlayerUpdate};
 
 use self::game::Game;
 use self::gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
@@ -93,6 +93,9 @@ impl Launcher {
             Action::ServerBrowser(ServerBrowserAction::UpdateFavorites(favorites)) => {
                 self.game.save_favorites(favorites)
             }
+            Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
+                Arc::clone(self).on_list_saved_games()
+            }
             Action::ModManager(ModManagerAction::LoadModList) => {
                 let active_mods = self.game.load_mod_list()?;
                 self.tx
@@ -128,6 +131,17 @@ impl Launcher {
         if let ServerLoaderState::Pinging(client) = &self.server_loader.lock().unwrap().state {
             client.priority_send(request);
         }
+        Ok(())
+    }
+
+    fn on_list_saved_games(self: Arc<Self>) -> Result<()> {
+        tokio::spawn(async move {
+            let games = self.game.load_saved_games();
+            self.tx
+                .send(Update::SinglePlayer(SinglePlayerUpdate::PopulateList(
+                    games,
+                )));
+        });
         Ok(())
     }
 

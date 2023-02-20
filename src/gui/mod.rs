@@ -22,20 +22,23 @@ use self::main_menu::MainMenu;
 use self::mod_manager::ModManager;
 use self::prelude::*;
 use self::server_browser::ServerBrowser;
+use self::single_player::SinglePlayer;
 
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
-use self::single_player::SinglePlayer;
+pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
 
 pub enum Action {
     Launch,
     Continue,
     ServerBrowser(ServerBrowserAction),
+    SinglePlayer(SinglePlayerAction),
     ModManager(ModManagerAction),
 }
 
 pub enum Update {
     ServerBrowser(ServerBrowserUpdate),
+    SinglePlayer(SinglePlayerUpdate),
     ModManager(ModManagerUpdate),
 }
 
@@ -104,7 +107,12 @@ impl LauncherWindow {
             })
         };
 
-        let single_player = SinglePlayer::new(Arc::clone(game.maps()));
+        let single_player = {
+            let on_action = Rc::clone(&on_action);
+            SinglePlayer::new(Arc::clone(game.maps()), move |sp_action| {
+                on_action(Action::SinglePlayer(sp_action))
+            })
+        };
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
@@ -171,6 +179,7 @@ impl LauncherWindow {
     pub fn handle_update(&mut self, update: Update) {
         match update {
             Update::ServerBrowser(update) => self.server_browser.handle_update(update),
+            Update::SinglePlayer(update) => self.single_player.handle_update(update),
             Update::ModManager(update) => self.mod_manager.handle_update(update),
         }
     }

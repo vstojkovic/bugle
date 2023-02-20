@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::{Seek, SeekFrom};
-use std::path::Path;
+use std::ops::Index;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use binread::BinReaderExt;
@@ -20,7 +21,7 @@ pub struct MapInfo {
     pub display_name: String,
     pub asset_path: String,
     pub object_name: String,
-    pub db_name: String,
+    pub db_name: PathBuf,
 }
 
 #[derive(Debug)]
@@ -55,6 +56,13 @@ impl Maps {
         self.by_object_name
             .get(object_name)
             .and_then(|id| self.maps.get(*id))
+    }
+}
+
+impl Index<usize> for Maps {
+    type Output = MapInfo;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.maps[index]
     }
 }
 
@@ -295,7 +303,10 @@ impl MapExtractor {
             return Ok(());
         };
         let db_name = if let Some(name) = db_name {
-            name
+            let mut db_name = PathBuf::with_capacity(name.len() + 3);
+            db_name.set_file_name(name);
+            db_name.set_extension("db");
+            db_name
         } else {
             return Ok(());
         };
