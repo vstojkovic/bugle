@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 use chrono::NaiveDateTime;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::Connection;
 
 #[derive(Debug)]
 pub struct UnixTimestamp(NaiveDateTime);
@@ -48,7 +48,7 @@ impl GameDB {
         map_resolver: F,
     ) -> Result<Self> {
         let file_path = file_path.as_ref();
-        let db = Connection::open_with_flags(file_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let db = Connection::open(file_path)?;
         let map_id = get_db_map_id(&db, map_resolver)?;
         let last_played_char = get_db_last_played_char(&db)?;
 
