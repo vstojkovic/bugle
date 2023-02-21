@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{CallbackTrigger, Align, Event};
+use fltk::enums::{Align, CallbackTrigger, Event};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
@@ -16,7 +16,7 @@ use fltk_table::{SmartTable, TableOpts};
 
 use crate::game::{GameDB, Maps};
 
-use super::data::{RowComparator, RowFilter, RowOrder, TableView, IterableTableSource};
+use super::data::{IterableTableSource, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::{LayoutExt, WidgetConvenienceExt};
 use super::{button_row_height, widget_col_width, CleanupFn, Handler};
 
@@ -85,10 +85,14 @@ impl SinglePlayer {
         let mut root = Group::default_fill();
 
         let label_align = Align::Right | Align::Inside;
-    
+
         let map_label = Frame::default().with_label("Map:").with_align(label_align);
-        let in_progress_label = Frame::default().with_label("In Progress:").with_align(label_align);
-        let backups_label = Frame::default().with_label("Backups:").with_align(label_align);
+        let in_progress_label = Frame::default()
+            .with_label("In Progress:")
+            .with_align(label_align);
+        let backups_label = Frame::default()
+            .with_label("Backups:")
+            .with_align(label_align);
 
         let new_button = Button::default().with_label("New");
         let continue_button = Button::default().with_label("Continue");
@@ -159,7 +163,10 @@ impl SinglePlayer {
         in_progress_pane.end();
 
         let _backups_label = backups_label
-            .with_pos(in_progress_label.x(), in_progress_pane.y() + in_progress_pane.h() + 10)
+            .with_pos(
+                in_progress_label.x(),
+                in_progress_pane.y() + in_progress_pane.h() + 10,
+            )
             .with_size(label_width, row_height);
         let backups_pane = Group::default_fill()
             .below_of(&in_progress_pane, 10)
@@ -244,8 +251,10 @@ impl SinglePlayer {
                     idx += 1;
                 }
             }
-    
-            state.backups.update_source(|saved_games| *saved_games = games);
+
+            state
+                .backups
+                .update_source(|saved_games| *saved_games = games);
         }
 
         self.populate_list();
@@ -264,7 +273,7 @@ impl SinglePlayer {
     fn backup_clicked(&self) {
         if let TableContext::Cell = self.backups_table.callback_context() {
             let _ = self.backups_table.clone().take_focus();
-            
+
             let selected_idx = self.backups_table.callback_row() as _;
             {
                 self.state.borrow_mut().selected_backup_idx = Some(selected_idx);
@@ -312,10 +321,16 @@ impl SinglePlayer {
         let in_progress_exists = state.in_progress.contains_key(&state.filter().map_id);
         let backup_selected = state.selected_backup_idx.is_some();
 
-        self.continue_button.clone().set_activated(in_progress_exists);
+        self.continue_button
+            .clone()
+            .set_activated(in_progress_exists);
         self.load_button.clone().set_activated(backup_selected);
-        self.save_button.clone().set_activated(in_progress_exists && backup_selected);
-        self.save_as_button.clone().set_activated(in_progress_exists);
+        self.save_button
+            .clone()
+            .set_activated(in_progress_exists && backup_selected);
+        self.save_as_button
+            .clone()
+            .set_activated(in_progress_exists);
         self.delete_button.clone().set_activated(backup_selected);
     }
 }
