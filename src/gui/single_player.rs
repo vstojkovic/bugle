@@ -4,18 +4,20 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{CallbackTrigger, Align};
+use fltk::enums::{CallbackTrigger, Align, Event};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
+use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
 
 use crate::game::{GameDB, Maps};
 
 use super::data::{RowComparator, RowFilter, RowOrder, TableView, IterableTableSource};
-use super::prelude::LayoutExt;
+use super::prelude::{LayoutExt, WidgetConvenienceExt};
 use super::{button_row_height, widget_col_width, CleanupFn, Handler};
 
 pub enum SinglePlayerAction {
@@ -47,6 +49,7 @@ impl RowOrder<GameDB> for SavedGameOrder {
 struct SinglePlayerState {
     in_progress: HashMap<usize, GameDB>,
     backups: TableView<Vec<GameDB>, SavedGameFilter, SavedGameOrder>,
+    selected_backup_idx: Option<usize>,
 }
 
 impl SinglePlayerState {
@@ -54,7 +57,12 @@ impl SinglePlayerState {
         Self {
             in_progress: HashMap::new(),
             backups: TableView::new(vec![], SavedGameFilter { map_id }, SavedGameOrder),
+            selected_backup_idx: None,
         }
+    }
+
+    fn filter(&self) -> &SavedGameFilter {
+        self.backups.filter()
     }
 }
 
@@ -63,6 +71,11 @@ pub struct SinglePlayer {
     on_action: Box<dyn Handler<SinglePlayerAction>>,
     in_progress_table: SmartTable,
     backups_table: SmartTable,
+    continue_button: Button,
+    load_button: Button,
+    save_button: Button,
+    save_as_button: Button,
+    delete_button: Button,
     maps: Arc<Maps>,
     state: RefCell<SinglePlayerState>,
 }
@@ -151,7 +164,7 @@ impl SinglePlayer {
         let backups_pane = Group::default_fill()
             .below_of(&in_progress_pane, 10)
             .stretch_to_parent(0, 0);
-        let backups_table = make_db_list();
+        let mut backups_table = make_db_list();
         backups_pane.end();
 
         root.end();
@@ -161,7 +174,12 @@ impl SinglePlayer {
             root,
             on_action: Box::new(on_action),
             in_progress_table,
-            backups_table,
+            backups_table: backups_table.clone(),
+            continue_button,
+            load_button,
+            save_button,
+            save_as_button,
+            delete_button,
             maps,
             state: RefCell::new(SinglePlayerState::new(selected_map_id)),
         });
@@ -172,6 +190,19 @@ impl SinglePlayer {
             map_input.set_callback(move |input| {
                 if let Some(this) = this.upgrade() {
                     this.map_selected(input.menu_button().value() as _);
+                }
+            });
+        }
+
+        {
+            let this = Rc::downgrade(&single_player);
+            backups_table.set_callback(move |_| {
+                if let Some(this) = this.upgrade() {
+                    if let Event::Released = app::event() {
+                        if app::event_is_click() {
+                            this.backup_clicked();
+                        }
+                    }
                 }
             });
         }
@@ -230,10 +261,26 @@ impl SinglePlayer {
         self.populate_list();
     }
 
+    fn backup_clicked(&self) {
+        if let TableContext::Cell = self.backups_table.callback_context() {
+            let _ = self.backups_table.clone().take_focus();
+            
+            let selected_idx = self.backups_table.callback_row() as _;
+            {
+                self.state.borrow_mut().selected_backup_idx = Some(selected_idx);
+            }
+            self.update_actions();
+        }
+    }
+
     fn populate_list(&self) {
+        {
+            self.state.borrow_mut().selected_backup_idx = None;
+        }
+
         let state = self.state.borrow();
 
-        let selected_map_id = state.backups.filter().map_id;
+        let selected_map_id = state.filter().map_id;
 
         let mut in_progress_table = self.in_progress_table.clone();
         if let Some(in_progress) = state.in_progress.get(&selected_map_id) {
@@ -256,6 +303,20 @@ impl SinglePlayer {
         };
         backups_table.set_rows(row_count);
         backups_table.redraw();
+
+        self.update_actions();
+    }
+
+    fn update_actions(&self) {
+        let state = self.state.borrow();
+        let in_progress_exists = state.in_progress.contains_key(&state.filter().map_id);
+        let backup_selected = state.selected_backup_idx.is_some();
+
+        self.continue_button.clone().set_activated(in_progress_exists);
+        self.load_button.clone().set_activated(backup_selected);
+        self.save_button.clone().set_activated(in_progress_exists && backup_selected);
+        self.save_as_button.clone().set_activated(in_progress_exists);
+        self.delete_button.clone().set_activated(backup_selected);
     }
 }
 
