@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Arc;
 
@@ -109,6 +109,10 @@ impl Game {
 
     pub fn build_id(&self) -> u32 {
         self.build_id
+    }
+
+    pub fn save_path(&self) -> &Path {
+        &self.save_path
     }
 
     pub fn installed_mods(&self) -> &Arc<Vec<ModInfo>> {
@@ -243,6 +247,19 @@ impl Game {
         game_ini
             .with_section(Some("SavedCoopData"))
             .set("StartedListenServerSession", "False");
+        config::save_ini(&game_ini, &self.game_ini_path)?;
+
+        self.continue_session(enable_battleye)
+    }
+
+    pub fn launch_single_player(&self, map_id: usize, enable_battleye: bool) -> Result<Child> {
+        let mut game_ini = config::load_ini(&self.game_ini_path)?;
+        let map = &self.maps[map_id];
+        game_ini
+            .with_section(Some("SavedCoopData"))
+            .set("LastMap", &map.asset_path)
+            .set("StartedListenServerSession", "True")
+            .set("WasCoopEnabled", "False");
         config::save_ini(&game_ini, &self.game_ini_path)?;
 
         self.continue_session(enable_battleye)

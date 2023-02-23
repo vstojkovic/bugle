@@ -261,7 +261,7 @@ impl ModManager {
             state: Default::default(),
         });
 
-        available_list.set_callback(manager.callback(|this| {
+        available_list.set_callback(manager.weak_cb(|this| {
             if (app::event() == Event::Released)
                 && app::event_is_click()
                 && this.available_list.callback_context() == TableContext::Cell
@@ -270,7 +270,7 @@ impl ModManager {
             }
         }));
 
-        active_list.set_callback(manager.callback(|this| {
+        active_list.set_callback(manager.weak_cb(|this| {
             if (app::event() == Event::Released)
                 && app::event_is_click()
                 && this.active_list.callback_context() == TableContext::Cell
@@ -279,24 +279,24 @@ impl ModManager {
             }
         }));
 
-        activate_button.set_callback(manager.callback(Self::activate_clicked));
-        deactivate_button.set_callback(manager.callback(Self::deactivate_clicked));
-        move_top_button.set_callback(manager.callback(Self::move_top_clicked));
-        move_up_button.set_callback(manager.callback(Self::move_up_clicked));
-        move_down_button.set_callback(manager.callback(Self::move_down_clicked));
-        move_bottom_button.set_callback(manager.callback(Self::move_bottom_clicked));
+        activate_button.set_callback(manager.weak_cb(Self::activate_clicked));
+        deactivate_button.set_callback(manager.weak_cb(Self::deactivate_clicked));
+        move_top_button.set_callback(manager.weak_cb(Self::move_top_clicked));
+        move_up_button.set_callback(manager.weak_cb(Self::move_up_clicked));
+        move_down_button.set_callback(manager.weak_cb(Self::move_down_clicked));
+        move_bottom_button.set_callback(manager.weak_cb(Self::move_bottom_clicked));
 
         more_info_button.add(
             "Description",
             Shortcut::None,
             MenuFlag::Normal,
-            manager.callback(Self::show_description),
+            manager.weak_cb(Self::show_description),
         );
         more_info_button.add(
             "Change Notes",
             Shortcut::None,
             MenuFlag::Normal,
-            manager.callback(Self::show_change_notes),
+            manager.weak_cb(Self::show_change_notes),
         );
 
         manager
@@ -327,14 +327,7 @@ impl ModManager {
         }
     }
 
-    fn callback<A, C: FnMut(&Self) + 'static>(self: &Rc<Self>, mut cb: C) -> impl FnMut(&mut A) {
-        let this = Rc::downgrade(self);
-        move |_| {
-            if let Some(this) = this.upgrade() {
-                cb(&*this)
-            }
-        }
-    }
+    declare_weak_cb!();
 
     fn populate_state(&self, installed_mods: Arc<Vec<ModInfo>>, active_mods: Vec<usize>) {
         let mod_count = installed_mods.len();

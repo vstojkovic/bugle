@@ -193,6 +193,12 @@ pub fn alert_error(message: &str, err: &anyhow::Error) {
     dialog::alert_default(&format!("{}\n{}", message, err));
 }
 
+pub fn prompt_confirm(prompt: &str) -> bool {
+    dialog::choice2_default(prompt, "No", "Yes", "")
+        .map(|choice| choice == 1)
+        .unwrap_or_default()
+}
+
 fn widget_auto_width<W: WidgetExt + ?Sized>(widget: &W) -> i32 {
     let (w, _) = widget.measure_label();
     w + 20

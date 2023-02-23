@@ -6,7 +6,7 @@ use chrono::NaiveDateTime;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::Connection;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct UnixTimestamp(NaiveDateTime);
 
 impl FromSql for UnixTimestamp {
@@ -34,7 +34,7 @@ pub struct GameDB {
     pub last_played_char: Option<Character>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Character {
     pub name: String,
     pub clan: Option<String>,
@@ -52,11 +52,19 @@ impl GameDB {
         let map_id = get_db_map_id(&db, map_resolver)?;
         let last_played_char = get_db_last_played_char(&db)?;
 
-        Ok(GameDB {
+        Ok(Self {
             file_name: file_path.file_name().unwrap().into(),
             map_id,
             last_played_char,
         })
+    }
+
+    pub fn copy_from(other: &Self, file_name: &Path) -> Self {
+        Self {
+            file_name: file_name.to_owned(),
+            map_id: other.map_id,
+            last_played_char: other.last_played_char.clone(),
+        }
     }
 }
 

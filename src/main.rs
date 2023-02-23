@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -95,6 +96,51 @@ impl Launcher {
             }
             Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
                 Arc::clone(self).on_list_saved_games()
+            }
+            Action::SinglePlayer(SinglePlayerAction::NewSavedGame { map_id }) => {
+                let db_path = self
+                    .game
+                    .save_path()
+                    .join(&self.game.maps()[map_id].db_name);
+                {
+                    let _ = File::create(db_path)?;
+                }
+                let _ = self.game.launch_single_player(map_id, true)?;
+                app::quit();
+                Ok(())
+            }
+            Action::SinglePlayer(SinglePlayerAction::ContinueSavedGame { map_id }) => {
+                let _ = self.game.launch_single_player(map_id, true)?;
+                app::quit();
+                Ok(())
+            }
+            Action::SinglePlayer(SinglePlayerAction::LoadSavedGame {
+                map_id,
+                backup_name,
+            }) => {
+                let src_db_path = self.game.save_path().join(backup_name);
+                let dest_db_path = self
+                    .game
+                    .save_path()
+                    .join(&self.game.maps()[map_id].db_name);
+                let _ = std::fs::copy(src_db_path, dest_db_path)?;
+                Ok(())
+            }
+            Action::SinglePlayer(SinglePlayerAction::SaveGame {
+                map_id,
+                backup_name,
+            }) => {
+                let src_db_path = self
+                    .game
+                    .save_path()
+                    .join(&self.game.maps()[map_id].db_name);
+                let dest_db_path = self.game.save_path().join(backup_name);
+                let _ = std::fs::copy(src_db_path, dest_db_path)?;
+                Ok(())
+            }
+            Action::SinglePlayer(SinglePlayerAction::DeleteSavedGame { backup_name }) => {
+                std::fs::remove_file(self.game.save_path().join(backup_name))?;
+                Ok(())
             }
             Action::ModManager(ModManagerAction::LoadModList) => {
                 let active_mods = self.game.load_mod_list()?;

@@ -15,7 +15,6 @@ use super::uasset::{ExportReader, ImportRef, Package, ResourceIndex, ResourceRef
 use super::UString;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct MapInfo {
     pub id: usize,
     pub display_name: String,

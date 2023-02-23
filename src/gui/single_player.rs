@@ -1,11 +1,13 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Component, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use fltk::app;
 use fltk::button::Button;
+use fltk::dialog;
 use fltk::enums::{Align, CallbackTrigger, Event};
 use fltk::frame::Frame;
 use fltk::group::Group;
@@ -16,12 +18,17 @@ use fltk_table::{SmartTable, TableOpts};
 
 use crate::game::{GameDB, Maps};
 
-use super::data::{IterableTableSource, RowComparator, RowFilter, RowOrder, TableView};
-use super::prelude::{LayoutExt, WidgetConvenienceExt};
+use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
+use super::{alert_error, prelude::*, prompt_confirm};
 use super::{button_row_height, widget_col_width, CleanupFn, Handler};
 
 pub enum SinglePlayerAction {
     ListSavedGames,
+    NewSavedGame { map_id: usize },
+    ContinueSavedGame { map_id: usize },
+    LoadSavedGame { map_id: usize, backup_name: PathBuf },
+    SaveGame { map_id: usize, backup_name: PathBuf },
+    DeleteSavedGame { backup_name: PathBuf },
 }
 
 pub enum SinglePlayerUpdate {
@@ -119,22 +126,22 @@ impl SinglePlayer {
             &delete_button,
         ]);
 
-        let delete_button = delete_button
+        let mut delete_button = delete_button
             .with_size(button_width, row_height)
             .inside_parent(-button_width, 0);
-        let save_as_button = save_as_button
+        let mut save_as_button = save_as_button
             .with_size(button_width, row_height)
             .left_of(&delete_button, 10);
-        let save_button = save_button
+        let mut save_button = save_button
             .with_size(button_width, row_height)
             .left_of(&save_as_button, 10);
-        let load_button = load_button
+        let mut load_button = load_button
             .with_size(button_width, row_height)
             .left_of(&save_button, 10);
-        let continue_button = continue_button
+        let mut continue_button = continue_button
             .with_size(button_width, row_height)
             .left_of(&load_button, 10);
-        let new_button = new_button
+        let mut new_button = new_button
             .with_size(button_width, row_height)
             .left_of(&continue_button, 10);
 
@@ -182,11 +189,11 @@ impl SinglePlayer {
             on_action: Box::new(on_action),
             in_progress_table,
             backups_table: backups_table.clone(),
-            continue_button,
-            load_button,
-            save_button,
-            save_as_button,
-            delete_button,
+            continue_button: continue_button.clone(),
+            load_button: load_button.clone(),
+            save_button: save_button.clone(),
+            save_as_button: save_as_button.clone(),
+            delete_button: delete_button.clone(),
             maps,
             state: RefCell::new(SinglePlayerState::new(selected_map_id)),
         });
@@ -214,6 +221,13 @@ impl SinglePlayer {
             });
         }
 
+        new_button.set_callback(single_player.weak_cb(Self::new_clicked));
+        continue_button.set_callback(single_player.weak_cb(Self::continue_clicked));
+        load_button.set_callback(single_player.weak_cb(Self::load_clicked));
+        save_button.set_callback(single_player.weak_cb(Self::save_clicked));
+        save_as_button.set_callback(single_player.weak_cb(Self::save_as_clicked));
+        delete_button.set_callback(single_player.weak_cb(Self::delete_clicked));
+
         single_player
     }
 
@@ -236,6 +250,8 @@ impl SinglePlayer {
             },
         }
     }
+
+    declare_weak_cb!();
 
     fn set_games(&self, mut games: Vec<GameDB>) {
         {
@@ -280,6 +296,166 @@ impl SinglePlayer {
             }
             self.update_actions();
         }
+    }
+
+    fn new_clicked(&self) {
+        let state = self.state.borrow();
+        let map_id = state.filter().map_id;
+        if state.in_progress.contains_key(&map_id) && !prompt_confirm(PROMPT_REPLACE_IN_PROGRESS) {
+            return;
+        }
+        if let Err(err) = (self.on_action)(SinglePlayerAction::NewSavedGame { map_id }) {
+            alert_error(ERR_LAUNCHING_SP, &err);
+        }
+    }
+
+    fn continue_clicked(&self) {
+        let map_id = self.state.borrow().filter().map_id;
+        if let Err(err) = (self.on_action)(SinglePlayerAction::ContinueSavedGame { map_id }) {
+            alert_error(ERR_LAUNCHING_SP, &err);
+        }
+    }
+
+    fn load_clicked(&self) {
+        let state = self.state.borrow();
+        let backup_idx = state.selected_backup_idx.unwrap();
+        let map_id = state.filter().map_id;
+        if state.in_progress.contains_key(&map_id) && !prompt_confirm(PROMPT_REPLACE_IN_PROGRESS) {
+            return;
+        }
+        let backup_name = state.backups[backup_idx].file_name.clone();
+        let action = SinglePlayerAction::LoadSavedGame {
+            map_id,
+            backup_name,
+        };
+        drop(state);
+
+        if let Err(err) = (self.on_action)(action) {
+            alert_error(ERR_LOADING_GAME, &err);
+            return;
+        }
+
+        {
+            let mut state = self.state.borrow_mut();
+            let in_progress_name = &self.maps[map_id].db_name;
+            let new_in_progress = GameDB::copy_from(&state.backups[backup_idx], in_progress_name);
+            state.in_progress.insert(map_id, new_in_progress);
+        }
+        self.populate_list();
+    }
+
+    fn save_clicked(&self) {
+        if !prompt_confirm(PROMPT_REPLACE_BACKUP) {
+            return;
+        }
+
+        let state = self.state.borrow();
+        let backup_idx = state.selected_backup_idx.unwrap();
+        let map_id = state.filter().map_id;
+        let backup_name = state.backups[backup_idx].file_name.clone();
+        let action = SinglePlayerAction::SaveGame {
+            map_id,
+            backup_name,
+        };
+        drop(state);
+
+        if let Err(err) = (self.on_action)(action) {
+            alert_error(ERR_SAVING_GAME, &err);
+            return;
+        }
+
+        {
+            let mut state = self.state.borrow_mut();
+            let unfiltered_idx = state.backups.to_source_index(backup_idx);
+            let backup_name = &state.backups[backup_idx].file_name;
+            let updated_backup = GameDB::copy_from(&state.in_progress[&map_id], &backup_name);
+            state.backups.update(|games, _, _| {
+                games[unfiltered_idx] = updated_backup;
+                Reindex::Nothing
+            });
+        }
+        self.populate_list();
+    }
+
+    fn save_as_clicked(&self) {
+        let backup_name = if let Some(name) = dialog::input_default(PROMPT_BACKUP_NAME, "") {
+            db_name_from(name)
+        } else {
+            return;
+        };
+        let backup_name = match backup_name {
+            Ok(name) => name,
+            Err(err) => {
+                alert_error(ERR_INVALID_BACKUP_NAME, &err);
+                return;
+            }
+        };
+
+        let state = self.state.borrow();
+        let map_id = state.filter().map_id;
+        let existing_idx = state
+            .backups
+            .source()
+            .iter()
+            .enumerate()
+            .find(|(_, game)| game.file_name == backup_name)
+            .map(|(idx, _)| idx);
+
+        if existing_idx.is_some() && !prompt_confirm(PROMPT_REPLACE_BACKUP) {
+            return;
+        }
+
+        let action = SinglePlayerAction::SaveGame {
+            map_id,
+            backup_name: backup_name.clone(),
+        };
+        drop(state);
+
+        if let Err(err) = (self.on_action)(action) {
+            alert_error(ERR_SAVING_GAME, &err);
+            return;
+        }
+
+        {
+            let mut state = self.state.borrow_mut();
+            let backup = GameDB::copy_from(&state.in_progress[&map_id], &backup_name);
+            if let Some(idx) = existing_idx {
+                state.backups.update(|games, _, _| {
+                    let old_map_id = games[idx].map_id;
+                    games[idx] = backup;
+                    Reindex::Nothing.filter_if(old_map_id != map_id)
+                });
+            } else {
+                state.backups.update_source(|games| games.push(backup));
+            }
+        }
+        self.populate_list();
+    }
+
+    fn delete_clicked(&self) {
+        if !prompt_confirm(PROMPT_DELETE_BACKUP) {
+            return;
+        }
+
+        let state = self.state.borrow();
+        let backup_idx = state.selected_backup_idx.unwrap();
+        let backup_name = state.backups[backup_idx].file_name.clone();
+        let action = SinglePlayerAction::DeleteSavedGame { backup_name };
+        drop(state);
+
+        if let Err(err) = (self.on_action)(action) {
+            alert_error(ERR_SAVING_GAME, &err);
+            return;
+        }
+
+        {
+            let mut state = self.state.borrow_mut();
+            let unfiltered_idx = state.backups.to_source_index(backup_idx);
+            state.backups.update_source(|games| {
+                games.remove(unfiltered_idx);
+            });
+        }
+        self.populate_list();
     }
 
     fn populate_list(&self) {
@@ -335,6 +511,18 @@ impl SinglePlayer {
     }
 }
 
+const ERR_LISTING_SAVED_GAMES: &str = "Error while enumerating saves games.";
+const ERR_LAUNCHING_SP: &str = "Error while trying to launch the single-player game.";
+const ERR_LOADING_GAME: &str = "Error while loading a saved game.";
+const ERR_SAVING_GAME: &str = "Error while saving the in-progress game.";
+const ERR_INVALID_BACKUP_NAME: &str =
+    "Invalid backup name. Please use a non-empty filename without a path.";
+const ERR_PREFIX_INVALID_NAME: &str = "Invalid filename";
+const PROMPT_REPLACE_IN_PROGRESS: &str = "Are you sure you want to overwrite the in-progress game?";
+const PROMPT_REPLACE_BACKUP: &str = "Are you sure you want to overwrite this backup?";
+const PROMPT_BACKUP_NAME: &str = "Backup name:";
+const PROMPT_DELETE_BACKUP: &str = "Are you sure you want to delete this backup?";
+
 fn make_db_list() -> SmartTable {
     let mut db_list = SmartTable::default_fill().with_opts(TableOpts {
         rows: 1,
@@ -364,11 +552,41 @@ fn make_row(game_db: &GameDB) -> Vec<String> {
     let lpc = game_db.last_played_char.as_ref();
     vec![
         game_db.file_name.display().to_string(),
-        lpc.map(|lpc| lpc.last_played_timestamp.format("%c").to_string()).unwrap_or_default(),
+        lpc.map(|lpc| lpc.last_played_timestamp.format("%c").to_string())
+            .unwrap_or_default(),
         lpc.map(|lpc| lpc.name.clone()).unwrap_or_default(),
         lpc.map(|lpc| format!("{}", lpc.level)).unwrap_or_default(),
-        lpc.and_then(|lpc| lpc.clan.as_ref()).map(String::clone).unwrap_or_default(),
+        lpc.and_then(|lpc| lpc.clan.as_ref())
+            .map(String::clone)
+            .unwrap_or_default(),
     ]
 }
 
-const ERR_LISTING_SAVED_GAMES: &str = "Error while enumerating saves games.";
+fn db_name_from(s: String) -> Result<PathBuf> {
+    let s = s.trim();
+    if s.is_empty() {
+        bail!("Filename was empty.");
+    }
+
+    let mut db_name = PathBuf::from(s.trim());
+    if db_name.parent() != Some("".as_ref()) {
+        bail!("{}: {}", ERR_PREFIX_INVALID_NAME, s);
+    }
+    if let Some(Component::Normal(_)) = db_name.components().next() {
+        match db_name.extension() {
+            None => {
+                db_name.set_extension("db");
+            }
+            Some(ext) => {
+                if ext != "db" {
+                    let mut ext = ext.to_owned();
+                    ext.push(".db");
+                    db_name.set_extension(ext);
+                }
+            }
+        }
+        Ok(db_name)
+    } else {
+        bail!("{}: {}", ERR_PREFIX_INVALID_NAME, s);
+    }
+}

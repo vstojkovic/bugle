@@ -66,3 +66,18 @@ impl<T: WidgetExt> LayoutExt for T {
         self.with_size(width, height)
     }
 }
+
+macro_rules! declare_weak_cb {
+    () => {
+        fn weak_cb<A, C: FnMut(&Self) + 'static>(self: &Rc<Self>, mut cb: C) -> impl FnMut(&mut A) {
+            let this = Rc::downgrade(self);
+            move |_| {
+                if let Some(this) = this.upgrade() {
+                    cb(&*this)
+                }
+            }
+        }
+    };
+}
+
+pub(super) use declare_weak_cb;
