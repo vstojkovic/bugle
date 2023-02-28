@@ -92,6 +92,14 @@ fn get_db_map_id<F: Fn(&str) -> Option<usize>>(db: &Connection, map_resolver: F)
     Ok(map_id)
 }
 
+pub fn list_mod_controllers<P: AsRef<Path>>(db_path: P) -> Result<Vec<String>> {
+    let db = Connection::open(db_path.as_ref())?;
+    let mut query = db
+        .prepare("SELECT class FROM actor_position WHERE id IN (SELECT id FROM mod_controllers)")?;
+    let controllers: rusqlite::Result<_> = query.query_map([], |row| row.get(0))?.collect();
+    Ok(controllers?)
+}
+
 fn get_db_last_played_char(db: &Connection) -> Result<Option<Character>> {
     let mut query = db.prepare(
         "

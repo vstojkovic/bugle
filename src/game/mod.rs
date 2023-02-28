@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
@@ -17,10 +16,10 @@ mod mod_info;
 use crate::config;
 use crate::servers::{FavoriteServer, FavoriteServers};
 
-pub use self::engine::db::GameDB;
+pub use self::engine::db::{list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::{MapInfo, Maps};
-pub use self::mod_info::ModInfo;
+pub use self::mod_info::{ModInfo, ModRef, Mods};
 
 pub struct Game {
     logger: Logger,
@@ -29,8 +28,7 @@ pub struct Game {
     save_path: PathBuf,
     game_ini_path: PathBuf,
     mod_list_path: PathBuf,
-    installed_mods: Arc<Vec<ModInfo>>,
-    mod_lookup: HashMap<Arc<PathBuf>, usize>,
+    installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
 }
 
@@ -68,10 +66,6 @@ impl Game {
         let mod_list_path = location.game_path.join("ConanSandbox/Mods/modlist.txt");
         let mut installed_mods = location.collect_mods()?;
         installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
-        let mut mod_lookup = HashMap::with_capacity(installed_mods.len());
-        for (idx, mod_info) in installed_mods.iter().enumerate() {
-            mod_lookup.insert(Arc::clone(&mod_info.pak_path), idx);
-        }
 
         let mut maps = Vec::new();
         let map_extractor = MapExtractor::new();
@@ -101,8 +95,7 @@ impl Game {
             save_path,
             game_ini_path: config_path.join("Game.ini"),
             mod_list_path,
-            installed_mods: Arc::new(installed_mods),
-            mod_lookup,
+            installed_mods: Arc::new(Mods::new(installed_mods)),
             maps: Arc::new(Maps::new(maps)),
         })
     }
@@ -115,7 +108,11 @@ impl Game {
         &self.save_path
     }
 
-    pub fn installed_mods(&self) -> &Arc<Vec<ModInfo>> {
+    pub fn in_progress_game_path(&self, map_id: usize) -> PathBuf {
+        self.save_path.join(&self.maps[map_id].db_name)
+    }
+
+    pub fn installed_mods(&self) -> &Arc<Mods> {
         &self.installed_mods
     }
 
@@ -157,7 +154,7 @@ impl Game {
         config::save_ini(&game_ini, &self.game_ini_path)
     }
 
-    pub fn load_mod_list(&self) -> Result<Vec<usize>> {
+    pub fn load_mod_list(&self) -> Result<Vec<ModRef>> {
         if !self.mod_list_path.exists() {
             return Ok(Vec::new());
         }
@@ -168,21 +165,24 @@ impl Game {
             // TODO: Logging?
             if let Ok(mod_path) = line {
                 let mod_path: PathBuf = mod_path.into();
-                if let Some(mod_idx) = self.mod_lookup.get(&mod_path) {
-                    mod_list.push(*mod_idx);
-                }
+                mod_list.push(self.installed_mods.by_pak_path(&mod_path));
             }
         }
 
         Ok(mod_list)
     }
 
-    pub fn save_mod_list<'m>(&self, mod_list: impl IntoIterator<Item = &'m ModInfo>) -> Result<()> {
+    pub fn save_mod_list<'m>(&self, mod_list: impl IntoIterator<Item = &'m ModRef>) -> Result<()> {
         use std::io::Write;
 
         let mut file = File::create(&self.mod_list_path)?;
-        for mod_info in mod_list {
-            writeln!(&mut file, "{}", mod_info.pak_path.display())?;
+        for mod_ref in mod_list {
+            let pak_path = match mod_ref {
+                ModRef::Installed(_) => &self.installed_mods.get(mod_ref).unwrap().pak_path,
+                ModRef::UnknownPakPath(path) => path,
+                ModRef::UnknownFolder(_) => continue,
+            };
+            writeln!(&mut file, "{}", pak_path.display())?;
         }
 
         Ok(())

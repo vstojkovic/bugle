@@ -16,24 +16,18 @@ use fltk_table::{SmartTable, TableOpts};
 use fltk_webview::Webview;
 use lazy_static::lazy_static;
 
-use crate::game::ModInfo;
+use crate::game::{ModInfo, ModRef, Mods};
 
 use super::{alert_error, CleanupFn, Handler};
 use super::{button_row_height, prelude::*, widget_col_width};
 
 pub enum ModManagerAction {
     LoadModList,
-    SaveModList {
-        installed_mods: Arc<Vec<ModInfo>>,
-        active_mods: Vec<usize>,
-    },
+    SaveModList(Vec<ModRef>),
 }
 
 pub enum ModManagerUpdate {
-    PopulateModList {
-        installed_mods: Arc<Vec<ModInfo>>,
-        active_mods: Vec<usize>,
-    },
+    PopulateModList(Vec<ModRef>),
 }
 
 enum Selection {
@@ -41,15 +35,23 @@ enum Selection {
     Active(usize),
 }
 
-#[derive(Default)]
 struct ModListState {
-    installed: Arc<Vec<ModInfo>>,
-    available: Vec<usize>,
-    active: Vec<usize>,
+    installed: Arc<Mods>,
+    available: Vec<ModRef>,
+    active: Vec<ModRef>,
     selection: Option<Selection>,
 }
 
 impl ModListState {
+    fn new(mods: Arc<Mods>) -> Self {
+        Self {
+            installed: mods,
+            available: Vec::new(),
+            active: Vec::new(),
+            selection: None,
+        }
+    }
+
     fn get_selected_available(&self) -> Option<usize> {
         if let Some(Selection::Available(idx)) = self.selection {
             Some(idx)
@@ -69,8 +71,8 @@ impl ModListState {
     fn selected_mod_info(&self) -> Option<&ModInfo> {
         match self.selection {
             None => None,
-            Some(Selection::Available(idx)) => Some(&self.installed[self.available[idx]]),
-            Some(Selection::Active(idx)) => Some(&self.installed[self.active[idx]]),
+            Some(Selection::Available(idx)) => self.installed.get(&self.available[idx]),
+            Some(Selection::Active(idx)) => self.installed.get(&self.active[idx]),
         }
     }
 }
@@ -91,7 +93,7 @@ pub(super) struct ModManager {
 }
 
 impl ModManager {
-    pub fn new(on_action: impl Handler<ModManagerAction> + 'static) -> Rc<Self> {
+    pub fn new(mods: Arc<Mods>, on_action: impl Handler<ModManagerAction> + 'static) -> Rc<Self> {
         let mut root = Group::default_fill();
 
         let tiles = Tile::default_fill();
@@ -258,7 +260,7 @@ impl ModManager {
             move_down_button: move_down_button.clone(),
             move_bottom_button: move_bottom_button.clone(),
             more_info_button: more_info_button.clone(),
-            state: Default::default(),
+            state: RefCell::new(ModListState::new(mods)),
         });
 
         available_list.set_callback(manager.weak_cb(|this| {
@@ -317,11 +319,8 @@ impl ModManager {
 
     pub fn handle_update(&self, update: ModManagerUpdate) {
         match update {
-            ModManagerUpdate::PopulateModList {
-                installed_mods,
-                active_mods,
-            } => {
-                self.populate_state(installed_mods, active_mods);
+            ModManagerUpdate::PopulateModList(active_mods) => {
+                self.populate_state(active_mods);
                 self.populate_tables();
             }
         }
@@ -329,23 +328,24 @@ impl ModManager {
 
     declare_weak_cb!();
 
-    fn populate_state(&self, installed_mods: Arc<Vec<ModInfo>>, active_mods: Vec<usize>) {
-        let mod_count = installed_mods.len();
-
+    fn populate_state(&self, active_mods: Vec<ModRef>) {
         let mut state = self.state.borrow_mut();
-        state.installed = installed_mods;
+        let mod_count = state.installed.len();
+
         state.available = Vec::with_capacity(mod_count);
         state.active = Vec::with_capacity(mod_count);
 
         let mut available_set = BitVec::from_elem(mod_count, true);
-        for mod_idx in active_mods {
-            available_set.set(mod_idx, false);
-            state.active.push(mod_idx);
+        for mod_ref in active_mods {
+            if let ModRef::Installed(mod_idx) = mod_ref {
+                available_set.set(mod_idx, false);
+            }
+            state.active.push(mod_ref);
         }
 
         for mod_idx in 0..mod_count {
             if available_set[mod_idx] {
-                state.available.push(mod_idx);
+                state.available.push(ModRef::Installed(mod_idx));
             }
         }
     }
@@ -436,14 +436,19 @@ impl ModManager {
         let mut state = self.state.borrow_mut();
         let row_idx = state.get_selected_active().unwrap();
 
-        let mod_idx = state.active.remove(row_idx);
-        let dest_row_idx = state.available.binary_search(&mod_idx).unwrap_err();
-        state.available.insert(dest_row_idx, mod_idx);
+        let mod_ref = state.active.remove(row_idx);
+        if let ModRef::Installed(mod_idx) = &mod_ref {
+            let dest_row_idx = state
+                .available
+                .binary_search_by_key(mod_idx, |mod_ref| mod_ref.to_index().unwrap())
+                .unwrap_err();
+            state.available.insert(dest_row_idx, mod_ref);
 
-        let row = mutate_table(&mut self.active_list.clone(), |data| data.remove(row_idx));
-        mutate_table(&mut self.available_list.clone(), |data| {
-            data.insert(dest_row_idx, row)
-        });
+            let row = mutate_table(&mut self.active_list.clone(), |data| data.remove(row_idx));
+            mutate_table(&mut self.available_list.clone(), |data| {
+                data.insert(dest_row_idx, row)
+            });
+        }
 
         drop(state);
 
@@ -520,10 +525,7 @@ impl ModManager {
 
     fn save_mod_list(&self) {
         let state = self.state.borrow();
-        if let Err(err) = (self.on_action)(ModManagerAction::SaveModList {
-            installed_mods: Arc::clone(&state.installed),
-            active_mods: state.active.clone(),
-        }) {
+        if let Err(err) = (self.on_action)(ModManagerAction::SaveModList(state.active.clone())) {
             alert_error(ERR_SAVING_MOD_LIST, &err);
         }
     }
@@ -601,22 +603,34 @@ fn make_button(text: &str) -> Button {
     button
 }
 
-fn populate_table(table: &mut SmartTable, mods: &Vec<ModInfo>, indices: &Vec<usize>) {
+fn populate_table(table: &mut SmartTable, mods: &Mods, refs: &Vec<ModRef>) {
     let mut rows = Vec::with_capacity(mods.len());
-    for idx in indices {
-        rows.push(make_mod_row(&mods[*idx]));
+    for mod_ref in refs {
+        rows.push(make_mod_row(&mods, mod_ref));
     }
     *table.data_ref().lock().unwrap() = rows;
-    table.set_rows(indices.len() as _);
+    table.set_rows(refs.len() as _);
     table.redraw();
 }
 
-fn make_mod_row(mod_info: &ModInfo) -> Vec<String> {
-    vec![
-        mod_info.name.clone(),
-        mod_info.version.to_string(),
-        mod_info.author.clone(),
-    ]
+fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> Vec<String> {
+    if let Some(mod_info) = mods.get(mod_ref) {
+        vec![
+            mod_info.name.clone(),
+            mod_info.version.to_string(),
+            mod_info.author.clone(),
+        ]
+    } else {
+        vec![
+            match mod_ref {
+                ModRef::Installed(_) => unreachable!(),
+                ModRef::UnknownFolder(folder) => format!("??? ({})", folder),
+                ModRef::UnknownPakPath(path) => format!("??? ({})", path.display()),
+            },
+            "???".to_string(),
+            "???".to_string(),
+        ]
+    }
 }
 
 fn mutate_table<R>(table: &mut SmartTable, mutator: impl FnOnce(&mut Vec<Vec<String>>) -> R) -> R {

@@ -116,7 +116,9 @@ impl LauncherWindow {
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
-            ModManager::new(move |mod_mgr_action| on_action(Action::ModManager(mod_mgr_action)))
+            ModManager::new(Arc::clone(game.installed_mods()), move |mod_mgr_action| {
+                on_action(Action::ModManager(mod_mgr_action))
+            })
         };
 
         content_group.end();

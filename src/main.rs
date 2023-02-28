@@ -1,10 +1,13 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use fltk::app::{self, App};
 use fltk::dialog;
-use gui::{ModManagerAction, SinglePlayerAction};
+use game::{list_mod_controllers, ModRef};
+use gui::{prompt_confirm, ModManagerAction, SinglePlayerAction};
+use regex::Regex;
 use servers::DeserializationContext;
 use slog::{info, o, Logger};
 use tokio::task::JoinHandle;
@@ -15,6 +18,7 @@ mod gui;
 mod net;
 mod servers;
 
+use crate::game::Mods;
 use crate::gui::{ModManagerUpdate, SinglePlayerUpdate};
 
 use self::game::Game;
@@ -98,21 +102,13 @@ impl Launcher {
                 Arc::clone(self).on_list_saved_games()
             }
             Action::SinglePlayer(SinglePlayerAction::NewSavedGame { map_id }) => {
-                let db_path = self
-                    .game
-                    .save_path()
-                    .join(&self.game.maps()[map_id].db_name);
                 {
-                    let _ = File::create(db_path)?;
+                    let _ = File::create(self.game.in_progress_game_path(map_id))?;
                 }
-                let _ = self.game.launch_single_player(map_id, true)?;
-                app::quit();
-                Ok(())
+                self.launch_single_player(map_id)
             }
             Action::SinglePlayer(SinglePlayerAction::ContinueSavedGame { map_id }) => {
-                let _ = self.game.launch_single_player(map_id, true)?;
-                app::quit();
-                Ok(())
+                self.launch_single_player(map_id)
             }
             Action::SinglePlayer(SinglePlayerAction::LoadSavedGame {
                 map_id,
@@ -145,18 +141,14 @@ impl Launcher {
             Action::ModManager(ModManagerAction::LoadModList) => {
                 let active_mods = self.game.load_mod_list()?;
                 self.tx
-                    .send(Update::ModManager(ModManagerUpdate::PopulateModList {
-                        installed_mods: Arc::clone(self.game.installed_mods()),
+                    .send(Update::ModManager(ModManagerUpdate::PopulateModList(
                         active_mods,
-                    }));
+                    )));
                 Ok(())
             }
-            Action::ModManager(ModManagerAction::SaveModList {
-                installed_mods,
-                active_mods,
-            }) => self
-                .game
-                .save_mod_list(active_mods.into_iter().map(|idx| &installed_mods[idx])),
+            Action::ModManager(ModManagerAction::SaveModList(active_mods)) => {
+                self.game.save_mod_list(active_mods.iter())
+            }
         }
     }
 
@@ -252,6 +244,77 @@ impl Launcher {
         )
         .await?)
     }
+
+    fn launch_single_player(&self, map_id: usize) -> Result<()> {
+        fn join_mod_names(heading: &str, mods: &Mods, refs: HashSet<ModRef>) -> String {
+            let mut result = String::new();
+            if refs.is_empty() {
+                return result;
+            }
+
+            result.push_str("\n\n");
+            result.push_str(heading);
+            for mod_ref in refs {
+                result.push('\n');
+                match mod_ref {
+                    ModRef::Installed(idx) => result.push_str(&mods[idx].name),
+                    ModRef::UnknownFolder(folder) => result.push_str(&format!("??? ({})", folder)),
+                    ModRef::UnknownPakPath(path) => {
+                        result.push_str(&format!("??? ({})", path.display()))
+                    }
+                };
+            }
+            result
+        }
+
+        if let Some(mismatch) = self.validate_single_player_mods(map_id)? {
+            let installed_mods = self.game.installed_mods();
+            let prompt = format!(
+                "{}{}{}",
+                PROMPT_SP_MOD_MISMATCH,
+                join_mod_names(TXT_MISSING_MODS, installed_mods, mismatch.missing_mods),
+                join_mod_names(TXT_ADDED_MODS, installed_mods, mismatch.added_mods),
+            );
+            if !prompt_confirm(&prompt) {
+                return Ok(());
+            }
+        }
+        let _ = self.game.launch_single_player(map_id, true)?;
+        app::quit();
+        Ok(())
+    }
+
+    fn validate_single_player_mods(&self, map_id: usize) -> Result<Option<ModMismatch>> {
+        let installed_mods = self.game.installed_mods();
+        let mod_list = self.game.load_mod_list()?;
+        let mut added_mods: HashSet<ModRef> = mod_list.into_iter().collect();
+
+        let db_path = self.game.in_progress_game_path(map_id);
+        let db_metadata = std::fs::metadata(&db_path)?;
+
+        let mod_controllers =
+            if db_metadata.len() != 0 { list_mod_controllers(db_path)? } else { Vec::new() };
+        let mut missing_mods = HashSet::new();
+        let folder_regex = Regex::new("/Game/Mods/([^/]+)/.*").unwrap();
+        for controller in mod_controllers {
+            if let Some(captures) = folder_regex.captures(&controller) {
+                let folder = captures.get(1).unwrap().as_str();
+                missing_mods.insert(installed_mods.by_folder(folder));
+            }
+        }
+
+        added_mods.retain(|mod_ref| !missing_mods.contains(mod_ref));
+        missing_mods.retain(|mod_ref| !added_mods.contains(mod_ref));
+
+        if added_mods.is_empty() && missing_mods.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(ModMismatch {
+                missing_mods,
+                added_mods,
+            }))
+        }
+    }
 }
 
 #[derive(Default)]
@@ -268,6 +331,11 @@ enum ServerLoaderState {
     Pinging(PingClient),
 }
 
+struct ModMismatch {
+    missing_mods: HashSet<ModRef>,
+    added_mods: HashSet<ModRef>,
+}
+
 fn create_root_logger() -> Logger {
     use slog::Drain;
 
@@ -276,6 +344,11 @@ fn create_root_logger() -> Logger {
     let drain = slog_async::Async::new(drain).build().fuse();
     Logger::root(drain, o!())
 }
+
+const PROMPT_SP_MOD_MISMATCH: &str =
+    "It looks like your mod list doesn't match this game. Launch anyway?";
+const TXT_MISSING_MODS: &str = "Missing mods:";
+const TXT_ADDED_MODS: &str = "Added mods:";
 
 #[tokio::main]
 async fn main() {
