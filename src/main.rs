@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use fltk::app::{self, App};
-use fltk::dialog;
+use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::{list_mod_controllers, ModRef};
 use gui::{prompt_confirm, ModManagerAction, SinglePlayerAction};
 use regex::Regex;
@@ -148,6 +148,41 @@ impl Launcher {
             }
             Action::ModManager(ModManagerAction::SaveModList(active_mods)) => {
                 self.game.save_mod_list(active_mods.iter())
+            }
+            Action::ModManager(ModManagerAction::ImportModList) => {
+                let mut dialog = NativeFileChooser::new(FileDialogType::BrowseFile);
+                dialog.set_filter(DLG_FILTER_MODLIST);
+                dialog.set_directory(&self.game.save_path())?;
+                dialog.show();
+
+                let mod_list_path = dialog.filename();
+                if mod_list_path.as_os_str().is_empty() {
+                    return Ok(());
+                }
+
+                let active_mods = self.game.load_mod_list_from(&mod_list_path)?;
+                self.game.save_mod_list(&active_mods)?;
+                self.tx
+                    .send(Update::ModManager(ModManagerUpdate::PopulateModList(
+                        active_mods,
+                    )));
+
+                Ok(())
+            }
+            Action::ModManager(ModManagerAction::ExportModList(active_mods)) => {
+                let mut dialog = NativeFileChooser::new(FileDialogType::BrowseSaveFile);
+                dialog.set_filter(DLG_FILTER_MODLIST);
+                dialog.set_directory(&self.game.save_path())?;
+                dialog.set_option(FileDialogOptions::SaveAsConfirm);
+                dialog.show();
+
+                let mod_list_path = dialog.filename();
+                if mod_list_path.as_os_str().is_empty() {
+                    return Ok(());
+                }
+
+                self.game
+                    .save_mod_list_to(&mod_list_path, active_mods.iter())
             }
         }
     }
@@ -349,6 +384,7 @@ const PROMPT_SP_MOD_MISMATCH: &str =
     "It looks like your mod list doesn't match this game. Launch anyway?";
 const TXT_MISSING_MODS: &str = "Missing mods:";
 const TXT_ADDED_MODS: &str = "Added mods:";
+const DLG_FILTER_MODLIST: &str = "Modlist Files\t*.modlist";
 
 #[tokio::main]
 async fn main() {

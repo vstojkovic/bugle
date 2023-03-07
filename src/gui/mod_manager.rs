@@ -24,6 +24,8 @@ use super::{button_row_height, prelude::*, widget_col_width};
 pub enum ModManagerAction {
     LoadModList,
     SaveModList(Vec<ModRef>),
+    ImportModList,
+    ExportModList(Vec<ModRef>),
 }
 
 pub enum ModManagerUpdate {
@@ -133,16 +135,22 @@ impl ModManager {
         button_group.make_resizable(true);
         button_group.set_frame(FrameType::FlatBox);
 
-        let activate_button = make_button("@>");
-        let deactivate_button = make_button("@<");
-        let move_top_button = make_button("@#8>|");
-        let move_up_button = make_button("@#8>");
-        let move_down_button = make_button("@#2>");
-        let move_bottom_button = make_button("@#2>|");
+        let clear_button = Button::default().with_label("@filenew");
+        let import_button = Button::default().with_label("@fileopen");
+        let export_button = Button::default().with_label("@filesave");
+        let activate_button = Button::default().with_label("@>");
+        let deactivate_button = Button::default().with_label("@<");
+        let move_top_button = Button::default().with_label("@#8>|");
+        let move_up_button = Button::default().with_label("@#8>");
+        let move_down_button = Button::default().with_label("@#2>");
+        let move_bottom_button = Button::default().with_label("@#2>|");
         let mut more_info_button = MenuButton::default().with_label("\u{1f4dc}");
         more_info_button.deactivate();
 
         let button_width = widget_col_width(&[
+            &clear_button,
+            &import_button,
+            &export_button,
             &activate_button,
             &deactivate_button,
             &move_top_button,
@@ -152,6 +160,9 @@ impl ModManager {
             &more_info_button,
         ]);
         let button_height = button_row_height(&[
+            &clear_button,
+            &import_button,
+            &export_button,
             &activate_button,
             &deactivate_button,
             &move_top_button,
@@ -165,10 +176,19 @@ impl ModManager {
             .inside_parent(0, 0)
             .with_size_flex(button_width + 20, 0)
             .stretch_to_parent(0, 0);
-        let button_group = button_group.with_size(button_width, button_height * 9 + 40);
+        let button_group = button_group.with_size(button_width, button_height * 13 + 60);
         let button_group = button_group.center_of_parent();
-        let mut activate_button = activate_button
+        let mut clear_button = clear_button
             .inside_parent(0, 0)
+            .with_size(button_width, button_height);
+        let mut import_button = import_button
+            .below_of(&clear_button, 10)
+            .with_size(button_width, button_height);
+        let mut export_button = export_button
+            .below_of(&import_button, 10)
+            .with_size(button_width, button_height);
+        let mut activate_button = activate_button
+            .below_of(&export_button, button_height)
             .with_size(button_width, button_height);
         let mut deactivate_button = deactivate_button
             .below_of(&activate_button, 10)
@@ -263,6 +283,8 @@ impl ModManager {
             state: RefCell::new(ModListState::new(mods)),
         });
 
+        manager.update_actions();
+
         available_list.set_callback(manager.weak_cb(|this| {
             if (app::event() == Event::Released)
                 && app::event_is_click()
@@ -281,6 +303,9 @@ impl ModManager {
             }
         }));
 
+        clear_button.set_callback(manager.weak_cb(Self::clear_clicked));
+        import_button.set_callback(manager.weak_cb(Self::import_clicked));
+        export_button.set_callback(manager.weak_cb(Self::export_clicked));
         activate_button.set_callback(manager.weak_cb(Self::activate_clicked));
         deactivate_button.set_callback(manager.weak_cb(Self::deactivate_clicked));
         move_top_button.set_callback(manager.weak_cb(Self::move_top_clicked));
@@ -319,10 +344,7 @@ impl ModManager {
 
     pub fn handle_update(&self, update: ModManagerUpdate) {
         match update {
-            ModManagerUpdate::PopulateModList(active_mods) => {
-                self.populate_state(active_mods);
-                self.populate_tables();
-            }
+            ModManagerUpdate::PopulateModList(active_mods) => self.populate_state(active_mods),
         }
     }
 
@@ -348,6 +370,10 @@ impl ModManager {
                 state.available.push(ModRef::Installed(mod_idx));
             }
         }
+
+        drop(state);
+
+        self.populate_tables();
     }
 
     fn populate_tables(&self) {
@@ -414,6 +440,25 @@ impl ModManager {
         self.more_info_button.clone().set_activated(more_info);
     }
 
+    fn clear_clicked(&self) {
+        if self.save_mod_list(Vec::new()) {
+            self.populate_state(Vec::new());
+        }
+    }
+
+    fn import_clicked(&self) {
+        if let Err(err) = (self.on_action)(ModManagerAction::ImportModList) {
+            alert_error(ERR_LOADING_MOD_LIST, &err);
+        }
+    }
+
+    fn export_clicked(&self) {
+        let state = self.state.borrow();
+        if let Err(err) = (self.on_action)(ModManagerAction::ExportModList(state.active.clone())) {
+            alert_error(ERR_SAVING_MOD_LIST, &err);
+        }
+    }
+
     fn activate_clicked(&self) {
         let mut state = self.state.borrow_mut();
         let row_idx = state.get_selected_available().unwrap();
@@ -429,7 +474,7 @@ impl ModManager {
         drop(state);
 
         self.set_selection(None);
-        self.save_mod_list();
+        self.save_current_mod_list();
     }
 
     fn deactivate_clicked(&self) {
@@ -453,7 +498,7 @@ impl ModManager {
         drop(state);
 
         self.set_selection(None);
-        self.save_mod_list();
+        self.save_current_mod_list();
     }
 
     fn move_top_clicked(&self) {
@@ -471,7 +516,7 @@ impl ModManager {
         drop(state);
 
         self.set_selection(Some(Selection::Active(0)));
-        self.save_mod_list();
+        self.save_current_mod_list();
     }
 
     fn move_up_clicked(&self) {
@@ -487,7 +532,7 @@ impl ModManager {
         drop(state);
 
         self.set_selection(Some(Selection::Active(row_idx - 1)));
-        self.save_mod_list();
+        self.save_current_mod_list();
     }
 
     fn move_down_clicked(&self) {
@@ -503,7 +548,7 @@ impl ModManager {
         drop(state);
 
         self.set_selection(Some(Selection::Active(row_idx + 1)));
-        self.save_mod_list();
+        self.save_current_mod_list();
     }
 
     fn move_bottom_clicked(&self) {
@@ -520,13 +565,21 @@ impl ModManager {
         drop(state);
 
         self.set_selection(Some(Selection::Active(last_idx)));
-        self.save_mod_list();
+        self.save_current_mod_list();
     }
 
-    fn save_mod_list(&self) {
+    fn save_current_mod_list(&self) {
         let state = self.state.borrow();
-        if let Err(err) = (self.on_action)(ModManagerAction::SaveModList(state.active.clone())) {
-            alert_error(ERR_SAVING_MOD_LIST, &err);
+        self.save_mod_list(state.active.clone());
+    }
+
+    fn save_mod_list(&self, mod_list: Vec<ModRef>) -> bool {
+        match (self.on_action)(ModManagerAction::SaveModList(mod_list)) {
+            Ok(()) => true,
+            Err(err) => {
+                alert_error(ERR_SAVING_MOD_LIST, &err);
+                false
+            }
         }
     }
 
@@ -595,12 +648,6 @@ lazy_static! {
 
         BBCode::from_matchers(matchers)
     };
-}
-
-fn make_button(text: &str) -> Button {
-    let mut button = Button::default().with_label(text);
-    button.deactivate();
-    button
 }
 
 fn populate_table(table: &mut SmartTable, mods: &Mods, refs: &Vec<ModRef>) {

@@ -159,7 +159,11 @@ impl Game {
             return Ok(Vec::new());
         }
 
-        let file = File::open(&self.mod_list_path)?;
+        self.load_mod_list_from(&self.mod_list_path)
+    }
+
+    pub fn load_mod_list_from(&self, path: &Path) -> Result<Vec<ModRef>> {
+        let file = File::open(path)?;
         let mut mod_list = Vec::new();
         for line in BufReader::new(file).lines() {
             // TODO: Logging?
@@ -173,9 +177,17 @@ impl Game {
     }
 
     pub fn save_mod_list<'m>(&self, mod_list: impl IntoIterator<Item = &'m ModRef>) -> Result<()> {
+        self.save_mod_list_to(&self.mod_list_path, mod_list)
+    }
+
+    pub fn save_mod_list_to<'m>(
+        &self,
+        path: &Path,
+        mod_list: impl IntoIterator<Item = &'m ModRef>,
+    ) -> Result<()> {
         use std::io::Write;
 
-        let mut file = File::create(&self.mod_list_path)?;
+        let mut file = File::create(path)?;
         for mod_ref in mod_list {
             let pak_path = match mod_ref {
                 ModRef::Installed(_) => &self.installed_mods.get(mod_ref).unwrap().pak_path,
