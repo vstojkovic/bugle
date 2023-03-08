@@ -177,7 +177,7 @@ impl Server {
 }
 
 #[derive(
-    Clone, Copy, Debug, Deserialize_repr, EnumIter, FromRepr, PartialEq, Eq, PartialOrd, Ord,
+    Clone, Copy, Debug, Deserialize_repr, EnumIter, FromRepr, Hash, PartialEq, Eq, PartialOrd, Ord,
 )]
 #[repr(u8)]
 pub enum Region {

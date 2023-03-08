@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use strum_macros::EnumIter;
 
 use crate::gui::data::{RowComparator, RowOrder};
-use crate::servers::Server;
+use crate::servers::{Region, Server};
 
 #[derive(Clone, Copy, Debug, EnumIter, Hash, PartialEq, Eq)]
 pub enum SortKey {
@@ -66,24 +68,51 @@ impl SortCriteria {
     }
 }
 
-impl RowOrder<Server> for SortCriteria {
+pub struct SortOrder {
+    pub criteria: SortCriteria,
+    region_order: Rc<HashMap<Region, usize>>,
+}
+
+impl SortOrder {
+    pub fn new(key: SortKey, ascending: bool, region_order: HashMap<Region, usize>) -> Self {
+        Self {
+            criteria: SortCriteria { key, ascending },
+            region_order: Rc::new(region_order),
+        }
+    }
+
+    fn region_comparator(&self) -> RowComparator<Server> {
+        let region_order = Rc::clone(&self.region_order);
+        if self.criteria.ascending {
+            Box::new(move |lhs: &Server, rhs: &Server| {
+                region_order[&lhs.region].cmp(&region_order[&rhs.region])
+            })
+        } else {
+            Box::new(move |lhs: &Server, rhs: &Server| {
+                region_order[&rhs.region].cmp(&region_order[&lhs.region])
+            })
+        }
+    }
+}
+
+impl RowOrder<Server> for SortOrder {
     fn comparator(&self) -> RowComparator<Server> {
-        let cmp: RowComparator<Server> = match self.key {
-            SortKey::Name => Box::new(cmp_values!(self.ascending, name)),
-            SortKey::Map => Box::new(cmp_values!(self.ascending, map)),
-            SortKey::Mode => Box::new(cmp_values!(self.ascending, mode())),
-            SortKey::Region => Box::new(cmp_values!(self.ascending, region)),
+        let cmp: RowComparator<Server> = match self.criteria.key {
+            SortKey::Name => Box::new(cmp_values!(self.criteria.ascending, name)),
+            SortKey::Map => Box::new(cmp_values!(self.criteria.ascending, map)),
+            SortKey::Mode => Box::new(cmp_values!(self.criteria.ascending, mode())),
+            SortKey::Region => self.region_comparator(),
             SortKey::Players => Box::new({
-                let connected_cmp = cmp_options!(self.ascending, connected_players);
-                let max_cmp = cmp_values!(self.ascending, max_players);
+                let connected_cmp = cmp_options!(self.criteria.ascending, connected_players);
+                let max_cmp = cmp_values!(self.criteria.ascending, max_players);
                 move |lhs: &Server, rhs: &Server| {
                     connected_cmp(lhs, rhs).then_with(|| max_cmp(lhs, rhs))
                 }
             }),
-            SortKey::Age => Box::new(cmp_options!(self.ascending, age)),
-            SortKey::Ping => Box::new(cmp_options!(self.ascending, ping)),
+            SortKey::Age => Box::new(cmp_options!(self.criteria.ascending, age)),
+            SortKey::Ping => Box::new(cmp_options!(self.criteria.ascending, ping)),
         };
-        let tie_breaker = cmp_values!(self.ascending, id);
+        let tie_breaker = cmp_values!(self.criteria.ascending, id);
         Box::new(move |lhs: &Server, rhs: &Server| {
             rhs.favorite
                 .cmp(&lhs.favorite)

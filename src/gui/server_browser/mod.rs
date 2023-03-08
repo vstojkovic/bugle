@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -8,6 +9,7 @@ use anyhow::Result;
 use fltk::dialog;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
+use strum::IntoEnumIterator;
 
 use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
@@ -17,7 +19,7 @@ use self::actions_pane::{Action, ActionsPane};
 use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
-use self::state::{Filter, SortCriteria, SortKey, TypeFilter};
+use self::state::{Filter, SortCriteria, SortKey, SortOrder, TypeFilter};
 
 use super::prelude::*;
 use super::{alert_error, CleanupFn, Handler};
@@ -84,10 +86,7 @@ impl ServerBrowser {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
             Vec::new(),
             Default::default(),
-            SortCriteria {
-                key: SortKey::Name,
-                ascending: true,
-            },
+            SortOrder::new(SortKey::Name, true, region_sort_order()),
         )));
 
         let mut root = Group::default_fill();
@@ -104,7 +103,7 @@ impl ServerBrowser {
             .inside_parent(0, 0)
             .with_size_flex(0, tiles.height() * 3 / 4);
 
-        let list_pane = ListPane::new(state.borrow().order());
+        let list_pane = ListPane::new(&state.borrow().order().criteria);
 
         upper_tile.end();
 
@@ -139,7 +138,7 @@ impl ServerBrowser {
                     browser
                         .state
                         .borrow_mut()
-                        .update_order(|criteria| *criteria = sort_criteria);
+                        .update_order(|order| order.criteria = sort_criteria);
                     browser.list_pane.populate(browser.state.clone());
                     browser.set_selected_server_index(selected_idx, true);
                 }
@@ -313,8 +312,13 @@ impl ServerBrowser {
         let mut updated_indices: Vec<usize> = Vec::with_capacity(count_hint);
         let repopulate = {
             let mut state = self.state.borrow_mut();
-            state.update(|all_servers, filter, sort_criteria| {
-                mutator(all_servers, &mut updated_indices, filter, sort_criteria)
+            state.update(|all_servers, filter, order| {
+                mutator(
+                    all_servers,
+                    &mut updated_indices,
+                    filter,
+                    &mut order.criteria,
+                )
             })
         };
 
@@ -388,6 +392,17 @@ fn region_name(region: Region) -> &'static str {
         Region::LATAM => "LATAM",
         Region::Japan => "Japan",
     }
+}
+
+fn region_sort_order() -> HashMap<Region, usize> {
+    let mut sorted_regions: Vec<_> = Region::iter().collect();
+    sorted_regions.sort_by(|&lhs, &rhs| region_name(lhs).cmp(region_name(rhs)));
+
+    let mut order = HashMap::new();
+    for (idx, region) in sorted_regions.into_iter().enumerate() {
+        order.insert(region, idx);
+    }
+    order
 }
 
 fn community_name(community: Community) -> &'static str {
