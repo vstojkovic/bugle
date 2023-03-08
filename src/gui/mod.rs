@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use fltk::app;
 use fltk::dialog;
+use fltk::enums::Event;
 use fltk::group::Group;
 use fltk::prelude::*;
 use fltk::text::TextDisplay;
@@ -80,6 +82,11 @@ impl LauncherWindow {
 
         let mut window = Window::default().with_size(1280, 760);
         window.set_label("BUGLE");
+        window.set_callback(|_| {
+            if app::event() == Event::Close {
+                app::quit();
+            }
+        });
 
         let root = Group::default_fill();
 
