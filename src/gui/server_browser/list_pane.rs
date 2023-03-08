@@ -323,22 +323,30 @@ fn str_if(condition: bool, str_true: &str) -> String {
 
 fn players_col_value(server: &Server) -> String {
     match server.connected_players {
-        Some(players) => format!("{}/{}", players, server.max_players),
-        None => format!("?/{}", server.max_players),
+        Some(players) => format!("{}/{}{}", players, server.max_players, pong_suffix(server)),
+        None => format!("?/{}{}", server.max_players, pong_suffix(server)),
     }
 }
 
 fn age_col_value(server: &Server) -> String {
     match server.age {
-        Some(age) => format!("{}", age.as_secs() / 86400),
-        None => "????".to_string(),
+        Some(age) => format!("{}{}", age.as_secs() / 86400, pong_suffix(server)),
+        None => format!("????{}", pong_suffix(server)),
     }
 }
 
 fn ping_col_value(server: &Server) -> String {
     match server.ping {
-        Some(ping) => format!("{}", ping.as_millis()),
-        None => "????".to_string(),
+        Some(ping) => format!("{}{}", ping.as_millis(), pong_suffix(server)),
+        None => format!("????{}", pong_suffix(server)),
+    }
+}
+
+fn pong_suffix(server: &Server) -> &str {
+    if server.waiting_for_pong {
+        " @-1reload"
+    } else {
+        ""
     }
 }
 

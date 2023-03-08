@@ -40,9 +40,17 @@ impl PingRequest {
 #[derive(Debug)]
 pub struct PingResponse {
     pub server_idx: usize,
-    pub connected_players: usize,
-    pub age: Duration,
-    pub round_trip: Duration,
+    pub result: PingResult,
+}
+
+#[derive(Debug)]
+pub enum PingResult {
+    Pong {
+        connected_players: usize,
+        age: Duration,
+        round_trip: Duration,
+    },
+    Timeout,
 }
 
 pub struct PingClient {
@@ -294,9 +302,11 @@ impl<F: Fn(PingResponse) + Send> Receiver<F> {
 
         let response = PingResponse {
             server_idx: request.idx,
-            connected_players: players as _,
-            age,
-            round_trip: received_timestamp - request.sent_timestamp,
+            result: PingResult::Pong {
+                connected_players: players as _,
+                age,
+                round_trip: received_timestamp - request.sent_timestamp,
+            },
         };
         (self.on_response)(response);
     }
@@ -315,6 +325,12 @@ impl<F: Fn(PingResponse) + Send> Receiver<F> {
                         server_idx: entry.get().idx,
                         addr: *entry.key(),
                     });
+                } else {
+                    let response = PingResponse {
+                        server_idx: entry.get().idx,
+                        result: PingResult::Timeout,
+                    };
+                    (self.on_response)(response);
                 }
                 entry.remove();
             }

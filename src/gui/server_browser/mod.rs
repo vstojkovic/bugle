@@ -13,7 +13,9 @@ use strum::IntoEnumIterator;
 
 use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
-use crate::servers::{Community, FavoriteServer, Mode, PingRequest, PingResponse, Region, Server};
+use crate::servers::{
+    Community, FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server,
+};
 
 use self::actions_pane::{Action, ActionsPane};
 use self::details_pane::DetailsPane;
@@ -175,6 +177,14 @@ impl ServerBrowser {
                                 let source_idx = state.to_source_index(server_idx);
                                 let request = PingRequest::for_server(source_idx, server).unwrap();
                                 let action = ServerBrowserAction::PingServer(request);
+                                drop(state);
+
+                                browser.update_servers(1, |all_servers, updated_indices, _, _| {
+                                    all_servers[source_idx].waiting_for_pong = true;
+                                    updated_indices.push(source_idx);
+                                    Reindex::Nothing
+                                });
+
                                 (browser.on_action)(action).unwrap();
                             }
                         }
@@ -337,9 +347,23 @@ impl ServerBrowser {
 
     fn update_server(server: &mut Server, update: &PingResponse, filter: &Filter) -> bool {
         let matched_before = filter.matches(server);
-        server.connected_players = Some(update.connected_players);
-        server.age = Some(update.age);
-        server.ping = Some(update.round_trip);
+        match update.result {
+            PingResult::Pong {
+                connected_players,
+                age,
+                round_trip,
+            } => {
+                server.connected_players = Some(connected_players);
+                server.age = Some(age);
+                server.ping = Some(round_trip);
+            }
+            PingResult::Timeout => {
+                server.connected_players = None;
+                server.age = None;
+                server.ping = None;
+            }
+        };
+        server.waiting_for_pong = false;
         filter.matches(server) != matched_before
     }
 

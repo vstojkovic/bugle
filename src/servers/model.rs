@@ -101,6 +101,9 @@ pub struct Server {
     pub ping: Option<Duration>,
 
     #[serde(skip)]
+    pub waiting_for_pong: bool,
+
+    #[serde(skip)]
     pub favorite: bool,
 
     #[serde(skip)]
@@ -118,6 +121,8 @@ impl Server {
         ctx: &DeserializationContext,
     ) -> Result<Self, D::Error> {
         let mut server = <Server as Deserialize>::deserialize(deserializer)?;
+
+        server.waiting_for_pong = true;
 
         server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
             server.reported_ip
