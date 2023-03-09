@@ -184,6 +184,7 @@ dependencies = [
  "steamy-vdf",
  "strum",
  "strum_macros",
+ "tempfile",
  "tokio",
  "ucs2",
  "urlencoding",

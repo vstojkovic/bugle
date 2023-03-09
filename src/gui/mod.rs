@@ -7,11 +7,11 @@ use fltk::dialog;
 use fltk::enums::Event;
 use fltk::group::Group;
 use fltk::prelude::*;
-use fltk::text::TextDisplay;
 use fltk::window::Window;
 
 mod data;
 pub mod glyph;
+mod home;
 mod main_menu;
 mod mod_manager;
 mod prelude;
@@ -20,6 +20,7 @@ mod single_player;
 
 use crate::game::Game;
 
+use self::home::Home;
 use self::main_menu::MainMenu;
 use self::mod_manager::ModManager;
 use self::prelude::*;
@@ -66,6 +67,8 @@ impl Update {
 
 pub struct LauncherWindow {
     window: Window,
+    cleanup_fn: Rc<RefCell<CleanupFn>>,
+    home: Rc<Home>,
     server_browser: Rc<ServerBrowser>,
     single_player: Rc<SinglePlayer>,
     mod_manager: Rc<ModManager>,
@@ -101,11 +104,10 @@ impl LauncherWindow {
             .right_of(&main_menu_group, 10)
             .stretch_to_parent(10, 10);
 
-        let mut welcome_group = Group::default_fill();
-        let _welcome_text = TextDisplay::default()
-            .with_label("Welcome to BUGLE: Butt-Ugly Game Launcher For Exiles")
-            .center_of_parent();
-        welcome_group.end();
+        let home = {
+            let on_action = Rc::clone(&on_action);
+            Home::new(game, move |action| on_action(action))
+        };
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
@@ -134,23 +136,16 @@ impl LauncherWindow {
 
         window.end();
 
-        let active_content_cleanup_fn: Rc<RefCell<CleanupFn>> =
-            Rc::new(RefCell::new(Box::new(move || {
-                welcome_group.hide();
-            })));
+        let cleanup_fn: Rc<RefCell<CleanupFn>> = Rc::new(RefCell::new(Box::new(|| ())));
 
         {
-            let on_action = Rc::clone(&on_action);
-            main_menu.set_on_launch(move || on_action(Action::Launch));
+            let old_cleanup = Rc::clone(&cleanup_fn);
+            let home = Rc::clone(&home);
+            main_menu.set_on_home(move || switch_content(&old_cleanup, || home.show()));
         }
 
         {
-            let on_action = Rc::clone(&on_action);
-            main_menu.set_on_continue(move || on_action(Action::Continue));
-        }
-
-        {
-            let old_cleanup = Rc::clone(&active_content_cleanup_fn);
+            let old_cleanup = Rc::clone(&cleanup_fn);
             let server_browser = Rc::clone(&server_browser);
             main_menu.set_on_online(move || {
                 switch_content(&old_cleanup, || server_browser.show());
@@ -158,7 +153,7 @@ impl LauncherWindow {
         }
 
         {
-            let old_cleanup = Rc::clone(&active_content_cleanup_fn);
+            let old_cleanup = Rc::clone(&cleanup_fn);
             let single_player = Rc::clone(&single_player);
             main_menu.set_on_single_player(move || {
                 switch_content(&old_cleanup, || single_player.show());
@@ -166,7 +161,7 @@ impl LauncherWindow {
         }
 
         {
-            let old_cleanup = Rc::clone(&active_content_cleanup_fn);
+            let old_cleanup = Rc::clone(&cleanup_fn);
             let mod_manager = Rc::clone(&mod_manager);
             main_menu.set_on_mods(move || {
                 switch_content(&old_cleanup, || mod_manager.show());
@@ -175,6 +170,8 @@ impl LauncherWindow {
 
         Self {
             window,
+            cleanup_fn,
+            home,
             server_browser,
             single_player,
             mod_manager,
@@ -182,6 +179,7 @@ impl LauncherWindow {
     }
 
     pub fn show(&mut self) {
+        switch_content(&self.cleanup_fn, || self.home.show());
         self.window.show();
     }
 

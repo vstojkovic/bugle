@@ -4,12 +4,11 @@ use fltk::enums::FrameType;
 use fltk::group::Group;
 use fltk::prelude::*;
 
+use super::not_implemented_callback;
 use super::prelude::LayoutExt;
-use super::{alert_error, not_implemented_callback};
 
 pub(super) struct MainMenu {
-    launch_btn: Button,
-    continue_btn: Button,
+    home_btn: RadioButton,
     online_btn: RadioButton,
     single_player_btn: RadioButton,
     mods_btn: RadioButton,
@@ -19,14 +18,14 @@ impl MainMenu {
     pub fn new() -> Self {
         let group = Group::default_fill();
 
-        let launch_btn = make_button(Button::default_fill, "Launch");
-        let continue_btn = make_button(Button::default_fill, "Continue");
+        let mut home_btn = make_button(RadioButton::default_fill, "Launcher");
         let online_btn = make_button(RadioButton::default_fill, "Online");
         let single_player_btn = make_button(RadioButton::default_fill, "Singleplayer");
         let mut coop_btn = make_button(Button::default_fill, "Co-op");
         let mods_btn = make_button(RadioButton::default_fill, "Mods");
-        let mut settings_btn = make_button(Button::default_fill, "Settings");
         let mut exit_btn = make_button(Button::default_fill, "Exit");
+
+        home_btn.toggle(true);
 
         let btn_count = group.children();
         let btn_height = (group.h() - (btn_count - 1) * 10) / btn_count;
@@ -43,32 +42,18 @@ impl MainMenu {
         group.end();
 
         coop_btn.set_callback(not_implemented_callback);
-        settings_btn.set_callback(not_implemented_callback);
         exit_btn.set_callback(|_| app::quit());
 
         Self {
-            launch_btn,
-            continue_btn,
+            home_btn,
             online_btn,
             single_player_btn,
             mods_btn,
         }
     }
 
-    pub fn set_on_launch(&mut self, on_launch: impl Fn() -> anyhow::Result<()> + 'static) {
-        self.launch_btn.set_callback(move |_| {
-            if let Err(err) = on_launch() {
-                alert_error("Failed to launch Conan Exiles.", &err);
-            }
-        })
-    }
-
-    pub fn set_on_continue(&mut self, on_continue: impl Fn() -> anyhow::Result<()> + 'static) {
-        self.continue_btn.set_callback(move |_| {
-            if let Err(err) = on_continue() {
-                alert_error("Failed to launch Conan Exiles.", &err);
-            }
-        });
+    pub fn set_on_home(&mut self, mut on_home: impl FnMut() + 'static) {
+        self.home_btn.set_callback(move |_| on_home());
     }
 
     pub fn set_on_online(&mut self, mut on_online: impl FnMut() + 'static) {

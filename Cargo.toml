@@ -36,6 +36,7 @@ steamlocate = "1"
 steamy-vdf = "0.2.0"
 strum = "0.24"
 strum_macros = "0.24"
+tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 ucs2 = "0.3.2"
 urlencoding = "2"

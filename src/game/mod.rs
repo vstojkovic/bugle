@@ -104,6 +104,17 @@ impl Game {
         self.build_id
     }
 
+    pub fn revision(&self) -> (u32, u16) {
+        let maj = (self.build_id | 0x80000000) >> 13;
+        let min = (self.build_id & 0x1fff) as u16;
+        let min = min | (0x8000 - (min & 0x1000));
+        (maj, min)
+    }
+
+    pub fn installation_path(&self) -> &Path {
+        &self.root
+    }
+
     pub fn save_path(&self) -> &Path {
         &self.save_path
     }
