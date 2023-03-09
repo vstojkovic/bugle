@@ -160,12 +160,11 @@ impl SinglePlayer {
         let selected_map_id = maps.iter().next().unwrap().id;
 
         let in_progress_label = in_progress_label
-            .below_of(&map_label, 10)
-            .with_size(label_width, row_height);
+            .with_size(label_width, row_height)
+            .below_of(&map_label, 10);
         let in_progress_pane = Group::default_fill()
-            .below_of(&map_input, 10)
-            .stretch_to_parent(0, 0)
-            .with_size_flex(0, row_height * 2);
+            .with_size_flex(0, row_height * 2)
+            .below_of(&map_input, 10);
         let in_progress_table = make_db_list();
         in_progress_pane.end();
 

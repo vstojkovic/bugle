@@ -183,32 +183,32 @@ impl ModManager {
             .inside_parent(0, 0)
             .with_size(button_width, button_height);
         let mut import_button = import_button
-            .below_of(&clear_button, 10)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&clear_button, 10);
         let mut export_button = export_button
-            .below_of(&import_button, 10)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&import_button, 10);
         let mut activate_button = activate_button
-            .below_of(&export_button, button_height)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&export_button, button_height);
         let mut deactivate_button = deactivate_button
-            .below_of(&activate_button, 10)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&activate_button, 10);
         let mut move_top_button = move_top_button
-            .below_of(&deactivate_button, button_height)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&deactivate_button, button_height);
         let mut move_up_button = move_up_button
-            .below_of(&move_top_button, 10)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&move_top_button, 10);
         let mut move_down_button = move_down_button
-            .below_of(&move_up_button, 10)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&move_up_button, 10);
         let mut move_bottom_button = move_bottom_button
-            .below_of(&move_down_button, 10)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&move_down_button, 10);
         let mut more_info_button = more_info_button
-            .below_of(&move_bottom_button, button_height)
-            .with_size(button_width, button_height);
+            .with_size(button_width, button_height)
+            .below_of(&move_bottom_button, button_height);
 
         button_group.end();
         button_col.end();
