@@ -224,7 +224,7 @@ impl ServerBrowser {
                                 let mut state = browser.state.borrow_mut();
                                 state.update_source(Vec::clear);
                             }
-                            browser.list_pane.populate(browser.state.clone());
+                            browser.list_pane.mark_refreshing();
                             browser.list_pane.set_selected_index(None, false);
                             (browser.on_action)(ServerBrowserAction::LoadServers).unwrap();
                         }

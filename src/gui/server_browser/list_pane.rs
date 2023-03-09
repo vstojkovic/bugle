@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use fltk::app;
-use fltk::enums::Event;
+use fltk::enums::{Align, Event};
+use fltk::frame::Frame;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
@@ -18,6 +19,7 @@ use super::{mode_name, region_name};
 
 pub(super) struct ListPane {
     table: SmartTable,
+    loading_label: Frame,
     sort_criteria: RefCell<SortCriteria>,
     server_list: RefCell<Rc<RefCell<dyn TableSource<Output = Server>>>>,
     on_sort_changed: RefCell<Box<dyn Fn(SortCriteria)>>,
@@ -51,10 +53,15 @@ impl ListPane {
             table.set_col_width(idx, col.width);
         }
 
+        let loading_label = Frame::default_fill()
+            .with_label("Fetching server list...")
+            .with_align(Align::Center);
+
         table.end();
 
         let list_pane = Rc::new(Self {
             table: table.clone(),
+            loading_label,
             sort_criteria: RefCell::new(*initial_sort),
             server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
             on_sort_changed: RefCell::new(Box::new(|_| ())),
@@ -85,17 +92,15 @@ impl ListPane {
     }
 
     pub fn populate(&self, server_list: Rc<RefCell<dyn TableSource<Output = Server>>>) {
-        let mut table = self.table.clone();
-        {
-            let servers = server_list.borrow();
-            {
-                let data_ref = table.data_ref();
-                *data_ref.lock().unwrap() = servers.iter().map(make_server_row).collect();
-            }
-            table.set_rows(servers.len() as _);
-            table.redraw();
-        }
-        *self.server_list.borrow_mut() = server_list;
+        self.loading_label.clone().hide();
+        self.set_server_list(server_list);
+    }
+
+    pub fn mark_refreshing(&self) {
+        self.set_server_list(Rc::new(RefCell::new(Vec::new())));
+        let mut loading_label = self.loading_label.clone();
+        loading_label.show();
+        loading_label.redraw();
     }
 
     pub fn update(&self, indices: impl IntoIterator<Item = usize>) {
@@ -168,6 +173,20 @@ impl ListPane {
         if scroll_lock {
             self.ensure_selection_visible();
         }
+    }
+
+    fn set_server_list(&self, server_list: Rc<RefCell<dyn TableSource<Output = Server>>>) {
+        let mut table = self.table.clone();
+        {
+            let servers = server_list.borrow();
+            {
+                let data_ref = table.data_ref();
+                *data_ref.lock().unwrap() = servers.iter().map(make_server_row).collect();
+            }
+            table.set_rows(servers.len() as _);
+            table.redraw();
+        }
+        *self.server_list.borrow_mut() = server_list;
     }
 
     fn clicked(&self) {
