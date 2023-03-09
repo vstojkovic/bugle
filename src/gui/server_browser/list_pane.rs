@@ -2,8 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use fltk::app;
-use fltk::enums::{Align, Event};
+use fltk::enums::Align;
 use fltk::frame::Frame;
 use fltk::prelude::*;
 use fltk::table::TableContext;
@@ -11,7 +10,7 @@ use fltk_table::{SmartTable, TableOpts};
 use lazy_static::lazy_static;
 
 use crate::gui::data::{IterableTableSource, TableSource};
-use crate::gui::glyph;
+use crate::gui::{glyph, is_table_nav_event};
 use crate::servers::Server;
 
 use super::state::{SortCriteria, SortKey};
@@ -76,13 +75,8 @@ impl ListPane {
             let list_pane = Rc::downgrade(&list_pane);
             table.set_callback(move |_| {
                 if let Some(list_pane) = list_pane.upgrade() {
-                    match app::event() {
-                        Event::Released => {
-                            if app::event_is_click() {
-                                list_pane.clicked()
-                            }
-                        }
-                        _ => (),
+                    if is_table_nav_event() {
+                        list_pane.clicked();
                     }
                 }
             });

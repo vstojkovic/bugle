@@ -5,10 +5,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
-use fltk::app;
 use fltk::button::Button;
 use fltk::dialog;
-use fltk::enums::{Align, CallbackTrigger, Event};
+use fltk::enums::{Align, CallbackTrigger};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
@@ -19,7 +18,8 @@ use fltk_table::{SmartTable, TableOpts};
 use crate::game::{GameDB, Maps};
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
-use super::{alert_error, prelude::*, prompt_confirm};
+use super::prelude::*;
+use super::{alert_error, is_table_nav_event, prompt_confirm};
 use super::{button_row_height, widget_col_width, CleanupFn, Handler};
 
 pub enum SinglePlayerAction {
@@ -212,10 +212,8 @@ impl SinglePlayer {
             let this = Rc::downgrade(&single_player);
             backups_table.set_callback(move |_| {
                 if let Some(this) = this.upgrade() {
-                    if let Event::Released = app::event() {
-                        if app::event_is_click() {
-                            this.backup_clicked();
-                        }
+                    if is_table_nav_event() {
+                        this.backup_clicked();
                     }
                 }
             });

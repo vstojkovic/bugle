@@ -6,7 +6,7 @@ use bbscope::BBCode;
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{Event, FrameType, Shortcut};
+use fltk::enums::{FrameType, Shortcut};
 use fltk::group::{Group, Tile};
 use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
@@ -18,8 +18,9 @@ use lazy_static::lazy_static;
 
 use crate::game::{ModInfo, ModRef, Mods};
 
-use super::{alert_error, CleanupFn, Handler};
-use super::{button_row_height, prelude::*, widget_col_width};
+use super::prelude::*;
+use super::{alert_error, is_table_nav_event, CleanupFn, Handler};
+use super::{button_row_height, widget_col_width};
 
 pub enum ModManagerAction {
     LoadModList,
@@ -286,19 +287,14 @@ impl ModManager {
         manager.update_actions();
 
         available_list.set_callback(manager.weak_cb(|this| {
-            if (app::event() == Event::Released)
-                && app::event_is_click()
-                && this.available_list.callback_context() == TableContext::Cell
+            if is_table_nav_event() && this.available_list.callback_context() == TableContext::Cell
             {
                 this.available_clicked();
             }
         }));
 
         active_list.set_callback(manager.weak_cb(|this| {
-            if (app::event() == Event::Released)
-                && app::event_is_click()
-                && this.active_list.callback_context() == TableContext::Cell
-            {
+            if is_table_nav_event() && this.active_list.callback_context() == TableContext::Cell {
                 this.active_clicked();
             }
         }));

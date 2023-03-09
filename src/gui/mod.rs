@@ -239,6 +239,14 @@ fn button_row_height(buttons: &[&dyn ButtonExt]) -> i32 {
         .unwrap()
 }
 
+fn is_table_nav_event() -> bool {
+    match app::event() {
+        Event::KeyDown => true,
+        Event::Released => app::event_is_click(),
+        _ => false,
+    }
+}
+
 fn not_implemented_callback(_: &mut impl WidgetExt) {
     alert_not_implemented()
 }
