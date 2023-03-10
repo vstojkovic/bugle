@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 use std::fs::File;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
+use config::{BattlEyeUsage, Config};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::{list_mod_controllers, ModRef};
@@ -29,6 +30,7 @@ struct Launcher {
     logger: Logger,
     app: App,
     game: Game,
+    config: Mutex<Config>,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
     server_loader: Mutex<ServerLoader>,
@@ -41,6 +43,7 @@ impl Launcher {
             logger,
             app,
             game,
+            config: Default::default(),
             tx,
             rx,
             server_loader: Mutex::new(Default::default()),
@@ -48,7 +51,7 @@ impl Launcher {
     }
 
     fn run(self: Arc<Self>) {
-        let mut main_win = LauncherWindow::new(&self.game, {
+        let mut main_win = LauncherWindow::new(&self.game, &*self.config(), {
             let this = Arc::clone(&self);
             move |action| this.on_action(action)
         });
@@ -75,20 +78,42 @@ impl Launcher {
     fn on_action(self: &Arc<Self>, action: Action) -> Result<()> {
         match action {
             Action::Launch => {
-                let _ = self.game.launch(true, &[])?;
+                let use_battleye = if let BattlEyeUsage::Always(true) = self.config().use_battleye {
+                    true
+                } else {
+                    false
+                };
+                let _ = self.game.launch(use_battleye, &[])?;
                 app::quit();
                 Ok(())
             }
             Action::Continue => {
-                let _ = self.game.continue_session(true)?;
+                let use_battleye = if let BattlEyeUsage::Always(true) = self.config().use_battleye {
+                    true
+                } else {
+                    false
+                };
+                let _ = self.game.continue_session(use_battleye)?;
                 app::quit();
+                Ok(())
+            }
+            Action::ConfigureBattlEye(use_battleye) => {
+                let mut config = self.config();
+                config.use_battleye = use_battleye;
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
                 Arc::clone(self).on_load_servers()
             }
-            Action::ServerBrowser(ServerBrowserAction::JoinServer(addr)) => {
-                let _ = self.game.join_server(addr, true)?;
+            Action::ServerBrowser(ServerBrowserAction::JoinServer {
+                addr,
+                battleye_required,
+            }) => {
+                let use_battleye = match self.config().use_battleye {
+                    BattlEyeUsage::Auto => battleye_required,
+                    BattlEyeUsage::Always(enabled) => enabled,
+                };
+                let _ = self.game.join_server(addr, use_battleye)?;
                 app::quit();
                 Ok(())
             }
@@ -314,7 +339,9 @@ impl Launcher {
                 return Ok(());
             }
         }
-        let _ = self.game.launch_single_player(map_id, true)?;
+        let use_battleye =
+            if let BattlEyeUsage::Always(true) = self.config().use_battleye { true } else { false };
+        let _ = self.game.launch_single_player(map_id, use_battleye)?;
         app::quit();
         Ok(())
     }
@@ -349,6 +376,10 @@ impl Launcher {
                 added_mods,
             }))
         }
+    }
+
+    fn config(&self) -> MutexGuard<Config> {
+        self.config.lock().unwrap()
     }
 }
 

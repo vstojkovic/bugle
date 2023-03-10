@@ -18,6 +18,7 @@ mod prelude;
 mod server_browser;
 mod single_player;
 
+use crate::config::{BattlEyeUsage, Config};
 use crate::game::Game;
 
 use self::home::Home;
@@ -34,6 +35,7 @@ pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
 pub enum Action {
     Launch,
     Continue,
+    ConfigureBattlEye(BattlEyeUsage),
     ServerBrowser(ServerBrowserAction),
     SinglePlayer(SinglePlayerAction),
     ModManager(ModManagerAction),
@@ -80,7 +82,7 @@ impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 type CleanupFn = Box<dyn FnMut()>;
 
 impl LauncherWindow {
-    pub fn new(game: &Game, on_action: impl Handler<Action> + 'static) -> Self {
+    pub fn new(game: &Game, config: &Config, on_action: impl Handler<Action> + 'static) -> Self {
         let on_action: Rc<dyn Handler<Action>> = Rc::new(on_action);
 
         let mut window = Window::default().with_size(1280, 760);
@@ -106,7 +108,7 @@ impl LauncherWindow {
 
         let home = {
             let on_action = Rc::clone(&on_action);
-            Home::new(game, move |action| on_action(action))
+            Home::new(game, config, move |action| on_action(action))
         };
 
         let server_browser = {

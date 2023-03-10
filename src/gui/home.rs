@@ -5,16 +5,18 @@ use std::rc::Rc;
 use anyhow::Ok;
 use fltk::browser::Browser;
 use fltk::button::Button;
-use fltk::enums::Font;
+use fltk::enums::{CallbackTrigger, Font};
 use fltk::frame::Frame;
 use fltk::group::Group;
+use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use tempfile::tempdir;
 
+use crate::config::{BattlEyeUsage, Config};
 use crate::game::Game;
 
 use super::prelude::*;
-use super::{button_row_height, widget_auto_height, widget_col_width};
+use super::{button_row_height, widget_auto_height, widget_auto_width, widget_col_width};
 use super::{Action, CleanupFn, Handler};
 
 pub struct Home {
@@ -22,7 +24,13 @@ pub struct Home {
 }
 
 impl Home {
-    pub fn new(game: &Game, on_action: impl Handler<Action> + 'static) -> Rc<Self> {
+    pub fn new(
+        game: &Game,
+        config: &Config,
+        on_action: impl Handler<Action> + 'static,
+    ) -> Rc<Self> {
+        let on_action = Rc::new(on_action);
+
         let mut root = Group::default_fill();
 
         let top_welcome_line = Frame::default_fill().with_label("Welcome to");
@@ -48,6 +56,12 @@ impl Home {
 
         let info_pane = Browser::default_fill();
 
+        let battleye_label = Frame::default().with_label("BattlEye:");
+        let battleye_height = widget_auto_height(&battleye_label);
+        let battleye_group = Group::default_fill();
+        let battleye_input = InputChoice::default_fill();
+        battleye_group.end();
+
         let launch_button = Button::default().with_label("Launch");
         let continue_button = Button::default().with_label("Continue");
         let button_width = 2 * widget_col_width(&[&launch_button, &continue_button]);
@@ -59,6 +73,42 @@ impl Home {
         let mut launch_button = launch_button
             .with_size(button_width, button_height)
             .left_of(&continue_button, 10);
+
+        let battleye_label_width = widget_auto_width(&battleye_label);
+        let battleye_label = battleye_label
+            .with_size(battleye_label_width, button_height)
+            .inside_parent(0, -button_height);
+
+        let battleye_group = battleye_group.right_of(&battleye_label, 10);
+        let battleye_group_width = launch_button.x() - battleye_group.x() - button_width;
+        let _battleye_group = battleye_group.with_size(battleye_group_width, button_height);
+
+        let mut battleye_input = battleye_input
+            .with_size_flex(0, battleye_height)
+            .center_of_parent();
+        battleye_input.input().set_readonly(true);
+        battleye_input.input().clear_visible_focus();
+        battleye_input.add("Enabled");
+        battleye_input.add("Disabled");
+        battleye_input.add("Only when required");
+        battleye_input.set_value_index(match config.use_battleye {
+            BattlEyeUsage::Always(true) => 0,
+            BattlEyeUsage::Always(false) => 1,
+            BattlEyeUsage::Auto => 2,
+        });
+        battleye_input.set_trigger(CallbackTrigger::Changed);
+        battleye_input.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                let use_battleye = match input.menu_button().value() {
+                    0 => BattlEyeUsage::Always(true),
+                    1 => BattlEyeUsage::Always(false),
+                    2 => BattlEyeUsage::Auto,
+                    _ => unreachable!(),
+                };
+                on_action(Action::ConfigureBattlEye(use_battleye)).unwrap();
+            }
+        });
 
         let info_pane = info_pane.below_of(&btm_welcome_line, 10);
         let info_height = launch_button.y() - info_pane.y() - 10;
@@ -77,7 +127,6 @@ impl Home {
             game.installation_path().display()
         ));
 
-        let on_action = Rc::new(on_action);
         launch_button.set_callback({
             let on_action = Rc::clone(&on_action);
             move |_| on_action(Action::Launch).unwrap()

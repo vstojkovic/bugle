@@ -36,7 +36,10 @@ use state::ServerBrowserState;
 
 pub enum ServerBrowserAction {
     LoadServers,
-    JoinServer(SocketAddr),
+    JoinServer {
+        addr: SocketAddr,
+        battleye_required: bool,
+    },
     PingServer(PingRequest),
     UpdateFavorites(Vec<FavoriteServer>),
 }
@@ -164,7 +167,10 @@ impl ServerBrowser {
                             if let Some(server_idx) = browser.list_pane.selected_index() {
                                 let server = &browser.state.borrow()[server_idx];
                                 let addr = SocketAddr::new(*server.ip(), server.port as _);
-                                let action = ServerBrowserAction::JoinServer(addr);
+                                let action = ServerBrowserAction::JoinServer {
+                                    addr,
+                                    battleye_required: server.battleye_required,
+                                };
                                 if let Err(err) = (browser.on_action)(action) {
                                     alert_error(ERR_JOINING_SERVER, &err);
                                 }
@@ -238,7 +244,10 @@ impl ServerBrowser {
                                 Ok(addr) => addr,
                                 Err(err) => return alert_error(ERR_INVALID_ADDR, &err),
                             };
-                            let action = ServerBrowserAction::JoinServer(addr);
+                            let action = ServerBrowserAction::JoinServer {
+                                addr,
+                                battleye_required: true,
+                            };
                             if let Err(err) = (browser.on_action)(action) {
                                 alert_error(ERR_JOINING_SERVER, &err);
                             }

@@ -3,6 +3,23 @@ use std::path::Path;
 use anyhow::Result;
 use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
 
+#[derive(Debug, Default)]
+pub struct Config {
+    pub use_battleye: BattlEyeUsage,
+}
+
+#[derive(Debug)]
+pub enum BattlEyeUsage {
+    Auto,
+    Always(bool),
+}
+
+impl Default for BattlEyeUsage {
+    fn default() -> Self {
+        Self::Always(true)
+    }
+}
+
 fn load_text_lossy<P: AsRef<Path>>(path: P) -> std::io::Result<String> {
     let bytes = std::fs::read(path.as_ref())?;
 
