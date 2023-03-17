@@ -3,14 +3,14 @@ use std::fs::File;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
-use config::{BattlEyeUsage, Config};
+use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::{list_mod_controllers, ModRef};
 use gui::{prompt_confirm, ModManagerAction, SinglePlayerAction};
 use regex::Regex;
 use servers::DeserializationContext;
-use slog::{info, o, Logger};
+use slog::{info, o, warn, Logger};
 use tokio::task::JoinHandle;
 
 mod config;
@@ -31,19 +31,30 @@ struct Launcher {
     app: App,
     game: Game,
     config: Mutex<Config>,
+    config_persister: Box<dyn ConfigPersister + Send + Sync>,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
     server_loader: Mutex<ServerLoader>,
 }
 
 impl Launcher {
-    fn new(logger: Logger, app: App, game: Game) -> Arc<Self> {
+    fn new(
+        logger: Logger,
+        app: App,
+        game: Game,
+        config_persister: Box<dyn ConfigPersister + Send + Sync>,
+    ) -> Arc<Self> {
+        let config = config_persister.load().unwrap_or_else(|err| {
+            warn!(logger, "Error while loading the configuration"; "error" => err.to_string());
+            Config::default()
+        });
         let (tx, rx) = app::channel();
         Arc::new(Self {
             logger,
             app,
             game,
-            config: Default::default(),
+            config: Mutex::new(config),
+            config_persister,
             tx,
             rx,
             server_loader: Mutex::new(Default::default()),
@@ -100,6 +111,9 @@ impl Launcher {
             Action::ConfigureBattlEye(use_battleye) => {
                 let mut config = self.config();
                 config.use_battleye = use_battleye;
+                if let Err(err) = self.config_persister.save(&config) {
+                    warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
+                }
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
@@ -444,7 +458,21 @@ async fn main() {
         }
     };
 
-    let launcher = Launcher::new(root_logger.clone(), app, game);
+    let config_persister: Box<dyn ConfigPersister + Send + Sync> =
+        match IniConfigPersister::for_current_exe() {
+            Ok(persister) => Box::new(persister),
+            Err(err) => {
+                warn!(
+                    root_logger,
+                    "Error trying to load or create the config file. \
+                    Proceeding with transient config.";
+                    "error" => err.to_string()
+                );
+                Box::new(TransientConfig)
+            }
+        };
+
+    let launcher = Launcher::new(root_logger.clone(), app, game, config_persister);
     launcher.run();
 
     info!(root_logger, "Shutting down launcher");
