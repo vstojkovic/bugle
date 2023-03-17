@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::io::{Seek, SeekFrom};
-use std::ops::Index;
+use std::ops::{Deref, Index};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -16,7 +16,6 @@ use super::UString;
 
 #[derive(Debug)]
 pub struct MapInfo {
-    pub id: usize,
     pub display_name: String,
     pub asset_path: String,
     pub object_name: String,
@@ -24,30 +23,37 @@ pub struct MapInfo {
 }
 
 #[derive(Debug)]
+pub struct MapEntry {
+    pub id: usize,
+    pub info: MapInfo,
+}
+
+impl Deref for MapEntry {
+    type Target = MapInfo;
+    fn deref(&self) -> &Self::Target {
+        &self.info
+    }
+}
+
+#[derive(Debug)]
 pub struct Maps {
-    maps: Vec<MapInfo>,
+    maps: Vec<MapEntry>,
     by_object_name: HashMap<String, usize>,
 }
 
 impl Maps {
-    pub fn new(maps: Vec<MapInfo>) -> Self {
-        let mut by_object_name = HashMap::with_capacity(maps.len());
-
-        for map in maps.iter() {
-            by_object_name.insert(map.object_name.clone(), map.id);
-        }
-
+    pub fn new() -> Self {
         Self {
-            maps,
-            by_object_name,
+            maps: Vec::new(),
+            by_object_name: HashMap::new(),
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &MapInfo> {
+    pub fn iter(&self) -> impl Iterator<Item = &MapEntry> {
         self.maps.iter()
     }
 
-    pub fn by_object_name<Q>(&self, object_name: &Q) -> Option<&MapInfo>
+    pub fn by_object_name<Q>(&self, object_name: &Q) -> Option<&MapEntry>
     where
         Q: Hash + Eq + ?Sized,
         String: Borrow<Q>,
@@ -56,10 +62,20 @@ impl Maps {
             .get(object_name)
             .and_then(|id| self.maps.get(*id))
     }
+
+    fn add(&mut self, map: MapInfo) -> Option<&MapEntry> {
+        if self.by_object_name.contains_key(&map.object_name) {
+            return None;
+        }
+        let id = self.maps.len();
+        self.by_object_name.insert(map.object_name.clone(), id);
+        self.maps.push(MapEntry { id, info: map });
+        Some(&self.maps[id])
+    }
 }
 
 impl Index<usize> for Maps {
-    type Output = MapInfo;
+    type Output = MapEntry;
     fn index(&self, index: usize) -> &Self::Output {
         &self.maps[index]
     }
@@ -108,11 +124,7 @@ impl MapExtractor {
         }
     }
 
-    pub fn extract_mod_maps<P: AsRef<Path>>(
-        &self,
-        pak_path: P,
-        maps: &mut Vec<MapInfo>,
-    ) -> Result<()> {
+    pub fn extract_mod_maps<P: AsRef<Path>>(&self, pak_path: P, maps: &mut Maps) -> Result<()> {
         let pak = Archive::new(pak_path)?;
         let preload_pkgs = gather_preload_packages(&pak);
 
@@ -133,7 +145,7 @@ impl MapExtractor {
     pub fn extract_base_game_maps<P: AsRef<Path>>(
         &self,
         pak_path: P,
-        maps: &mut Vec<MapInfo>,
+        maps: &mut Maps,
     ) -> Result<()> {
         let pak = Archive::new(pak_path)?;
 
@@ -169,7 +181,7 @@ impl MapExtractor {
         }
     }
 
-    fn gather_pkg_maps(&self, pkg: &Package, maps: &mut Vec<MapInfo>) -> Result<()> {
+    fn gather_pkg_maps(&self, pkg: &Package, maps: &mut Maps) -> Result<()> {
         let mut data_table_imp = None;
         let mut map_data_row_imp = None;
 
@@ -215,7 +227,7 @@ impl MapExtractor {
         pkg: &Package,
         mut exp: ExportReader,
         map_data_row_imp: ResourceIndex,
-        maps: &mut Vec<MapInfo>,
+        maps: &mut Maps,
     ) -> Result<()> {
         let mut found_row_struct = false;
         while let Some(prop) = exp.read_property_tag()? {
@@ -251,7 +263,7 @@ impl MapExtractor {
         exp: &mut ExportReader,
         pkg: &Package,
         last_row: bool,
-        maps: &mut Vec<MapInfo>,
+        maps: &mut Maps,
     ) -> Result<()> {
         // skip the row name
         exp.seek(SeekFrom::Current(8))?;
@@ -310,8 +322,7 @@ impl MapExtractor {
             return Ok(());
         };
 
-        maps.push(MapInfo {
-            id: maps.len(),
+        maps.add(MapInfo {
             display_name,
             asset_path,
             object_name,

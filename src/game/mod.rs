@@ -67,7 +67,7 @@ impl Game {
         let mut installed_mods = location.collect_mods()?;
         installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
 
-        let mut maps = Vec::new();
+        let mut maps = Maps::new();
         let map_extractor = MapExtractor::new();
 
         // TODO: Improved error handling
@@ -96,7 +96,7 @@ impl Game {
             game_ini_path: config_path.join("Game.ini"),
             mod_list_path,
             installed_mods: Arc::new(Mods::new(installed_mods)),
-            maps: Arc::new(Maps::new(maps)),
+            maps: Arc::new(maps),
         })
     }
 
