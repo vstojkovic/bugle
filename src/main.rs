@@ -442,7 +442,7 @@ async fn main() {
         None => {
             dialog::alert_default(
                 "Cannot locate Conan Exiles installation. Please verify that you have Conan \
-                Exiles installed in a Steam library and try again.",
+                 Exiles installed in a Steam library and try again.",
             );
             return;
         }
@@ -465,7 +465,7 @@ async fn main() {
                 warn!(
                     root_logger,
                     "Error trying to load or create the config file. \
-                    Proceeding with transient config.";
+                     Proceeding with transient config.";
                     "error" => err.to_string()
                 );
                 Box::new(TransientConfig)

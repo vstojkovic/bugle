@@ -342,5 +342,5 @@ fn collect_mod_ids(manifest: &steamy_vdf::Entry) -> Option<Vec<&String>> {
 
 lazy_static! {
     static ref BUILD_ID_REGEX: Regex =
-        { Regex::new(r"^OnlineSubsystem:BuildIdOverride:0\s*=\s*(\d+)$").unwrap() };
+        Regex::new(r"^OnlineSubsystem:BuildIdOverride:0\s*=\s*(\d+)$").unwrap();
 }
