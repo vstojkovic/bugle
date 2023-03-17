@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use ini::Properties;
+use lazy_static::lazy_static;
+use regex::Regex;
 use slog::{info, warn, Logger};
 use steamlocate::SteamDir;
 
@@ -55,11 +57,17 @@ impl Game {
         let save_path = location.game_path.join("ConanSandbox/Saved");
         let config_path = save_path.join("Config/WindowsNoEditor");
 
-        let engine_ini_path = config_path.join("Engine.ini");
+        let cooked_ini_path = location.game_path.join("ConanSandbox/CookedIniVersion.txt");
 
-        let engine_ini = config::load_ini(engine_ini_path)?;
-        let build_id = engine_ini
-            .get_from(Some("OnlineSubsystem"), "BuildIdOverride")
+        let cooked_ini = config::load_ini(cooked_ini_path)?;
+        let build_id = cooked_ini
+            .section(Some("UsedSettings"))
+            .and_then(|section| {
+                section
+                    .get_all("Windows.Engine")
+                    .find_map(|val| BUILD_ID_REGEX.captures(val))
+            })
+            .map(|captures| captures.get(1).unwrap().as_str())
             .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
             .and_then(|s| Ok(s.parse::<u32>()?))?;
 
@@ -330,4 +338,9 @@ fn collect_mod_ids(manifest: &steamy_vdf::Entry) -> Option<Vec<&String>> {
             .into_iter()
             .collect(),
     )
+}
+
+lazy_static! {
+    static ref BUILD_ID_REGEX: Regex =
+        { Regex::new(r"^OnlineSubsystem:BuildIdOverride:0\s*=\s*(\d+)$").unwrap() };
 }
