@@ -240,8 +240,8 @@ impl Game {
                 Ok(game_db) => saves.push(game_db),
                 Err(err) => warn!(
                     self.logger,
-                    "Error parsing the saved game {path}",
-                    path = db_path.display();
+                    "Error parsing the saved game {db_file}",
+                    db_file = db_path.file_name().unwrap_or_default().to_string_lossy().as_ref();
                     "error" => err.to_string()
                 ),
             }
