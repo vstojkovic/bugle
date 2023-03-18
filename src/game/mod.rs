@@ -187,8 +187,10 @@ impl Game {
         for line in BufReader::new(file).lines() {
             // TODO: Logging?
             if let Ok(mod_path) = line {
-                let mod_path: PathBuf = mod_path.into();
-                mod_list.push(self.installed_mods.by_pak_path(&mod_path));
+                if !mod_path.starts_with('#') {
+                    let mod_path: PathBuf = mod_path.trim().into();
+                    mod_list.push(self.installed_mods.by_pak_path(&mod_path));
+                }
             }
         }
 
