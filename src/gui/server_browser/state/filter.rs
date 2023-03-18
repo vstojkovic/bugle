@@ -88,10 +88,7 @@ impl Filter {
     }
 
     pub fn set_name(&mut self, name: String) {
-        self.name_re = RegexBuilder::new(&regex::escape(&name))
-            .case_insensitive(true)
-            .build()
-            .unwrap();
+        self.name_re = Self::regex(&name);
         self.name = name;
     }
 
@@ -100,10 +97,7 @@ impl Filter {
     }
 
     pub fn set_map(&mut self, map: String) {
-        self.map_re = RegexBuilder::new(&regex::escape(&map))
-            .case_insensitive(true)
-            .build()
-            .unwrap();
+        self.map_re = Self::regex(&map);
         self.map = map;
     }
 
