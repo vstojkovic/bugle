@@ -113,9 +113,11 @@ impl LauncherWindow {
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
-            ServerBrowser::new(Arc::clone(game.maps()), move |browser_action| {
-                on_action(Action::ServerBrowser(browser_action))
-            })
+            ServerBrowser::new(
+                Arc::clone(game.maps()),
+                &config.server_browser,
+                move |browser_action| on_action(Action::ServerBrowser(browser_action)),
+            )
         };
 
         let single_player = {

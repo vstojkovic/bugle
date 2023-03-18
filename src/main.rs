@@ -109,12 +109,7 @@ impl Launcher {
                 Ok(())
             }
             Action::ConfigureBattlEye(use_battleye) => {
-                let mut config = self.config();
-                config.use_battleye = use_battleye;
-                if let Err(err) = self.config_persister.save(&config) {
-                    warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
-                }
-                Ok(())
+                self.update_config(|config| config.use_battleye = use_battleye)
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
                 Arc::clone(self).on_load_servers()
@@ -136,6 +131,9 @@ impl Launcher {
             }
             Action::ServerBrowser(ServerBrowserAction::UpdateFavorites(favorites)) => {
                 self.game.save_favorites(favorites)
+            }
+            Action::ServerBrowser(ServerBrowserAction::UpdateConfig(sb_cfg)) => {
+                self.update_config(|config| config.server_browser = sb_cfg)
             }
             Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
                 Arc::clone(self).on_list_saved_games()
@@ -394,6 +392,15 @@ impl Launcher {
 
     fn config(&self) -> MutexGuard<Config> {
         self.config.lock().unwrap()
+    }
+
+    fn update_config(&self, mutator: impl FnOnce(&mut Config)) -> Result<()> {
+        let mut config = self.config();
+        mutator(&mut config);
+        if let Err(err) = self.config_persister.save(&config) {
+            warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
+        }
+        Ok(())
     }
 }
 

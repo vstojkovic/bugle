@@ -11,9 +11,8 @@ use lazy_static::lazy_static;
 
 use crate::gui::data::{IterableTableSource, TableSource};
 use crate::gui::{glyph, is_table_nav_event};
-use crate::servers::Server;
+use crate::servers::{Server, SortCriteria, SortKey};
 
-use super::state::{SortCriteria, SortKey};
 use super::{mode_name, region_name};
 
 pub(super) struct ListPane {
@@ -32,7 +31,7 @@ struct Selection {
 }
 
 impl ListPane {
-    pub fn new(initial_sort: &SortCriteria) -> Rc<Self> {
+    pub fn new(initial_sort: &SortCriteria, scroll_lock: bool) -> Rc<Self> {
         let mut table = SmartTable::default_fill().with_opts(TableOpts {
             rows: 0,
             cols: SERVER_LIST_COLS.len() as _,
@@ -67,7 +66,7 @@ impl ListPane {
             on_server_selected: RefCell::new(Box::new(|_| ())),
             selection: RefCell::new(Selection {
                 index: None,
-                scroll_lock: true,
+                scroll_lock,
             }),
         });
 
@@ -160,6 +159,10 @@ impl ListPane {
         } else {
             self.on_server_selected.borrow()(None);
         }
+    }
+
+    pub fn scroll_lock(&self) -> bool {
+        self.selection.borrow().scroll_lock
     }
 
     pub fn set_scroll_lock(&self, scroll_lock: bool) {

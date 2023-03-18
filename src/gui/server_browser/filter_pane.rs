@@ -14,14 +14,27 @@ use strum::IntoEnumIterator;
 use crate::game::Maps;
 use crate::gui::{glyph, prelude::*};
 use crate::gui::{widget_auto_height, widget_col_width};
-use crate::servers::{Mode, Region};
+use crate::servers::{Mode, Region, TypeFilter};
 
-use super::state::{Filter, TypeFilter};
+use super::state::Filter;
 use super::{mode_name, region_name};
 
 pub(super) trait FilterHolder {
     fn access_filter(&self, accessor: impl FnOnce(&Filter));
-    fn mutate_filter(&self, mutator: impl FnMut(&mut Filter));
+    fn mutate_filter(&self, change: FilterChange, mutator: impl FnMut(&mut Filter));
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum FilterChange {
+    Name,
+    Map,
+    Type,
+    Mode,
+    Region,
+    BattlEyeRequired,
+    IncludeInvalid,
+    IncludePasswordProtected,
+    IncludeModded,
 }
 
 pub(super) struct FilterPane {
@@ -208,7 +221,8 @@ impl FilterPane {
             name_input.set_trigger(CallbackTrigger::Changed);
             name_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder.mutate_filter(|filter| filter.set_name(input.value()));
+                    filter_holder
+                        .mutate_filter(FilterChange::Name, |filter| filter.set_name(input.value()));
                 }
             });
         }
@@ -218,8 +232,9 @@ impl FilterPane {
             map_input.set_trigger(CallbackTrigger::Changed);
             map_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder
-                        .mutate_filter(|filter| filter.set_map(input.value().unwrap_or_default()));
+                    filter_holder.mutate_filter(FilterChange::Map, |filter| {
+                        filter.set_map(input.value().unwrap_or_default())
+                    });
                 }
             });
         }
@@ -231,7 +246,9 @@ impl FilterPane {
                 if let Some(filter_holder) = filter_holder.upgrade() {
                     let repr = input.menu_button().value();
                     let type_filter = TypeFilter::from_repr(repr as _).unwrap();
-                    filter_holder.mutate_filter(|filter| filter.set_type_filter(type_filter));
+                    filter_holder.mutate_filter(FilterChange::Type, |filter| {
+                        filter.set_type_filter(type_filter)
+                    });
                 }
             });
         }
@@ -249,7 +266,7 @@ impl FilterPane {
                             Mode::from_repr(repr as _)
                         }
                     };
-                    filter_holder.mutate_filter(|filter| filter.set_mode(mode));
+                    filter_holder.mutate_filter(FilterChange::Mode, |filter| filter.set_mode(mode));
                 }
             });
         }
@@ -267,7 +284,8 @@ impl FilterPane {
                             Region::from_repr(repr as _)
                         }
                     };
-                    filter_holder.mutate_filter(|filter| filter.set_region(region));
+                    filter_holder
+                        .mutate_filter(FilterChange::Region, |filter| filter.set_region(region));
                 }
             });
         }
@@ -282,7 +300,9 @@ impl FilterPane {
                         2 => Some(false),
                         _ => None,
                     };
-                    filter_holder.mutate_filter(|filter| filter.set_battleye_required(required));
+                    filter_holder.mutate_filter(FilterChange::BattlEyeRequired, |filter| {
+                        filter.set_battleye_required(required)
+                    });
                 }
             });
         }
@@ -292,8 +312,9 @@ impl FilterPane {
             invalid_check.set_trigger(CallbackTrigger::Changed);
             invalid_check.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder
-                        .mutate_filter(|filter| filter.set_include_invalid(input.is_checked()));
+                    filter_holder.mutate_filter(FilterChange::IncludeInvalid, |filter| {
+                        filter.set_include_invalid(input.is_checked())
+                    });
                 }
             })
         }
@@ -303,7 +324,7 @@ impl FilterPane {
             pwd_prot_check.set_trigger(CallbackTrigger::Changed);
             pwd_prot_check.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder.mutate_filter(|filter| {
+                    filter_holder.mutate_filter(FilterChange::IncludePasswordProtected, |filter| {
                         filter.set_include_password_protected(input.is_checked())
                     });
                 }
@@ -315,8 +336,9 @@ impl FilterPane {
             modded_check.set_trigger(CallbackTrigger::Changed);
             modded_check.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder
-                        .mutate_filter(|filter| filter.set_include_modded(input.is_checked()));
+                    filter_holder.mutate_filter(FilterChange::IncludeModded, |filter| {
+                        filter.set_include_modded(input.is_checked())
+                    });
                 }
             })
         }

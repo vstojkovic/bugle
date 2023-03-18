@@ -29,7 +29,7 @@ pub(super) struct ActionsPane {
 }
 
 impl ActionsPane {
-    pub fn new() -> Rc<Self> {
+    pub fn new(scroll_lock: bool) -> Rc<Self> {
         let root = Group::default_fill();
 
         let direct_conn_button = Button::default().with_label("Direct Connect...");
@@ -81,7 +81,7 @@ impl ActionsPane {
         let scroll_lock_check = scroll_lock_check
             .with_size(scroll_lock_width, scroll_lock_height)
             .center_of_parent();
-        scroll_lock_check.set_checked(true);
+        scroll_lock_check.set_checked(scroll_lock);
 
         root.end();
 

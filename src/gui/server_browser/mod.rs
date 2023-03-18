@@ -11,17 +11,19 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use strum::IntoEnumIterator;
 
+use crate::config::ServerBrowserConfig;
 use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
     Community, FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server,
+    SortCriteria, SortKey, TypeFilter,
 };
 
 use self::actions_pane::{Action, ActionsPane};
 use self::details_pane::DetailsPane;
-use self::filter_pane::{FilterHolder, FilterPane};
+use self::filter_pane::{FilterChange, FilterHolder, FilterPane};
 use self::list_pane::ListPane;
-use self::state::{Filter, SortCriteria, SortKey, SortOrder, TypeFilter};
+use self::state::{Filter, SortOrder};
 
 use super::prelude::*;
 use super::{alert_error, CleanupFn, Handler};
@@ -42,6 +44,7 @@ pub enum ServerBrowserAction {
     },
     PingServer(PingRequest),
     UpdateFavorites(Vec<FavoriteServer>),
+    UpdateConfig(ServerBrowserConfig),
 }
 
 pub enum ServerBrowserUpdate {
@@ -86,19 +89,20 @@ pub(super) struct ServerBrowser {
 impl ServerBrowser {
     pub fn new(
         maps: Arc<Maps>,
+        config: &ServerBrowserConfig,
         on_action: impl Handler<ServerBrowserAction> + 'static,
     ) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
             Vec::new(),
-            Default::default(),
-            SortOrder::new(SortKey::Name, true, region_sort_order()),
+            Filter::from_config(config),
+            SortOrder::new(config.sort_criteria, region_sort_order()),
         )));
 
         let mut root = Group::default_fill();
 
         let filter_pane = FilterPane::new(maps);
 
-        let actions_pane = ActionsPane::new();
+        let actions_pane = ActionsPane::new(config.scroll_lock);
 
         let tiles = Tile::default_fill()
             .below_of(filter_pane.root(), 10)
@@ -108,7 +112,7 @@ impl ServerBrowser {
             .inside_parent(0, 0)
             .with_size_flex(0, tiles.height() * 3 / 4);
 
-        let list_pane = ListPane::new(&state.borrow().order().criteria);
+        let list_pane = ListPane::new(&state.borrow().order().criteria, config.scroll_lock);
 
         upper_tile.end();
 
@@ -146,6 +150,7 @@ impl ServerBrowser {
                         .update_order(|order| order.criteria = sort_criteria);
                     browser.list_pane.populate(browser.state.clone());
                     browser.set_selected_server_index(selected_idx, true);
+                    browser.update_config();
                 }
             });
         }
@@ -254,6 +259,7 @@ impl ServerBrowser {
                         }
                         Action::ScrollLock(scroll_lock) => {
                             browser.list_pane.set_scroll_lock(scroll_lock);
+                            browser.update_config();
                         }
                     }
                 }
@@ -388,6 +394,24 @@ impl ServerBrowser {
             override_scroll_lock,
         );
     }
+
+    fn update_config(&self) {
+        let state = self.state.borrow();
+        let filter = state.filter();
+        let order = state.order();
+        let config = ServerBrowserConfig {
+            type_filter: filter.type_filter(),
+            mode: filter.mode(),
+            region: filter.region(),
+            battleye_required: filter.battleye_required(),
+            include_invalid: filter.include_invalid(),
+            include_password_protected: filter.include_password_protected(),
+            include_modded: filter.include_modded(),
+            sort_criteria: order.criteria,
+            scroll_lock: self.list_pane.scroll_lock(),
+        };
+        (self.on_action)(ServerBrowserAction::UpdateConfig(config)).unwrap();
+    }
 }
 
 impl FilterHolder for ServerBrowser {
@@ -395,11 +419,14 @@ impl FilterHolder for ServerBrowser {
         accessor(self.state.borrow().filter());
     }
 
-    fn mutate_filter(&self, mutator: impl FnOnce(&mut Filter)) {
+    fn mutate_filter(&self, change: FilterChange, mutator: impl FnOnce(&mut Filter)) {
         let selected_idx = self.selected_server_index();
         self.state.borrow_mut().update_filter(mutator);
         self.list_pane.populate(self.state.clone());
         self.set_selected_server_index(selected_idx, false);
+        if (change != FilterChange::Name) && (change != FilterChange::Map) {
+            self.update_config();
+        }
     }
 }
 

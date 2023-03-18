@@ -5,7 +5,7 @@ use std::time::Duration;
 use bitflags::bitflags;
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
-use strum_macros::{EnumIter, FromRepr};
+use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
 
 use crate::net::{is_valid_ip, is_valid_port};
 
@@ -182,9 +182,22 @@ impl Server {
 }
 
 #[derive(
-    Clone, Copy, Debug, Deserialize_repr, EnumIter, FromRepr, Hash, PartialEq, Eq, PartialOrd, Ord,
+    Clone,
+    Copy,
+    Debug,
+    Deserialize_repr,
+    AsRefStr,
+    EnumIter,
+    EnumString,
+    FromRepr,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
 )]
 #[repr(u8)]
+#[strum(ascii_case_insensitive)]
 pub enum Region {
     EU,
     America,
@@ -220,7 +233,10 @@ pub enum Kind {
     Other,
 }
 
-#[derive(Clone, Copy, Debug, EnumIter, FromRepr, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, AsRefStr, EnumIter, EnumString, FromRepr, PartialEq, Eq, PartialOrd, Ord,
+)]
+#[strum(ascii_case_insensitive)]
 pub enum Mode {
     PVE,
     PVEC,
@@ -453,6 +469,68 @@ impl<'de> Deserialize<'de> for RaidHours {
         }
 
         deserializer.deserialize_map(MapVisitor)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, AsRefStr, EnumIter, EnumString, FromRepr)]
+#[strum(ascii_case_insensitive)]
+pub enum TypeFilter {
+    All,
+    Official,
+    Private,
+    Favorite,
+}
+
+impl Default for TypeFilter {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
+impl TypeFilter {
+    pub fn matches(&self, server: &Server) -> bool {
+        match self {
+            Self::All => true,
+            Self::Official => server.is_official(),
+            Self::Private => !server.is_official(),
+            Self::Favorite => server.favorite,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, AsRefStr, EnumIter, EnumString, Hash, PartialEq, Eq)]
+#[strum(ascii_case_insensitive)]
+pub enum SortKey {
+    Name,
+    Map,
+    Mode,
+    Region,
+    Players,
+    Age,
+    Ping,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SortCriteria {
+    pub key: SortKey,
+    pub ascending: bool,
+}
+
+impl Default for SortCriteria {
+    fn default() -> Self {
+        Self {
+            key: SortKey::Name,
+            ascending: true,
+        }
+    }
+}
+
+impl SortCriteria {
+    pub fn reversed(&self) -> Self {
+        Self {
+            key: self.key,
+            ascending: !self.ascending,
+        }
     }
 }
 

@@ -2,27 +2,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use strum_macros::EnumIter;
-
 use crate::gui::data::{RowComparator, RowOrder};
-use crate::servers::{Region, Server};
-
-#[derive(Clone, Copy, Debug, EnumIter, Hash, PartialEq, Eq)]
-pub enum SortKey {
-    Name,
-    Map,
-    Mode,
-    Region,
-    Players,
-    Age,
-    Ping,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SortCriteria {
-    pub key: SortKey,
-    pub ascending: bool,
-}
+use crate::servers::{Region, Server, SortCriteria, SortKey};
 
 macro_rules! cmp_values {
     ($ascending:expr, $($expr:tt)+) => {
@@ -59,24 +40,15 @@ macro_rules! cmp_options {
     };
 }
 
-impl SortCriteria {
-    pub fn reversed(&self) -> Self {
-        Self {
-            key: self.key,
-            ascending: !self.ascending,
-        }
-    }
-}
-
 pub struct SortOrder {
     pub criteria: SortCriteria,
     region_order: Rc<HashMap<Region, usize>>,
 }
 
 impl SortOrder {
-    pub fn new(key: SortKey, ascending: bool, region_order: HashMap<Region, usize>) -> Self {
+    pub fn new(criteria: SortCriteria, region_order: HashMap<Region, usize>) -> Self {
         Self {
-            criteria: SortCriteria { key, ascending },
+            criteria,
             region_order: Rc::new(region_order),
         }
     }

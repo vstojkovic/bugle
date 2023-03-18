@@ -1,27 +1,8 @@
 use regex::{Regex, RegexBuilder};
-use strum_macros::{EnumIter, FromRepr};
 
+use crate::config::ServerBrowserConfig;
 use crate::gui::data::RowFilter;
-use crate::servers::{Mode, Region, Server};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, EnumIter, FromRepr)]
-pub enum TypeFilter {
-    All,
-    Official,
-    Private,
-    Favorite,
-}
-
-impl TypeFilter {
-    fn matches(&self, server: &Server) -> bool {
-        match self {
-            Self::All => true,
-            Self::Official => server.is_official(),
-            Self::Private => !server.is_official(),
-            Self::Favorite => server.favorite,
-        }
-    }
-}
+use crate::servers::{Mode, Region, Server, TypeFilter};
 
 #[derive(Clone, Debug)]
 pub struct Filter {
@@ -38,23 +19,21 @@ pub struct Filter {
     include_modded: bool,
 }
 
-impl Default for Filter {
-    fn default() -> Self {
-        Filter::new(
+impl Filter {
+    pub fn from_config(config: &ServerBrowserConfig) -> Self {
+        Self::new(
             String::new(),
             String::new(),
-            TypeFilter::All,
-            None,
-            None,
-            None,
-            false,
-            false,
-            false,
+            config.type_filter,
+            config.mode,
+            config.region,
+            config.battleye_required,
+            config.include_invalid,
+            config.include_password_protected,
+            config.include_modded,
         )
     }
-}
 
-impl Filter {
     pub fn new(
         name: String,
         map: String,
