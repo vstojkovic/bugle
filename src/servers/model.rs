@@ -122,8 +122,6 @@ impl Server {
     ) -> Result<Self, D::Error> {
         let mut server = <Server as Deserialize>::deserialize(deserializer)?;
 
-        server.waiting_for_pong = true;
-
         server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
             server.reported_ip
         } else {
@@ -145,6 +143,8 @@ impl Server {
         if !is_valid_port(server.port) {
             server.validity.insert(Validity::INVALID_PORT);
         }
+
+        server.waiting_for_pong = server.is_valid();
 
         Ok(server)
     }
