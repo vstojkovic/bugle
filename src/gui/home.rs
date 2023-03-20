@@ -3,20 +3,24 @@ use std::io::Write;
 use std::rc::Rc;
 
 use anyhow::Ok;
-use fltk::browser::Browser;
 use fltk::button::Button;
 use fltk::enums::{CallbackTrigger, Font};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
+use fltk::table::TableRow;
+use fltk_table::{SmartTable, TableOpts};
 use tempfile::tempdir;
 
 use crate::config::{BattlEyeUsage, Config};
 use crate::game::Game;
 
 use super::prelude::*;
-use super::{button_row_height, widget_auto_height, widget_auto_width, widget_col_width};
+use super::{
+    button_row_height, make_readonly_cell_widget, widget_auto_height, widget_auto_width,
+    widget_col_width,
+};
 use super::{Action, CleanupFn, Handler};
 
 pub struct Home {
@@ -54,7 +58,13 @@ impl Home {
             .with_size_flex(0, btm_welcome_height)
             .below_of(&mid_welcome_line, 0);
 
-        let info_pane = Browser::default_fill();
+        // let info_pane = Browser::default_fill();
+        let info_pane = SmartTable::default_fill().with_opts(TableOpts {
+            rows: 4,
+            cols: 1,
+            editable: false,
+            ..Default::default()
+        });
 
         let battleye_label = Frame::default().with_label("BattlEye:");
         let battleye_height = widget_auto_height(&battleye_label);
@@ -110,22 +120,32 @@ impl Home {
             }
         });
 
-        let info_pane = info_pane.below_of(&btm_welcome_line, 10);
+        let mut info_pane = info_pane.below_of(&btm_welcome_line, 10);
         let info_height = launch_button.y() - info_pane.y() - 10;
-        let mut info_pane = info_pane.with_size_flex(0, info_height);
+        {
+            let tbl: &TableRow = &info_pane;
+            let _ = tbl.clone().with_size_flex(0, info_height);
+        }
 
-        info_pane.set_column_widths(&[info_pane.w() / 4, 3 * info_pane.w() / 4]);
-        info_pane.set_column_char('\t');
-        info_pane.add(&format!("BUGLE Version:\t{}", env!("CARGO_PKG_VERSION")));
-        info_pane.add(&format!("Conan Exiles Build ID:\t{}", game.build_id()));
-        info_pane.add({
+        let info_header_width = info_pane.w() / 4;
+        let info_value_width = info_pane.w() - info_header_width - 10;
+        info_pane.set_col_header(false);
+        info_pane.set_row_header_width(info_header_width);
+        info_pane.set_col_width(0, info_value_width);
+
+        info_pane.set_row_header_value(0, "BUGLE Version");
+        info_pane.set_cell_value(0, 0, env!("CARGO_PKG_VERSION"));
+        info_pane.set_row_header_value(1, "Conan Exiles Build ID");
+        info_pane.set_cell_value(1, 0, &format!("{}", game.build_id()));
+        info_pane.set_row_header_value(2, "Conan Exiles Revision");
+        info_pane.set_cell_value(2, 0, {
             let (maj, min) = game.revision();
-            &format!("Conan Exiles Revision:\t#{}/{}", maj, min)
+            &format!("{}/{}", maj, min)
         });
-        info_pane.add(&format!(
-            "Conan Exiles Installation Path:\t{}",
-            game.installation_path().display()
-        ));
+        info_pane.set_row_header_value(3, "Conan Exiles Installation Path");
+        info_pane.set_cell_value(3, 0, &game.installation_path().to_string_lossy());
+
+        let _info_cell = make_readonly_cell_widget(&info_pane);
 
         launch_button.set_callback({
             let on_action = Rc::clone(&on_action);
