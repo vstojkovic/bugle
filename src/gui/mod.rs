@@ -1,7 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use fltk::app;
 use fltk::dialog;
 use fltk::enums::Event;
 use fltk::prelude::*;
+use fltk::table::TableContext;
+use fltk::text::{Cursor, TextBuffer, TextEditor};
+use fltk_table::SmartTable;
 
 mod data;
 pub mod glyph;
@@ -107,4 +113,68 @@ fn is_table_nav_event() -> bool {
         Event::Released => app::event_is_click(),
         _ => false,
     }
+}
+
+fn make_readonly_cell_widget(table: &SmartTable) -> TextEditor {
+    let mut cell = TextEditor::default();
+    let mut cell_buf = TextBuffer::default();
+    cell.set_buffer(cell_buf.clone());
+    cell.show_cursor(true);
+    cell.set_scrollbar_size(-1);
+    cell.set_cursor_style(Cursor::Simple);
+    cell.hide();
+
+    cell.handle(move |cell, event| {
+        if let Event::Unfocus = event {
+            cell.hide();
+        }
+        false
+    });
+
+    let cell_text = Rc::new(RefCell::new(String::new()));
+    {
+        let mut cell = cell.clone();
+        let mut cell_buf = cell_buf.clone();
+        let cell_text = Rc::clone(&cell_text);
+        cell_buf
+            .clone()
+            .add_modify_callback(move |pos, ins, del, _, _| {
+                if (ins > 0) || (del > 0) {
+                    if let Ok(cell_text) = cell_text.try_borrow_mut() {
+                        cell_buf.set_text(&cell_text);
+                        cell.set_insert_position(pos);
+                    }
+                }
+            });
+    }
+
+    {
+        let mut cell = cell.clone();
+        let table = table.clone();
+        table.clone().handle(move |_, event| {
+            if (event == Event::Push) || (event == Event::MouseWheel) {
+                cell.hide();
+            }
+            if is_table_nav_event() && app::event_clicks() {
+                if let TableContext::Cell = table.callback_context() {
+                    let row = table.callback_row();
+                    let col = table.callback_col();
+                    if let Some((x, y, w, h)) = table.find_cell(TableContext::Cell, row, col) {
+                        cell.resize(x, y, w, h);
+                        {
+                            let mut cell_text = cell_text.borrow_mut();
+                            *cell_text = table.cell_value(row, col);
+                            cell_buf.set_text(&cell_text);
+                            cell_buf.select(0, cell_text.len() as _);
+                        }
+                        cell.show();
+                        let _ = cell.take_focus();
+                    }
+                }
+            }
+            false
+        });
+    }
+
+    cell
 }

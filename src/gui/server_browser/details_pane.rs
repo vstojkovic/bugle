@@ -1,17 +1,20 @@
 use std::borrow::Cow;
 
 use fltk::prelude::*;
+use fltk::text::TextEditor;
 use fltk_table::{SmartTable, TableOpts};
 use nom::character::complete::{char, digit1};
 use nom::sequence::separated_pair;
 use nom::IResult;
 
+use crate::gui::make_readonly_cell_widget;
 use crate::servers::{Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name};
 
 pub(super) struct DetailsPane {
     table: SmartTable,
+    cell: TextEditor,
 }
 
 impl DetailsPane {
@@ -41,10 +44,13 @@ impl DetailsPane {
 
         table.end();
 
-        Self { table }
+        let cell = make_readonly_cell_widget(&table);
+
+        Self { table, cell }
     }
 
     pub fn populate(&self, server: Option<&Server>) {
+        self.cell.clone().hide();
         let mut table = self.table.clone();
         if let Some(server) = server {
             for (idx, (_, cell_value)) in SERVER_DETAILS_ROWS.iter().enumerate() {
