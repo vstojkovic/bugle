@@ -1,10 +1,10 @@
 use fltk::app;
 use fltk::button::{Button, RadioButton};
+use fltk::dialog;
 use fltk::enums::FrameType;
 use fltk::group::Group;
 use fltk::prelude::*;
 
-use super::not_implemented_callback;
 use super::prelude::LayoutExt;
 
 pub(super) struct MainMenu {
@@ -80,4 +80,8 @@ where
     button.set_down_frame(FrameType::PlasticThinDownBox);
     button.clear_visible_focus();
     button
+}
+
+fn not_implemented_callback(_: &mut impl WidgetExt) {
+    dialog::alert_default("This feature is not yet implemented in the current release.");
 }
