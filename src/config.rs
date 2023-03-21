@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
 
+use crate::env::current_exe_dir;
 use crate::servers::{Mode, Region, SortCriteria, SortKey, TypeFilter};
 
 #[derive(Debug, Default)]
@@ -59,13 +60,7 @@ pub struct IniConfigPersister {
 
 impl IniConfigPersister {
     pub fn for_current_exe() -> Result<Self> {
-        use std::io::{Error, ErrorKind};
-        let exe_path = std::env::current_exe()?;
-        let exe_dir = exe_path
-            .parent()
-            .ok_or_else(|| Error::new(ErrorKind::Other, "Malformed executable path"))?;
-        let config_path = exe_dir.join("bugle.ini");
-        Self::new(config_path)
+        Self::new(current_exe_dir()?.join("bugle.ini"))
     }
 
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {

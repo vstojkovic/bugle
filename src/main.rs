@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use std::collections::HashSet;
 use std::fs::File;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -14,8 +16,10 @@ use slog::{info, o, warn, Logger};
 use tokio::task::JoinHandle;
 
 mod config;
+mod env;
 mod game;
 mod gui;
+mod logger;
 mod net;
 mod servers;
 
@@ -24,6 +28,7 @@ use crate::gui::{ModManagerUpdate, SinglePlayerUpdate};
 
 use self::game::Game;
 use self::gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
+use self::logger::create_root_logger;
 use self::servers::{fetch_server_list, PingClient, PingRequest, Server};
 
 struct Launcher {
@@ -421,15 +426,6 @@ enum ServerLoaderState {
 struct ModMismatch {
     missing_mods: HashSet<ModRef>,
     added_mods: HashSet<ModRef>,
-}
-
-fn create_root_logger() -> Logger {
-    use slog::Drain;
-
-    let drain = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(drain).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    Logger::root(drain, o!())
 }
 
 const PROMPT_SP_MOD_MISMATCH: &str =
