@@ -308,7 +308,12 @@ impl GameLocation {
     fn collect_mods(&self) -> Result<Vec<ModInfo>> {
         // TODO: Log warnings for recoverable errors
 
-        let manifest = steamy_vdf::load(self.workshop_path.join("appworkshop_440900.acf"))?;
+        let manifest_path = self.workshop_path.join("appworkshop_440900.acf");
+        if !manifest_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let manifest = steamy_vdf::load(manifest_path)?;
         let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
 
         let mut path = self.workshop_path.join("content/440900");
