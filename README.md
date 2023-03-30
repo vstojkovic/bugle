@@ -16,6 +16,14 @@ settings. It ***shouldn't***, but it ***might***.
 For a list of known issues, scroll to the last section of this document. If you run into an issue
 that isn't there, feel free to open a GitHub issue about it, or contact me on Funcom Forums.
 
+## Installation
+
+Go to the v1.0.0-alpha release and download the `bugle-1.0.0-alpha.zip` file. Unpack it into a
+directory where you're allowed to write files. It's a good idea to put it in its own directory,
+because it will write a couple of files there (`bugle.ini` and `bugle.log`).
+
+There's no installer, you just run `bugle.exe`.
+
 ## Features
 
 In no particular order, the following are the features BUGLE brings to players who decide to try it:
