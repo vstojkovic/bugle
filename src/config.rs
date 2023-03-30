@@ -8,8 +8,18 @@ use crate::servers::{Mode, Region, SortCriteria, SortKey, TypeFilter};
 
 #[derive(Debug, Default)]
 pub struct Config {
+    pub log_level: LogLevel,
     pub use_battleye: BattlEyeUsage,
     pub server_browser: ServerBrowserConfig,
+}
+
+#[derive(Debug)]
+pub struct LogLevel(pub slog::FilterLevel);
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        Self(slog::FilterLevel::Info)
+    }
 }
 
 #[derive(Debug)]
@@ -78,22 +88,27 @@ impl IniConfigPersister {
 
 impl ConfigPersister for IniConfigPersister {
     fn load(&self) -> Result<Config> {
+        use std::str::FromStr;
+
         let ini = load_ini(&self.config_path)?;
-        let use_battleye = ini
-            .section(None::<String>)
-            .and_then(|section| {
-                section.get(KEY_USE_BATTLEYE).and_then(|value| {
-                    match value.trim().to_ascii_lowercase().as_str() {
-                        BATTLEYE_AUTO => Some(BattlEyeUsage::Auto),
-                        BATTLEYE_ALWAYS => Some(BattlEyeUsage::Always(true)),
-                        BATTLEYE_NEVER => Some(BattlEyeUsage::Always(false)),
-                        _ => None,
-                    }
-                })
+        let section = ini.section(None::<String>);
+        let log_level = section
+            .and_then(|section| section.get(KEY_LOG_LEVEL))
+            .and_then(|value| slog::FilterLevel::from_str(value.trim()).ok())
+            .map(|level| LogLevel(level))
+            .unwrap_or_default();
+        let use_battleye = section
+            .and_then(|section| section.get(KEY_USE_BATTLEYE))
+            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+                BATTLEYE_AUTO => Some(BattlEyeUsage::Auto),
+                BATTLEYE_ALWAYS => Some(BattlEyeUsage::Always(true)),
+                BATTLEYE_NEVER => Some(BattlEyeUsage::Always(false)),
+                _ => None,
             })
             .unwrap_or_default();
 
         Ok(Config {
+            log_level,
             use_battleye,
             server_browser: load_server_browser_config(&ini),
         })
@@ -101,14 +116,19 @@ impl ConfigPersister for IniConfigPersister {
 
     fn save(&self, config: &Config) -> Result<()> {
         let mut ini = Ini::new();
-        ini.with_general_section().set(
-            KEY_USE_BATTLEYE,
-            match config.use_battleye {
-                BattlEyeUsage::Auto => BATTLEYE_AUTO,
-                BattlEyeUsage::Always(true) => BATTLEYE_ALWAYS,
-                BattlEyeUsage::Always(false) => BATTLEYE_NEVER,
-            },
-        );
+        ini.with_general_section()
+            .set(
+                KEY_USE_BATTLEYE,
+                match config.use_battleye {
+                    BattlEyeUsage::Auto => BATTLEYE_AUTO,
+                    BattlEyeUsage::Always(true) => BATTLEYE_ALWAYS,
+                    BattlEyeUsage::Always(false) => BATTLEYE_NEVER,
+                },
+            )
+            .set(
+                KEY_LOG_LEVEL,
+                config.log_level.0.as_str().to_ascii_lowercase(),
+            );
         save_server_browser_config(&mut ini, &config.server_browser);
         save_ini(&ini, &self.config_path)
     }
@@ -238,6 +258,7 @@ fn sort_criteria_to_string(criteria: &SortCriteria) -> String {
 
 const SECTION_SERVER_BROWSER: &str = "ServerBrowser";
 
+const KEY_LOG_LEVEL: &str = "LogLevel";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
 const KEY_TYPE_FILTER: &str = "Type";
 const KEY_MODE: &str = "Mode";

@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 use std::fs::File;
+use std::str::FromStr;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
@@ -12,7 +14,7 @@ use game::{list_mod_controllers, ModRef};
 use gui::{prompt_confirm, ModManagerAction, SinglePlayerAction};
 use regex::Regex;
 use servers::DeserializationContext;
-use slog::{info, o, warn, Logger};
+use slog::{info, o, warn, FilterLevel, Logger};
 use tokio::task::JoinHandle;
 
 mod config;
@@ -47,12 +49,9 @@ impl Launcher {
         logger: Logger,
         app: App,
         game: Game,
+        config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
     ) -> Arc<Self> {
-        let config = config_persister.load().unwrap_or_else(|err| {
-            warn!(logger, "Error while loading the configuration"; "error" => err.to_string());
-            Config::default()
-        });
         let (tx, rx) = app::channel();
         Arc::new(Self {
             logger,
@@ -436,9 +435,44 @@ const DLG_FILTER_MODLIST: &str = "Modlist Files\t*.modlist";
 
 #[tokio::main]
 async fn main() {
-    let app = App::default();
+    let mut args = pico_args::Arguments::from_env();
+    let log_level_override = args
+        .opt_value_from_fn(["-l", "--log-level"], |s| {
+            FilterLevel::from_str(s).map_err(|_| "")
+        })
+        .ok()
+        .unwrap_or_default();
+    let log_level = Arc::new(AtomicUsize::new(
+        log_level_override.unwrap_or(FilterLevel::Info).as_usize(),
+    ));
+    let root_logger = create_root_logger(&log_level);
 
-    let root_logger = create_root_logger();
+    let config_persister: Box<dyn ConfigPersister + Send + Sync> =
+        match IniConfigPersister::for_current_exe() {
+            Ok(persister) => Box::new(persister),
+            Err(err) => {
+                warn!(
+                    root_logger,
+                    "Error trying to load or create the config file. \
+                     Proceeding with transient config.";
+                    "error" => err.to_string()
+                );
+                Box::new(TransientConfig)
+            }
+        };
+    let config = config_persister.load().unwrap_or_else(|err| {
+        warn!(root_logger, "Error while loading the configuration"; "error" => err.to_string());
+        Config::default()
+    });
+
+    if log_level_override.is_none() {
+        log_level.store(
+            config.log_level.0.as_usize(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
+    let app = App::default();
 
     let game_location = match Game::locate() {
         Some(root) => root,
@@ -461,21 +495,7 @@ async fn main() {
         }
     };
 
-    let config_persister: Box<dyn ConfigPersister + Send + Sync> =
-        match IniConfigPersister::for_current_exe() {
-            Ok(persister) => Box::new(persister),
-            Err(err) => {
-                warn!(
-                    root_logger,
-                    "Error trying to load or create the config file. \
-                     Proceeding with transient config.";
-                    "error" => err.to_string()
-                );
-                Box::new(TransientConfig)
-            }
-        };
-
-    let launcher = Launcher::new(root_logger.clone(), app, game, config_persister);
+    let launcher = Launcher::new(root_logger.clone(), app, game, config, config_persister);
     launcher.run();
 
     info!(root_logger, "Shutting down launcher");
