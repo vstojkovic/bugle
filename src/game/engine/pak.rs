@@ -154,6 +154,10 @@ impl Archive {
         })
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &ArchiveEntry> {
         self.index.iter()
     }

@@ -10,7 +10,7 @@ use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::Quota;
 use linked_hash_map::{Entry, LinkedHashMap};
-use slog::{info, warn, Logger};
+use slog::{debug, info, warn, Logger};
 use tokio::net::UdpSocket;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
@@ -124,12 +124,21 @@ impl ClientImpl {
     }
 
     pub fn send<R: IntoIterator<Item = PingRequest>>(self: &Arc<Self>, requests: R) {
+        let requests = requests.into_iter();
+        debug!(self.logger, "Queuing ping requests to send"; "count" => requests.size_hint().1);
+
         let mut unsent = self.unsent.lock().unwrap();
         unsent.requests.extend(requests);
         self.ensure_sender(unsent);
     }
 
     pub fn priority_send(self: &Arc<Self>, request: PingRequest) {
+        debug!(
+            self.logger,
+            "Queuing priority ping request";
+            "request" => ?request,
+        );
+
         let mut unsent = self.unsent.lock().unwrap();
         unsent.requests.push_front(request);
         self.ensure_sender(unsent);
@@ -230,8 +239,8 @@ impl Sender {
                     } else {
                         warn!(
                             self.client.logger,
-                            "Discarding ping request for duplicate address {addr}",
-                            addr = next.addr
+                            "Discarding ping request for duplicate address";
+                            "addr" => next.addr
                         );
                     }
                     continue;
@@ -335,6 +344,8 @@ impl<F: Fn(PingResponse) + Send> Receiver<F> {
                 entry.remove();
             }
         }
-        self.client.send(retries);
+        if !retries.is_empty() {
+            self.client.send(retries);
+        }
     }
 }

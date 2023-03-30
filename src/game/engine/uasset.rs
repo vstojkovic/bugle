@@ -340,6 +340,10 @@ impl<'a, 'r> Package<'a, 'r> {
         })
     }
 
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
     pub fn open_export<'p>(&'p self, idx: usize) -> Result<ExportReader<'p, 'a, 'r>> {
         let export = &self.summary.exports[idx];
         let inner = self.pak.open_entry(&format!("{}.uexp", self.path))?;

@@ -474,7 +474,7 @@ async fn main() {
 
     let app = App::default();
 
-    let game_location = match Game::locate() {
+    let game_location = match Game::locate(&root_logger) {
         Some(root) => root,
         None => {
             dialog::alert_default(

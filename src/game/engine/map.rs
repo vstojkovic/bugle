@@ -8,10 +8,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use binread::BinReaderExt;
+use slog::{trace, Logger};
 
 use super::name::{Name, NameRegistry};
 use super::pak::Archive;
-use super::uasset::{ExportReader, ImportRef, Package, ResourceIndex, ResourceRef};
+use super::uasset::{
+    Export, ExportReader, ExportRef, ImportRef, Package, ResourceIndex, ResourceRef,
+};
 use super::UString;
 
 #[derive(Debug)]
@@ -96,12 +99,13 @@ struct InterredNames {
 }
 
 pub struct MapExtractor {
+    logger: Logger,
     name_registry: NameRegistry,
     names: InterredNames,
 }
 
 impl MapExtractor {
-    pub fn new() -> Self {
+    pub fn new(logger: Logger) -> Self {
         let mut name_registry = NameRegistry::new();
 
         let names = InterredNames {
@@ -119,14 +123,17 @@ impl MapExtractor {
         };
 
         Self {
+            logger,
             name_registry,
             names,
         }
     }
 
     pub fn extract_mod_maps<P: AsRef<Path>>(&self, pak_path: P, maps: &mut Maps) -> Result<()> {
+        trace!(self.logger, "Extracting maps from mod"; "pak_path" => pak_path.as_ref().to_str());
+
         let pak = Archive::new(pak_path)?;
-        let preload_pkgs = gather_preload_packages(&pak);
+        let preload_pkgs = gather_preload_packages(&self.logger, &pak);
 
         let mut map_data_candidates = Vec::new();
         for path in preload_pkgs {
@@ -156,6 +163,8 @@ impl MapExtractor {
     }
 
     fn gather_map_data_candidates(&self, preload_pkg: &Package, map_data_pkgs: &mut Vec<String>) {
+        trace!(self.logger, "Gathering map data candidates"; "preload_pkg" => preload_pkg.path());
+
         if !preload_pkg
             .iter_imports()
             .any(|imp| self.is_map_data_table_import(imp))
@@ -182,6 +191,8 @@ impl MapExtractor {
     }
 
     fn gather_pkg_maps(&self, pkg: &Package, maps: &mut Maps) -> Result<()> {
+        trace!(self.logger, "Gathering package maps"; "pkg" => pkg.path());
+
         let mut data_table_imp = None;
         let mut map_data_row_imp = None;
 
@@ -215,8 +226,7 @@ impl MapExtractor {
                 continue;
             }
 
-            let reader = pkg.open_export(exp.index())?;
-            self.gather_export_maps(pkg, reader, map_data_row_imp, maps)?;
+            self.gather_export_maps(pkg, exp, map_data_row_imp, maps)?;
         }
 
         Ok(())
@@ -225,10 +235,16 @@ impl MapExtractor {
     fn gather_export_maps(
         &self,
         pkg: &Package,
-        mut exp: ExportReader,
+        exp: ExportRef,
         map_data_row_imp: ResourceIndex,
         maps: &mut Maps,
     ) -> Result<()> {
+        {
+            let exp: &Export = &exp;
+            trace!(self.logger, "Gathering maps from export"; "export" => ?exp);
+        }
+
+        let mut exp = pkg.open_export(exp.index())?;
         let mut found_row_struct = false;
         while let Some(prop) = exp.read_property_tag()? {
             if !found_row_struct && *prop.name == self.names.row_struct {
@@ -251,6 +267,7 @@ impl MapExtractor {
         }
 
         let num_rows: u32 = exp.read_le()?;
+        trace!(self.logger, "Extracting map info from table"; "num_rows" => num_rows);
         for i in (0..num_rows).rev() {
             self.extract_row_map_info(&mut exp, pkg, i == 0, maps)?;
         }
@@ -265,6 +282,8 @@ impl MapExtractor {
         last_row: bool,
         maps: &mut Maps,
     ) -> Result<()> {
+        trace!(self.logger, "Extracting map info from table row");
+
         // skip the row name
         exp.seek(SeekFrom::Current(8))?;
 
@@ -333,7 +352,8 @@ impl MapExtractor {
     }
 }
 
-fn gather_preload_packages(pak: &Archive) -> Vec<String> {
+fn gather_preload_packages(logger: &Logger, pak: &Archive) -> Vec<String> {
+    trace!(logger, "Gathering preload packages"; "pak_path" => pak.path().to_str());
     pak.iter()
         .filter(|entry| !entry.encrypted && entry.path.contains("/PreLoad/"))
         .filter_map(|entry| entry.path.strip_suffix(".uasset").map(str::to_owned))

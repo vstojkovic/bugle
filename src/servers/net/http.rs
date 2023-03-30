@@ -3,7 +3,7 @@ use futures::future::try_join_all;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Response, Result};
 use serde::Deserialize;
-use slog::{info, warn, Logger};
+use slog::{debug, info, warn, Logger};
 
 use crate::servers::{DeserializationContext, Server};
 
@@ -13,7 +13,7 @@ pub async fn fetch_server_list<'dc>(
     logger: Logger,
     ctx: DeserializationContext<'dc>,
 ) -> anyhow::Result<Vec<Server>> {
-    info!(logger, "Fetching server bucket list");
+    debug!(logger, "Fetching server list");
     let client = make_client()?;
     let bucket_list = client
         .get(format!(
@@ -25,10 +25,10 @@ pub async fn fetch_server_list<'dc>(
         .json::<BucketList>()
         .await?;
 
-    info!(
+    debug!(
         logger,
-        "Fetching servers from {num_buckets} buckets",
-        num_buckets = bucket_list.buckets.len()
+        "Fetching servers from buckets";
+        "num_buckets" => bucket_list.buckets.len()
     );
     let responses = try_join_all(bucket_list.buckets.iter().map(|bucket| {
         client
@@ -36,6 +36,8 @@ pub async fn fetch_server_list<'dc>(
             .send()
     }))
     .await?;
+
+    debug!(logger, "Parsing servers from responses");
     let servers = try_join_all(
         responses
             .into_iter()
@@ -48,8 +50,8 @@ pub async fn fetch_server_list<'dc>(
 
     info!(
         logger,
-        "Fetched {num_servers} servers",
-        num_servers = servers.len()
+        "Fetched server list";
+        "num_servers" => servers.len()
     );
 
     Ok(servers)

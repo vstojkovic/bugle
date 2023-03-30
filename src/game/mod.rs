@@ -9,7 +9,7 @@ use anyhow::{anyhow, Result};
 use ini::Properties;
 use lazy_static::lazy_static;
 use regex::Regex;
-use slog::{info, warn, Logger};
+use slog::{debug, info, warn, Logger};
 use steamlocate::SteamDir;
 
 mod engine;
@@ -35,11 +35,13 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn locate() -> Option<GameLocation> {
+    pub fn locate(logger: &Logger) -> Option<GameLocation> {
+        debug!(logger, "Locating the game path");
         let mut steam = SteamDir::locate()?;
         let app = steam.app(&440900)?;
         let game_path = app.path.clone();
 
+        debug!(logger, "Determining the workshop path");
         let workshop_path = steam
             .libraryfolders()
             .paths
@@ -59,6 +61,7 @@ impl Game {
 
         let cooked_ini_path = location.game_path.join("ConanSandbox/CookedIniVersion.txt");
 
+        debug!(logger, "Reading build ID override");
         let cooked_ini = config::load_ini(cooked_ini_path)?;
         let build_id = cooked_ini
             .section(Some("UsedSettings"))
@@ -71,22 +74,32 @@ impl Game {
             .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
             .and_then(|s| Ok(s.parse::<u32>()?))?;
 
+        debug!(logger, "Enumerating installed mods");
         let mod_list_path = location.game_path.join("ConanSandbox/Mods/modlist.txt");
         let mut installed_mods = location.collect_mods()?;
         installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
 
         let mut maps = Maps::new();
-        let map_extractor = MapExtractor::new();
+        let map_extractor = MapExtractor::new(logger.clone());
 
-        // TODO: Improved error handling
+        debug!(logger, "Enumerating base game maps");
         map_extractor.extract_base_game_maps(
             &location
                 .game_path
                 .join("ConanSandbox/Content/Paks/Base.pak"),
             &mut maps,
         )?;
+
+        debug!(logger, "Enumerating mod-provided maps");
         for mod_info in installed_mods.iter() {
-            map_extractor.extract_mod_maps(&*mod_info.pak_path, &mut maps)?;
+            if let Err(err) = map_extractor.extract_mod_maps(&*mod_info.pak_path, &mut maps) {
+                warn!(
+                    logger,
+                    "Failed to enumerate maps in mod";
+                    "mod_path" => mod_info.pak_path.display(),
+                    "error" => %err,
+                );
+            }
         }
 
         info!(
@@ -140,6 +153,8 @@ impl Game {
     }
 
     pub fn load_favorites(&self) -> Result<FavoriteServers> {
+        debug!(self.logger, "Loading favorite servers");
+
         let game_ini = config::load_ini(&self.game_ini_path)?;
         let mut favorites = FavoriteServers::new();
 
@@ -161,6 +176,8 @@ impl Game {
         &self,
         favorites: impl IntoIterator<Item = FavoriteServer>,
     ) -> Result<()> {
+        debug!(self.logger, "Saving favorite servers");
+
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         let section = game_ini
             .entry(Some("FavoriteServers".to_string()))
@@ -169,12 +186,12 @@ impl Game {
         for favorite in favorites {
             section.append("ServersList", favorite.to_string());
         }
-        info!(self.logger, "Saving favorites");
         config::save_ini(&game_ini, &self.game_ini_path)
     }
 
     pub fn load_mod_list(&self) -> Result<Vec<ModRef>> {
         if !self.mod_list_path.exists() {
+            debug!(self.logger, "No modlist file"; "path" => self.mod_list_path.display());
             return Ok(Vec::new());
         }
 
@@ -182,10 +199,11 @@ impl Game {
     }
 
     pub fn load_mod_list_from(&self, path: &Path) -> Result<Vec<ModRef>> {
+        debug!(self.logger, "Loading modlist"; "path" => path.display());
+
         let file = File::open(path)?;
         let mut mod_list = Vec::new();
         for line in BufReader::new(file).lines() {
-            // TODO: Logging?
             if let Ok(mod_path) = line {
                 if !mod_path.starts_with('#') {
                     let mod_path: PathBuf = mod_path.trim().into();
@@ -208,6 +226,8 @@ impl Game {
     ) -> Result<()> {
         use std::io::Write;
 
+        debug!(self.logger, "Saving modlist"; "path" => path.display());
+
         let mut file = File::create(path)?;
         for mod_ref in mod_list {
             let pak_path = match mod_ref {
@@ -224,6 +244,7 @@ impl Game {
     pub fn load_saved_games(&self) -> Result<Vec<GameDB>> {
         let mut saves = Vec::new();
 
+        debug!(self.logger, "Enumerating saved games"; "path" => self.save_path.display());
         for entry in std::fs::read_dir(&self.save_path)? {
             let entry = if let Ok(entry) = entry {
                 entry
@@ -242,9 +263,9 @@ impl Game {
                 Ok(game_db) => saves.push(game_db),
                 Err(err) => warn!(
                     self.logger,
-                    "Error parsing the saved game {db_file}",
-                    db_file = db_path.file_name().unwrap_or_default().to_string_lossy().as_ref();
-                    "error" => err.to_string()
+                    "Error parsing the saved game";
+                    "db_file" => db_path.file_name().unwrap_or_default().to_str(),
+                    "error" => err.to_string(),
                 ),
             }
         }
