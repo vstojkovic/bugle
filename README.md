@@ -1,4 +1,4 @@
-# BUGLE: Butt-Ugly Launcher for Exiles
+# BUGLE: Butt-Ugly Game Launcher for Exiles
 
 BUGLE is an unofficial, third-party game launcher for Funcom's videogame Conan Exiles. It aims to
 bring certain QOL features to players, at the expense of good looks and smooth user interface.
