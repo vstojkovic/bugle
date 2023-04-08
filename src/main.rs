@@ -1,7 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::collections::HashSet;
-use std::fs::File;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -13,9 +13,8 @@ use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::{list_mod_controllers, ModRef};
 use gui::{prompt_confirm, ModManagerAction, SinglePlayerAction};
 use regex::Regex;
-use servers::DeserializationContext;
-use slog::{info, o, warn, FilterLevel, Logger};
-use tokio::task::JoinHandle;
+use slog::{info, warn, FilterLevel, Logger};
+use workers::{SavedGamesWorker, ServerLoaderWorker};
 
 mod config;
 mod env;
@@ -24,24 +23,25 @@ mod gui;
 mod logger;
 mod net;
 mod servers;
+mod workers;
 
 use crate::game::Mods;
-use crate::gui::{ModManagerUpdate, SinglePlayerUpdate};
+use crate::gui::ModManagerUpdate;
 
 use self::game::Game;
-use self::gui::{Action, LauncherWindow, ServerBrowserAction, ServerBrowserUpdate, Update};
+use self::gui::{Action, LauncherWindow, ServerBrowserAction, Update};
 use self::logger::create_root_logger;
-use self::servers::{fetch_server_list, PingClient, PingRequest, Server};
 
 struct Launcher {
     logger: Logger,
     app: App,
-    game: Game,
+    game: Arc<Game>,
     config: Mutex<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
-    server_loader: Mutex<ServerLoader>,
+    server_loader_worker: Arc<ServerLoaderWorker>,
+    saved_games_worker: Arc<SavedGamesWorker>,
 }
 
 impl Launcher {
@@ -51,9 +51,16 @@ impl Launcher {
         game: Game,
         config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
-    ) -> Arc<Self> {
+    ) -> Rc<Self> {
+        let game = Arc::new(game);
         let (tx, rx) = app::channel();
-        Arc::new(Self {
+
+        let server_loader_worker =
+            ServerLoaderWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
+
+        let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), tx.clone());
+
+        Rc::new(Self {
             logger,
             app,
             game,
@@ -61,13 +68,14 @@ impl Launcher {
             config_persister,
             tx,
             rx,
-            server_loader: Mutex::new(Default::default()),
+            server_loader_worker,
+            saved_games_worker,
         })
     }
 
-    fn run(self: Arc<Self>) {
+    fn run(self: &Rc<Self>) {
         let mut main_win = LauncherWindow::new(&self.game, &*self.config(), {
-            let this = Arc::clone(&self);
+            let this = Rc::clone(self);
             move |action| this.on_action(action)
         });
         main_win.show();
@@ -90,7 +98,7 @@ impl Launcher {
         }
     }
 
-    fn on_action(self: &Arc<Self>, action: Action) -> Result<()> {
+    fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
         match action {
             Action::Launch => {
                 let use_battleye = if let BattlEyeUsage::Always(true) = self.config().use_battleye {
@@ -116,7 +124,7 @@ impl Launcher {
                 self.update_config(|config| config.use_battleye = use_battleye)
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
-                Arc::clone(self).on_load_servers()
+                self.server_loader_worker.load_servers()
             }
             Action::ServerBrowser(ServerBrowserAction::JoinServer {
                 addr,
@@ -131,7 +139,7 @@ impl Launcher {
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::PingServer(request)) => {
-                self.on_ping_server(request)
+                self.server_loader_worker.ping_server(request)
             }
             Action::ServerBrowser(ServerBrowserAction::UpdateFavorites(favorites)) => {
                 self.game.save_favorites(favorites)
@@ -140,12 +148,10 @@ impl Launcher {
                 self.update_config(|config| config.server_browser = sb_cfg)
             }
             Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
-                Arc::clone(self).on_list_saved_games()
+                Arc::clone(&self.saved_games_worker).list_games()
             }
             Action::SinglePlayer(SinglePlayerAction::NewSavedGame { map_id }) => {
-                {
-                    let _ = File::create(self.game.in_progress_game_path(map_id))?;
-                }
+                self.saved_games_worker.clear_progress(map_id)?;
                 self.launch_single_player(map_id)
             }
             Action::SinglePlayer(SinglePlayerAction::ContinueSavedGame { map_id }) => {
@@ -154,27 +160,11 @@ impl Launcher {
             Action::SinglePlayer(SinglePlayerAction::LoadSavedGame {
                 map_id,
                 backup_name,
-            }) => {
-                let src_db_path = self.game.save_path().join(backup_name);
-                let dest_db_path = self
-                    .game
-                    .save_path()
-                    .join(&self.game.maps()[map_id].db_name);
-                let _ = std::fs::copy(src_db_path, dest_db_path)?;
-                Ok(())
-            }
+            }) => self.saved_games_worker.restore_backup(map_id, backup_name),
             Action::SinglePlayer(SinglePlayerAction::SaveGame {
                 map_id,
                 backup_name,
-            }) => {
-                let src_db_path = self
-                    .game
-                    .save_path()
-                    .join(&self.game.maps()[map_id].db_name);
-                let dest_db_path = self.game.save_path().join(backup_name);
-                let _ = std::fs::copy(src_db_path, dest_db_path)?;
-                Ok(())
-            }
+            }) => self.saved_games_worker.create_backup(map_id, backup_name),
             Action::SinglePlayer(SinglePlayerAction::DeleteSavedGame { backup_name }) => {
                 std::fs::remove_file(self.game.save_path().join(backup_name))?;
                 Ok(())
@@ -226,99 +216,6 @@ impl Launcher {
                     .save_mod_list_to(&mod_list_path, active_mods.iter())
             }
         }
-    }
-
-    fn on_load_servers(self: Arc<Self>) -> Result<()> {
-        let this = Arc::clone(&self);
-        let mut server_loader = this.server_loader.lock().unwrap();
-        if let ServerLoaderState::Fetching(_) = &server_loader.state {
-            return Ok(());
-        }
-        let fetch_generation = server_loader.generation.wrapping_add(1);
-        server_loader.generation = fetch_generation;
-        server_loader.state =
-            ServerLoaderState::Fetching(Arc::clone(&self).spawn_fetcher(fetch_generation));
-        Ok(())
-    }
-
-    fn on_ping_server(&self, request: PingRequest) -> Result<()> {
-        if let ServerLoaderState::Pinging(client) = &self.server_loader.lock().unwrap().state {
-            client.priority_send(request);
-        }
-        Ok(())
-    }
-
-    fn on_list_saved_games(self: Arc<Self>) -> Result<()> {
-        tokio::spawn(async move {
-            let games = self.game.load_saved_games();
-            self.tx
-                .send(Update::SinglePlayer(SinglePlayerUpdate::PopulateList(
-                    games,
-                )));
-        });
-        Ok(())
-    }
-
-    fn spawn_fetcher(self: Arc<Self>, generation: u32) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            let servers = self.fetch_servers().await;
-
-            let mut server_loader = self.server_loader.lock().unwrap();
-            if server_loader.generation != generation {
-                return;
-            }
-
-            let ping_generation = generation.wrapping_add(1);
-            server_loader.generation = ping_generation;
-
-            let servers_and_state = servers.and_then(|servers| {
-                let ping_client = Arc::clone(&self).make_ping_client(ping_generation)?;
-                ping_client.send(
-                    servers
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, server)| PingRequest::for_server(idx, server)),
-                );
-                Ok((servers, ServerLoaderState::Pinging(ping_client)))
-            });
-            let (servers, state) = match servers_and_state {
-                Ok((servers, state)) => (Ok(servers), state),
-                Err(err) => (Err(err), ServerLoaderState::Inactive),
-            };
-            server_loader.state = state;
-
-            let update = Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(servers));
-            self.tx.send(update);
-        })
-    }
-
-    fn make_ping_client(self: Arc<Self>, generation: u32) -> Result<PingClient> {
-        let ping_logger = self.logger.new(o!("ping_generation" => generation));
-        Ok(PingClient::new(
-            ping_logger,
-            self.game.build_id(),
-            move |response| {
-                if self.server_loader.lock().unwrap().generation != generation {
-                    return;
-                }
-                self.tx
-                    .send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
-                        response,
-                    )));
-            },
-        )?)
-    }
-
-    async fn fetch_servers(&self) -> Result<Vec<Server>> {
-        let favorites = self.game.load_favorites()?;
-        Ok(fetch_server_list(
-            self.logger.clone(),
-            DeserializationContext {
-                build_id: self.game.build_id(),
-                favorites: &&favorites,
-            },
-        )
-        .await?)
     }
 
     fn launch_single_player(&self, map_id: usize) -> Result<()> {
@@ -406,20 +303,6 @@ impl Launcher {
         }
         Ok(())
     }
-}
-
-#[derive(Default)]
-struct ServerLoader {
-    generation: u32,
-    state: ServerLoaderState,
-}
-
-#[derive(Default)]
-enum ServerLoaderState {
-    #[default]
-    Inactive,
-    Fetching(JoinHandle<()>),
-    Pinging(PingClient),
 }
 
 struct ModMismatch {
