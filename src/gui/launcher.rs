@@ -21,6 +21,7 @@ use super::{Action, CleanupFn, Handler, Update};
 
 pub struct LauncherWindow {
     window: Window,
+    on_action: Rc<RefCell<Box<dyn Handler<Action>>>>,
     cleanup_fn: Rc<RefCell<CleanupFn>>,
     home: Rc<Home>,
     server_browser: Rc<ServerBrowser>,
@@ -29,8 +30,11 @@ pub struct LauncherWindow {
 }
 
 impl LauncherWindow {
-    pub fn new(game: &Game, config: &Config, on_action: impl Handler<Action> + 'static) -> Self {
-        let on_action: Rc<dyn Handler<Action>> = Rc::new(on_action);
+    pub fn new(game: &Game, config: &Config) -> Self {
+        let on_action: Rc<RefCell<Box<dyn Handler<Action>>>> =
+            Rc::new(RefCell::new(Box::new(|_| {
+                panic!("Action handler not yet assigned");
+            })));
 
         let mut window = Window::default().with_size(1280, 760);
         window.set_label("BUGLE");
@@ -55,7 +59,7 @@ impl LauncherWindow {
 
         let home = {
             let on_action = Rc::clone(&on_action);
-            Home::new(game, config, move |action| on_action(action))
+            Home::new(game, config, move |action| on_action.borrow()(action))
         };
 
         let server_browser = {
@@ -63,21 +67,21 @@ impl LauncherWindow {
             ServerBrowser::new(
                 Arc::clone(game.maps()),
                 &config.server_browser,
-                move |browser_action| on_action(Action::ServerBrowser(browser_action)),
+                move |browser_action| on_action.borrow()(Action::ServerBrowser(browser_action)),
             )
         };
 
         let single_player = {
             let on_action = Rc::clone(&on_action);
             SinglePlayer::new(Arc::clone(game.maps()), move |sp_action| {
-                on_action(Action::SinglePlayer(sp_action))
+                on_action.borrow()(Action::SinglePlayer(sp_action))
             })
         };
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
             ModManager::new(Arc::clone(game.installed_mods()), move |mod_mgr_action| {
-                on_action(Action::ModManager(mod_mgr_action))
+                on_action.borrow()(Action::ModManager(mod_mgr_action))
             })
         };
 
@@ -121,6 +125,7 @@ impl LauncherWindow {
 
         Self {
             window,
+            on_action,
             cleanup_fn,
             home,
             server_browser,
@@ -129,12 +134,16 @@ impl LauncherWindow {
         }
     }
 
-    pub fn show(&mut self) {
-        switch_content(&self.cleanup_fn, || self.home.show());
-        self.window.show();
+    pub fn set_on_action(&self, on_action: impl Handler<Action> + 'static) {
+        *self.on_action.borrow_mut() = Box::new(on_action);
     }
 
-    pub fn handle_update(&mut self, update: Update) {
+    pub fn show(&self) {
+        switch_content(&self.cleanup_fn, || self.home.show());
+        self.window.clone().show();
+    }
+
+    pub fn handle_update(&self, update: Update) {
         match update {
             Update::ServerBrowser(update) => self.server_browser.handle_update(update),
             Update::SinglePlayer(update) => self.single_player.handle_update(update),

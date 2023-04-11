@@ -1,10 +1,11 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+use std::cell::{Ref, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use anyhow::Result;
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
@@ -36,10 +37,11 @@ struct Launcher {
     logger: Logger,
     app: App,
     game: Arc<Game>,
-    config: Mutex<Config>,
+    config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
+    main_window: LauncherWindow,
     server_loader_worker: Arc<ServerLoaderWorker>,
     saved_games_worker: Arc<SavedGamesWorker>,
 }
@@ -60,41 +62,51 @@ impl Launcher {
 
         let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), tx.clone());
 
-        Rc::new(Self {
+        let main_window = LauncherWindow::new(&*game, &config);
+
+        let launcher = Rc::new(Self {
             logger,
             app,
             game,
-            config: Mutex::new(config),
+            config: RefCell::new(config),
             config_persister,
             tx,
             rx,
+            main_window,
             server_loader_worker,
             saved_games_worker,
-        })
-    }
+        });
 
-    fn run(self: &Rc<Self>) {
-        let mut main_win = LauncherWindow::new(&self.game, &*self.config(), {
-            let this = Rc::clone(self);
+        launcher.main_window.set_on_action({
+            let this = Rc::clone(&launcher);
             move |action| this.on_action(action)
         });
-        main_win.show();
+
+        launcher
+    }
+
+    fn run(&self) {
+        self.main_window.show();
 
         while self.app.wait() {
-            while let Some(mut update) = self.rx.recv() {
-                while let Some(next) = self.rx.recv() {
-                    update = match update.try_consolidate(next) {
-                        Ok(consolidated) => consolidated,
-                        Err((update, next)) => {
-                            main_win.handle_update(update);
-                            app::check();
-                            next
-                        }
-                    };
-                }
-                main_win.handle_update(update);
-                app::check();
+            self.run_loop_iteration();
+        }
+    }
+
+    fn run_loop_iteration(&self) {
+        while let Some(mut update) = self.rx.recv() {
+            while let Some(next) = self.rx.recv() {
+                update = match update.try_consolidate(next) {
+                    Ok(consolidated) => consolidated,
+                    Err((update, next)) => {
+                        self.main_window.handle_update(update);
+                        app::check();
+                        next
+                    }
+                };
             }
+            self.main_window.handle_update(update);
+            app::check();
         }
     }
 
@@ -291,12 +303,12 @@ impl Launcher {
         }
     }
 
-    fn config(&self) -> MutexGuard<Config> {
-        self.config.lock().unwrap()
+    fn config(&self) -> Ref<Config> {
+        self.config.borrow()
     }
 
     fn update_config(&self, mutator: impl FnOnce(&mut Config)) -> Result<()> {
-        let mut config = self.config();
+        let mut config = self.config.borrow_mut();
         mutator(&mut config);
         if let Err(err) = self.config_persister.save(&config) {
             warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
