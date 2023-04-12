@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Command;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -13,6 +13,7 @@ use slog::{debug, info, warn, Logger};
 use steamlocate::SteamDir;
 
 mod engine;
+mod launch;
 mod mod_info;
 
 use crate::config;
@@ -21,6 +22,7 @@ use crate::servers::{FavoriteServer, FavoriteServers};
 pub use self::engine::db::{list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::{MapInfo, Maps};
+pub use self::launch::{Launch, LaunchState};
 pub use self::mod_info::{ModInfo, ModRef, Mods};
 
 pub struct Game {
@@ -273,9 +275,8 @@ impl Game {
         Ok(saves)
     }
 
-    pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Child> {
-        let mut exe_path = self.root.clone();
-        exe_path.extend(["ConanSandbox", "Binaries", "Win64"]);
+    pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Launch> {
+        let mut exe_path = self.root.join("ConanSandbox/Binaries/Win64");
         exe_path.push(if enable_battleye { "ConanSandbox_BE.exe" } else { "ConanSandbox.exe" });
 
         let mut cmd = Command::new(exe_path);
@@ -285,15 +286,14 @@ impl Game {
         }
 
         info!(self.logger, "Launching Conan Exiles"; "command" => format!("{:?}", cmd));
-
-        Ok(cmd.spawn()?)
+        Launch::new(&self.logger, cmd)
     }
 
-    pub fn continue_session(&self, enable_battleye: bool) -> Result<Child> {
+    pub fn continue_session(&self, enable_battleye: bool) -> Result<Launch> {
         self.launch(enable_battleye, &["-continuesession"])
     }
 
-    pub fn join_server(&self, addr: SocketAddr, enable_battleye: bool) -> Result<Child> {
+    pub fn join_server(&self, addr: SocketAddr, enable_battleye: bool) -> Result<Launch> {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         game_ini
             .with_section(Some("SavedServers"))
@@ -306,7 +306,7 @@ impl Game {
         self.continue_session(enable_battleye)
     }
 
-    pub fn launch_single_player(&self, map_id: usize, enable_battleye: bool) -> Result<Child> {
+    pub fn launch_single_player(&self, map_id: usize, enable_battleye: bool) -> Result<Launch> {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         let map = &self.maps[map_id];
         game_ini

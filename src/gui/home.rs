@@ -18,10 +18,9 @@ use crate::game::Game;
 
 use super::prelude::*;
 use super::{
-    button_row_height, make_readonly_cell_widget, widget_auto_height, widget_auto_width,
-    widget_col_width,
+    alert_error, button_row_height, make_readonly_cell_widget, widget_auto_height,
+    widget_auto_width, widget_col_width, Action, CleanupFn, Handler,
 };
-use super::{Action, CleanupFn, Handler};
 
 pub struct Home {
     root: Group,
@@ -58,7 +57,6 @@ impl Home {
             .with_size_flex(0, btm_welcome_height)
             .below_of(&mid_welcome_line, 0);
 
-        // let info_pane = Browser::default_fill();
         let info_pane = SmartTable::default_fill().with_opts(TableOpts {
             rows: 4,
             cols: 1,
@@ -149,11 +147,19 @@ impl Home {
 
         launch_button.set_callback({
             let on_action = Rc::clone(&on_action);
-            move |_| on_action(Action::Launch).unwrap()
+            move |_| {
+                if let Err(err) = on_action(Action::Launch) {
+                    alert_error(ERR_LAUNCHING_GAME, &err);
+                }
+            }
         });
         continue_button.set_callback({
             let on_action = Rc::clone(&on_action);
-            move |_| on_action(Action::Continue).unwrap()
+            move |_| {
+                if let Err(err) = on_action(Action::Continue) {
+                    alert_error(ERR_LAUNCHING_GAME, &err);
+                }
+            }
         });
 
         root.end();
@@ -171,6 +177,8 @@ impl Home {
         })
     }
 }
+
+const ERR_LAUNCHING_GAME: &str = "Error while trying to launch the game.";
 
 fn install_crom_font() -> Font {
     try_install_crom_font().unwrap_or(Font::TimesBold)

@@ -1,6 +1,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -11,10 +11,10 @@ use anyhow::Result;
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
-use game::{list_mod_controllers, ModRef};
-use gui::{prompt_confirm, ModManagerAction, SinglePlayerAction};
+use game::{list_mod_controllers, Launch, ModRef};
+use gui::{prompt_confirm, LaunchMonitor, ModManagerAction, SinglePlayerAction};
 use regex::Regex;
-use slog::{info, warn, FilterLevel, Logger};
+use slog::{info, trace, warn, FilterLevel, Logger};
 use workers::{SavedGamesWorker, ServerLoaderWorker};
 
 mod config;
@@ -26,7 +26,7 @@ mod net;
 mod servers;
 mod workers;
 
-use crate::game::Mods;
+use crate::game::{LaunchState, Mods};
 use crate::gui::ModManagerUpdate;
 
 use self::game::Game;
@@ -41,6 +41,7 @@ struct Launcher {
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     tx: app::Sender<Update>,
     rx: app::Receiver<Update>,
+    pending_update: RefCell<Option<Update>>,
     main_window: LauncherWindow,
     server_loader_worker: Arc<ServerLoaderWorker>,
     saved_games_worker: Arc<SavedGamesWorker>,
@@ -72,6 +73,7 @@ impl Launcher {
             config_persister,
             tx,
             rx,
+            pending_update: RefCell::new(None),
             main_window,
             server_loader_worker,
             saved_games_worker,
@@ -89,25 +91,30 @@ impl Launcher {
         self.main_window.show();
 
         while self.app.wait() {
-            self.run_loop_iteration();
+            while self.run_loop_iteration() {
+                app::check();
+            }
         }
     }
 
-    fn run_loop_iteration(&self) {
-        while let Some(mut update) = self.rx.recv() {
-            while let Some(next) = self.rx.recv() {
-                update = match update.try_consolidate(next) {
-                    Ok(consolidated) => consolidated,
-                    Err((update, next)) => {
-                        self.main_window.handle_update(update);
-                        app::check();
-                        next
-                    }
-                };
-            }
+    fn run_loop_iteration(&self) -> bool {
+        let mut pending_ref = self.pending_update.borrow_mut();
+        let pending_update = pending_ref.take();
+        let next_update = self.rx.recv();
+        let (ready_update, pending_update) = match (pending_update, next_update) {
+            (Some(pending), Some(next)) => match pending.try_consolidate(next) {
+                Ok(consolidated) => (None, Some(consolidated)),
+                Err((pending, next)) => (Some(pending), Some(next)),
+            },
+            (Some(pending), None) => (Some(pending), None),
+            (None, Some(next)) => (None, Some(next)),
+            (None, None) => (None, None),
+        };
+        if let Some(update) = ready_update {
             self.main_window.handle_update(update);
-            app::check();
         }
+        *pending_ref = pending_update;
+        pending_ref.is_some()
     }
 
     fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
@@ -118,8 +125,9 @@ impl Launcher {
                 } else {
                     false
                 };
-                let _ = self.game.launch(use_battleye, &[])?;
-                app::quit();
+                if self.monitor_launch(self.game.launch(use_battleye, &[])?)? {
+                    app::quit();
+                }
                 Ok(())
             }
             Action::Continue => {
@@ -128,8 +136,9 @@ impl Launcher {
                 } else {
                     false
                 };
-                let _ = self.game.continue_session(use_battleye)?;
-                app::quit();
+                if self.monitor_launch(self.game.continue_session(use_battleye)?)? {
+                    app::quit();
+                }
                 Ok(())
             }
             Action::ConfigureBattlEye(use_battleye) => {
@@ -146,8 +155,9 @@ impl Launcher {
                     BattlEyeUsage::Auto => battleye_required,
                     BattlEyeUsage::Always(enabled) => enabled,
                 };
-                let _ = self.game.join_server(addr, use_battleye)?;
-                app::quit();
+                if self.monitor_launch(self.game.join_server(addr, use_battleye)?)? {
+                    app::quit();
+                }
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::PingServer(request)) => {
@@ -230,6 +240,45 @@ impl Launcher {
         }
     }
 
+    fn monitor_launch(&self, mut launch: Launch) -> Result<bool> {
+        if let LaunchState::Ready = launch.poll()? {
+            return Ok(true);
+        }
+
+        let monitor = LaunchMonitor::new(self.main_window.window());
+        monitor.show();
+
+        let should_poll = Rc::new(Cell::new(true));
+        app::add_timeout3(1.0, {
+            let should_poll = Rc::downgrade(&should_poll);
+            let logger = self.logger.clone();
+            move |handle| {
+                if let Some(should_poll) = should_poll.upgrade() {
+                    let poll_skipped = should_poll.replace(true);
+                    trace!(logger, "Firing poll timer"; "poll_skipped" => poll_skipped);
+                    app::repeat_timeout3(1.0, handle);
+                    app::awake();
+                }
+            }
+        });
+        loop {
+            if should_poll.replace(false) {
+                if let LaunchState::Ready = launch.poll()? {
+                    return Ok(true);
+                }
+            }
+            if monitor.cancel_requested() {
+                launch.cancel();
+                return Ok(false);
+            }
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return Ok(true);
+            }
+        }
+    }
+
     fn launch_single_player(&self, map_id: usize) -> Result<()> {
         fn join_mod_names(heading: &str, mods: &Mods, refs: HashSet<ModRef>) -> String {
             let mut result = String::new();
@@ -266,8 +315,9 @@ impl Launcher {
         }
         let use_battleye =
             if let BattlEyeUsage::Always(true) = self.config().use_battleye { true } else { false };
-        let _ = self.game.launch_single_player(map_id, use_battleye)?;
-        app::quit();
+        if self.monitor_launch(self.game.launch_single_player(map_id, use_battleye)?)? {
+            app::quit();
+        }
         Ok(())
     }
 

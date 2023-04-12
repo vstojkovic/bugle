@@ -12,6 +12,7 @@ use fltk_table::SmartTable;
 mod data;
 pub mod glyph;
 mod home;
+mod launch_monitor;
 mod launcher;
 mod main_menu;
 mod mod_manager;
@@ -21,6 +22,7 @@ mod single_player;
 
 use crate::config::BattlEyeUsage;
 
+pub use self::launch_monitor::LaunchMonitor;
 pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};

@@ -170,11 +170,13 @@ impl ServerBrowser {
                     match action {
                         Action::Join => {
                             if let Some(server_idx) = browser.list_pane.selected_index() {
-                                let server = &browser.state.borrow()[server_idx];
-                                let addr = SocketAddr::new(*server.ip(), server.port as _);
-                                let action = ServerBrowserAction::JoinServer {
-                                    addr,
-                                    battleye_required: server.battleye_required,
+                                let action = {
+                                    let server = &browser.state.borrow()[server_idx];
+                                    let addr = SocketAddr::new(*server.ip(), server.port as _);
+                                    ServerBrowserAction::JoinServer {
+                                        addr,
+                                        battleye_required: server.battleye_required,
+                                    }
                                 };
                                 if let Err(err) = (browser.on_action)(action) {
                                     alert_error(ERR_JOINING_SERVER, &err);

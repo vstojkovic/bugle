@@ -150,6 +150,10 @@ impl LauncherWindow {
             Update::ModManager(update) => self.mod_manager.handle_update(update),
         }
     }
+
+    pub fn window(&self) -> &Window {
+        &self.window
+    }
 }
 
 fn switch_content(
