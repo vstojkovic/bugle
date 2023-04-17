@@ -116,7 +116,7 @@ impl ServerLoaderWorker {
             self.logger.clone(),
             DeserializationContext {
                 build_id: self.game.build_id(),
-                favorites: &&favorites,
+                favorites: &favorites,
             },
         )
         .await?)
