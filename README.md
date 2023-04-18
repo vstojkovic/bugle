@@ -7,20 +7,20 @@ It's ugly as sin, it's poorly tested, and it's my hobby project that I came up w
 relaxation, so don't expect the stuff you would find in a more serious development project (e.g.
 well-commented code, automated tests, etc.)
 
-ALPHA VERSION WARNING: This is the 1.0.0-alpha version of BUGLE. What that means is that this is the
-first time anyone apart from me will try running this thing on their computer. While I'm reasonably
-sure that it won't make your computer catch fire or delete any of your files, expect it to not
-actually do its job properly. It might crash, or it might mess up your modlist or your game
-settings. It ***shouldn't***, but it ***might***.
+ALPHA VERSION WARNING: This is the 1.0.0-alpha.2 version of BUGLE. What that means is that it hasn't
+been used thoroughly on any computer but mine. While I'm reasonably sure that it won't make your
+computer catch fire or delete any of your files, expect it to not actually do its job properly.
+It might crash, or it might mess up your modlist or your game settings. It ***shouldn't***, but it
+***might***.
 
 For a list of known issues, scroll to the last section of this document. If you run into an issue
 that isn't there, feel free to open a GitHub issue about it, or contact me on Funcom Forums.
 
 ## Installation
 
-Go to the v1.0.0-alpha release and download the `bugle-1.0.0-alpha.zip` file. Unpack it into a
-directory where you're allowed to write files. It's a good idea to put it in its own directory,
-because it will write a couple of files there (`bugle.ini` and `bugle.log`).
+Go to the v1.0.0-alpha.2 release and download the `bugle-v1.0.0-alpha.2-x86_64-pc-windows-msvc.zip`
+file. Unpack it into a directory where you're allowed to write files. It's a good idea to put it in
+its own directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
 There's no installer, you just run `bugle.exe`.
 
@@ -69,14 +69,6 @@ Here are some things that I'm planning to (try to) add to BUGLE:
 implemented". The truth is that I've never even played Conan Exiles in co-op mode, ever, and I don't
 really have anyone to try it with. I intend to implement this, but first I'll need some help from
 a volunteer.
-* **Waiting for the game splash screen.** Right now, when BUGLE launches the game, it considers its
-work done and disappears from your screen. If your computer is slow enough, this will make you think
-that something went wrong and BUGLE didn't do its job. One of my items on my to-do list is figuring
-out how Funcom launcher knows when the game has deigned to let you know it's starting up. As a bonus
-feature, BUGLE would also let you change your mind while you're waiting. For example, if you launch
-the game and then, a couple of seconds later, you suddenly remember you wanted to try a new mod, you
-wouldn't have to wait for the game to start, the intro to finish, and the press exit. Instead, you
-would be able to cancel the launch and let BUGLE take the Conan Exiles process behind the shed.
 * **Server list prefetching.** Right now, BUGLE only fetches the server list when you open its
 server browser. I can make it fetch the server list as soon as you open it, so the delay between
 opening the server browser and seeing your favorite servers would be shorter. Not only that, but it
@@ -101,7 +93,3 @@ way that Steam isn't running. I'll fix that eventually.
 required" and you press the "Continue" button on the main launcher screen, it will launch the game
 with BattlEye disabled, even if you're connecting to a server that requires BattlEye. See the
 roadmap above to find out what I intend to do about this.
-* **Doesn't wait for splash screen.** As soon as BUGLE launches Conan Exiles, it goes away and
-lets you stare at the screen, waiting for the game to start. If your computer is slow, that wait
-might be long, and you might think BUGLE malfunctioned. See the roadmap above to find out what I
-intend to do about this.
