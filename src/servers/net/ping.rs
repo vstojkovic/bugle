@@ -63,7 +63,9 @@ impl PingClient {
         build_id: u32,
         on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> Result<Self> {
-        ClientImpl::new(logger, build_id, on_response).map(|client_impl| Self { client_impl })
+        Ok(Self {
+            client_impl: ClientImpl::new(logger, build_id, on_response)?,
+        })
     }
 }
 

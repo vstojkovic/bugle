@@ -19,15 +19,8 @@ pub struct ServerLoaderWorker {
 #[derive(Default)]
 struct ServerLoader {
     generation: u32,
-    state: ServerLoaderState,
-}
-
-#[derive(Default)]
-enum ServerLoaderState {
-    #[default]
-    Inactive,
-    Fetching(JoinHandle<()>),
-    Pinging(PingClient),
+    fetcher: Option<JoinHandle<()>>,
+    pinger: Option<PingClient>,
 }
 
 impl ServerLoaderWorker {
@@ -40,24 +33,24 @@ impl ServerLoaderWorker {
         })
     }
 
-    pub fn load_servers(self: &Arc<Self>) -> Result<()> {
-        let this = Arc::clone(self);
-        let mut server_loader = this.server_loader.lock().unwrap();
-        if let ServerLoaderState::Fetching(_) = &server_loader.state {
-            return Ok(());
+    pub fn load_servers(self: &Arc<Self>) {
+        let mut server_loader = self.server_loader.lock().unwrap();
+        if server_loader.fetcher.is_some() {
+            return;
         }
-        let fetch_generation = server_loader.generation.wrapping_add(1);
-        server_loader.generation = fetch_generation;
-        server_loader.state =
-            ServerLoaderState::Fetching(Arc::clone(self).spawn_fetcher(fetch_generation));
-        Ok(())
+
+        let generation = server_loader.generation.wrapping_add(1);
+        server_loader.generation = generation;
+        server_loader.fetcher = Some(Arc::clone(self).spawn_fetcher(generation));
+        server_loader.pinger = None;
     }
 
-    pub fn ping_server(&self, request: PingRequest) -> Result<()> {
-        if let ServerLoaderState::Pinging(client) = &self.server_loader.lock().unwrap().state {
-            client.priority_send(request);
-        }
-        Ok(())
+    pub fn ping_servers(self: &Arc<Self>, requests: Vec<PingRequest>) -> Result<()> {
+        self.with_ping_client(|client| client.send(requests))
+    }
+
+    pub fn ping_server(self: &Arc<Self>, request: PingRequest) -> Result<()> {
+        self.with_ping_client(|client| client.priority_send(request))
     }
 
     fn spawn_fetcher(self: Arc<Self>, generation: u32) -> JoinHandle<()> {
@@ -69,28 +62,20 @@ impl ServerLoaderWorker {
                 return;
             }
 
-            let ping_generation = generation.wrapping_add(1);
-            server_loader.generation = ping_generation;
-
-            let servers_and_state = servers.and_then(|servers| {
-                let ping_client = Arc::clone(&self).make_ping_client(ping_generation)?;
-                ping_client.send(
-                    servers
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(idx, server)| PingRequest::for_server(idx, server)),
-                );
-                Ok((servers, ServerLoaderState::Pinging(ping_client)))
-            });
-            let (servers, state) = match servers_and_state {
-                Ok((servers, state)) => (Ok(servers), state),
-                Err(err) => (Err(err), ServerLoaderState::Inactive),
-            };
-            server_loader.state = state;
-
             let update = Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(servers));
             self.tx.send(update);
+
+            server_loader.fetcher = None;
         })
+    }
+
+    fn with_ping_client<R, F: FnOnce(&PingClient) -> R>(self: &Arc<Self>, cb: F) -> Result<R> {
+        let mut server_loader = self.server_loader.lock().unwrap();
+        if let None = &server_loader.pinger {
+            let pinger = Arc::clone(self).make_ping_client(server_loader.generation)?;
+            server_loader.pinger = Some(pinger);
+        };
+        Ok(cb(server_loader.pinger.as_ref().unwrap()))
     }
 
     fn make_ping_client(self: Arc<Self>, generation: u32) -> Result<PingClient> {

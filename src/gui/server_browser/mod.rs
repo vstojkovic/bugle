@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
@@ -43,6 +43,7 @@ pub enum ServerBrowserAction {
         battleye_required: bool,
     },
     PingServer(PingRequest),
+    PingServers(Vec<PingRequest>),
     UpdateFavorites(Vec<FavoriteServer>),
     UpdateConfig(ServerBrowserConfig),
 }
@@ -83,6 +84,7 @@ pub(super) struct ServerBrowser {
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
     actions_pane: Rc<ActionsPane>,
+    pending_update: Rc<Cell<Option<ServerBrowserUpdate>>>,
     state: Rc<RefCell<ServerBrowserState>>,
 }
 
@@ -135,6 +137,7 @@ impl ServerBrowser {
             list_pane: Rc::clone(&list_pane),
             details_pane,
             actions_pane: Rc::clone(&actions_pane),
+            pending_update: Rc::new(Cell::new(None)),
             state: Rc::clone(&state),
         });
 
@@ -198,7 +201,9 @@ impl ServerBrowser {
                                     Reindex::Nothing
                                 });
 
-                                (browser.on_action)(action).unwrap();
+                                if let Err(err) = (browser.on_action)(action) {
+                                    alert_error(ERR_PINGING_SERVERS, &err);
+                                }
                             }
                         }
                         Action::ToggleFavorite => {
@@ -275,7 +280,9 @@ impl ServerBrowser {
         let mut root = self.root.clone();
         root.show();
 
-        (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
+        if let Some(update) = self.pending_update.take() {
+            self.handle_update(update);
+        }
 
         Box::new(move || {
             root.hide();
@@ -284,10 +291,17 @@ impl ServerBrowser {
 
     pub fn handle_update(&self, update: ServerBrowserUpdate) {
         match update {
-            ServerBrowserUpdate::PopulateServers(payload) => match payload {
-                Ok(all_servers) => self.populate_servers(all_servers),
-                Err(err) => super::alert_error(ERR_LOADING_SERVERS, &err),
-            },
+            ServerBrowserUpdate::PopulateServers(payload) => {
+                if self.root.visible() {
+                    match payload {
+                        Ok(all_servers) => self.populate_servers(all_servers),
+                        Err(err) => alert_error(ERR_LOADING_SERVERS, &err),
+                    }
+                } else {
+                    self.pending_update
+                        .set(Some(ServerBrowserUpdate::PopulateServers(payload)));
+                }
+            }
             ServerBrowserUpdate::UpdateServer(response) => {
                 self.update_pinged_servers(&[response]);
             }
@@ -298,11 +312,21 @@ impl ServerBrowser {
     }
 
     fn populate_servers(&self, all_servers: Vec<Server>) {
+        let ping_requests = all_servers
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, server)| PingRequest::for_server(idx, server))
+            .collect();
+
         self.state.borrow_mut().update(|servers, _, _| {
             *servers = all_servers;
             Reindex::all()
         });
         self.list_pane.populate(self.state.clone());
+
+        if let Err(err) = (self.on_action)(ServerBrowserAction::PingServers(ping_requests)) {
+            alert_error(ERR_PINGING_SERVERS, &err);
+        }
     }
 
     fn update_pinged_servers(&self, updates: &[PingResponse]) {
@@ -433,6 +457,7 @@ impl FilterHolder for ServerBrowser {
 }
 
 const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
+const ERR_PINGING_SERVERS: &str = "Error while pinging servers.";
 const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
 const ERR_INVALID_ADDR: &str = "Invalid server address.";
 const ERR_UPDATING_FAVORITES: &str = "Error while updating favorites.";

@@ -89,6 +89,7 @@ impl Launcher {
 
     fn run(&self) {
         self.main_window.show();
+        self.server_loader_worker.load_servers();
 
         while self.app.wait() {
             while self.run_loop_iteration() {
@@ -145,7 +146,8 @@ impl Launcher {
                 self.update_config(|config| config.use_battleye = use_battleye)
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
-                self.server_loader_worker.load_servers()
+                self.server_loader_worker.load_servers();
+                Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::JoinServer {
                 addr,
@@ -162,6 +164,9 @@ impl Launcher {
             }
             Action::ServerBrowser(ServerBrowserAction::PingServer(request)) => {
                 self.server_loader_worker.ping_server(request)
+            }
+            Action::ServerBrowser(ServerBrowserAction::PingServers(requests)) => {
+                self.server_loader_worker.ping_servers(requests)
             }
             Action::ServerBrowser(ServerBrowserAction::UpdateFavorites(favorites)) => {
                 self.game.save_favorites(favorites)
