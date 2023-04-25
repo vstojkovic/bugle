@@ -31,7 +31,7 @@ serde_repr = "0.1"
 slog = { version = "2", features = ["release_max_level_trace"] }
 slog-async = "2"
 slog-term = "2"
-steamlocate = "1"
+steamlocate = "2.0.0-alpha.0"
 steamy-vdf = "0.2.0"
 strum = "0.24"
 strum_macros = "0.24"
