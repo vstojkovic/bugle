@@ -25,6 +25,7 @@ use self::filter_pane::{FilterChange, FilterHolder, FilterPane};
 use self::list_pane::ListPane;
 use self::state::{Filter, SortOrder};
 
+use super::data::IterableTableSource;
 use super::prelude::*;
 use super::{alert_error, CleanupFn, Handler};
 
@@ -312,17 +313,36 @@ impl ServerBrowser {
     }
 
     fn populate_servers(&self, all_servers: Vec<Server>) {
-        let ping_requests = all_servers
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, server)| PingRequest::for_server(idx, server))
-            .collect();
+        {
+            let mut state = self.state.borrow_mut();
+            state.update(|servers, _, _| {
+                *servers = all_servers;
+                Reindex::all()
+            });
+        }
 
-        self.state.borrow_mut().update(|servers, _, _| {
-            *servers = all_servers;
-            Reindex::all()
-        });
-        self.list_pane.populate(self.state.clone());
+        let ping_requests = {
+            let state = self.state.borrow();
+            let mut requests = Vec::with_capacity(state.source().len());
+
+            requests.extend(state.iter().enumerate().filter_map(|(idx, server)| {
+                PingRequest::for_server(state.to_source_index(idx), server)
+            }));
+
+            requests.extend(
+                state
+                    .source()
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, _)| state.from_source_index(*idx).is_none())
+                    .filter_map(|(idx, server)| PingRequest::for_server(idx, server)),
+            );
+
+            requests
+        };
+
+        let state = Rc::clone(&self.state);
+        self.list_pane.populate(state);
 
         if let Err(err) = (self.on_action)(ServerBrowserAction::PingServers(ping_requests)) {
             alert_error(ERR_PINGING_SERVERS, &err);
