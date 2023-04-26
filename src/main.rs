@@ -1,7 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
@@ -329,24 +329,39 @@ impl Launcher {
     fn validate_single_player_mods(&self, map_id: usize) -> Result<Option<ModMismatch>> {
         let installed_mods = self.game.installed_mods();
         let mod_list = self.game.load_mod_list()?;
-        let mut added_mods: HashSet<ModRef> = mod_list.into_iter().collect();
+        let mut active_mods: HashSet<ModRef> = mod_list.into_iter().collect();
 
         let db_path = self.game.in_progress_game_path(map_id);
         let db_metadata = std::fs::metadata(&db_path)?;
-
         let mod_controllers =
             if db_metadata.len() != 0 { list_mod_controllers(db_path)? } else { Vec::new() };
-        let mut missing_mods = HashSet::new();
+
+        let mut required_folders = HashMap::new();
         let folder_regex = Regex::new("/Game/Mods/([^/]+)/.*").unwrap();
         for controller in mod_controllers {
             if let Some(captures) = folder_regex.captures(&controller) {
                 let folder = captures.get(1).unwrap().as_str();
-                missing_mods.insert(installed_mods.by_folder(folder));
+                required_folders.insert(folder.to_string(), false);
             }
         }
 
-        added_mods.retain(|mod_ref| !missing_mods.contains(mod_ref));
-        missing_mods.retain(|mod_ref| !added_mods.contains(mod_ref));
+        let mut added_mods = HashSet::new();
+        for mod_ref in active_mods.drain() {
+            if let Some(mod_info) = installed_mods.get(&mod_ref) {
+                if let Some(active) = required_folders.get_mut(&mod_info.folder_name) {
+                    *active = true;
+                    continue;
+                }
+            }
+            added_mods.insert(mod_ref);
+        }
+
+        let mut missing_mods = HashSet::new();
+        for (folder, active) in required_folders.drain() {
+            if !active {
+                missing_mods.insert(installed_mods.by_folder(folder));
+            }
+        }
 
         if added_mods.is_empty() && missing_mods.is_empty() {
             Ok(None)
