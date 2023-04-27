@@ -234,9 +234,12 @@ impl Launcher {
                 dialog.set_option(FileDialogOptions::SaveAsConfirm);
                 dialog.show();
 
-                let mod_list_path = dialog.filename();
+                let mut mod_list_path = dialog.filename();
                 if mod_list_path.as_os_str().is_empty() {
                     return Ok(());
+                }
+                if mod_list_path.extension().is_none() {
+                    mod_list_path.set_extension("txt");
                 }
 
                 self.game
@@ -396,7 +399,7 @@ const PROMPT_SP_MOD_MISMATCH: &str =
     "It looks like your mod list doesn't match this game. Launch anyway?";
 const TXT_MISSING_MODS: &str = "Missing mods:";
 const TXT_ADDED_MODS: &str = "Added mods:";
-const DLG_FILTER_MODLIST: &str = "Modlist Files\t*.modlist";
+const DLG_FILTER_MODLIST: &str = "Mod List Files\t*.txt";
 
 #[tokio::main]
 async fn main() {
