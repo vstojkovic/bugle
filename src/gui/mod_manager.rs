@@ -6,7 +6,7 @@ use bbscope::BBCode;
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{FrameType, Shortcut};
+use fltk::enums::{Align, FrameType, Shortcut};
 use fltk::group::{Group, Tile};
 use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
@@ -113,6 +113,8 @@ impl ModManager {
             rows: 0,
             cols: 3,
             editable: false,
+            cell_align: Align::Left,
+            cell_padding: 4,
             ..Default::default()
         });
         available_list.make_resizable(true);
@@ -223,6 +225,8 @@ impl ModManager {
             rows: 0,
             cols: 3,
             editable: false,
+            cell_align: Align::Left,
+            cell_padding: 4,
             ..Default::default()
         });
         active_list.make_resizable(true);
