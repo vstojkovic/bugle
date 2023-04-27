@@ -3,7 +3,8 @@ use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::{anyhow, Result};
 use ini::Properties;
@@ -17,7 +18,7 @@ mod launch;
 mod mod_info;
 
 use crate::config;
-use crate::servers::{FavoriteServer, FavoriteServers};
+use crate::servers::{FavoriteServer, FavoriteServers, Server};
 
 pub use self::engine::db::{list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
@@ -34,6 +35,26 @@ pub struct Game {
     mod_list_path: PathBuf,
     installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
+    last_session: Mutex<Option<Session>>,
+}
+
+#[derive(Debug)]
+pub enum Session {
+    SinglePlayer(MapRef),
+    CoOp(MapRef),
+    Online(ServerRef),
+}
+
+#[derive(Debug)]
+pub enum MapRef {
+    Known { map_id: usize },
+    Unknown { asset_path: String },
+}
+
+#[derive(Debug)]
+pub enum ServerRef {
+    Known(Server),
+    Unknown(SocketAddr),
 }
 
 impl Game {
@@ -104,6 +125,52 @@ impl Game {
             }
         }
 
+        debug!(logger, "Reading last session information");
+        let game_ini_path = config_path.join("Game.ini");
+        let last_session = if game_ini_path.exists() {
+            let game_ini = config::load_ini(&game_ini_path)?;
+
+            let coop_section = game_ini.section(Some(SECTION_SAVED_COOP_DATA));
+            let is_local = coop_section
+                .and_then(|section| section.get(KEY_STARTED_LISTEN_SERVER_SESSION))
+                .map(|val| val.to_ascii_lowercase() == "true")
+                .unwrap_or(true);
+            let is_coop = coop_section
+                .and_then(|section| section.get(KEY_WAS_COOP_ENABLED))
+                .map(|val| val.to_ascii_lowercase() == "true")
+                .unwrap_or(true);
+            let local_map = coop_section.and_then(|section| section.get(KEY_LAST_MAP));
+
+            let online_section = game_ini.section(Some(SECTION_SAVED_SERVERS));
+            let server_addr = online_section
+                .and_then(|section| section.get(KEY_LAST_CONNECTED))
+                .and_then(|val| SocketAddr::from_str(val).ok());
+
+            if is_local {
+                local_map
+                    .map(|asset_path| {
+                        if let Some(map) = maps.by_asset_path(asset_path) {
+                            MapRef::Known { map_id: map.id }
+                        } else {
+                            MapRef::Unknown {
+                                asset_path: asset_path.to_string(),
+                            }
+                        }
+                    })
+                    .map(|map_ref| {
+                        if is_coop {
+                            Session::CoOp(map_ref)
+                        } else {
+                            Session::SinglePlayer(map_ref)
+                        }
+                    })
+            } else {
+                server_addr.map(|addr| Session::Online(ServerRef::Unknown(addr)))
+            }
+        } else {
+            None
+        };
+
         info!(
             logger,
             "Valid Conan Exiles installation found";
@@ -116,10 +183,11 @@ impl Game {
             root: location.game_path,
             build_id,
             save_path,
-            game_ini_path: config_path.join("Game.ini"),
+            game_ini_path,
             mod_list_path,
             installed_mods: Arc::new(Mods::new(installed_mods)),
             maps: Arc::new(maps),
+            last_session: Mutex::new(last_session),
         })
     }
 
@@ -160,9 +228,9 @@ impl Game {
         let game_ini = config::load_ini(&self.game_ini_path)?;
         let mut favorites = FavoriteServers::new();
 
-        if let Some(section) = game_ini.section(Some("FavoriteServers")) {
+        if let Some(section) = game_ini.section(Some(SECTION_FAVORITE_SERVERS)) {
             for (key, value) in section.iter() {
-                if key != "ServersList" {
+                if key != KEY_SERVERS_LIST {
                     continue;
                 }
                 if let Ok(favorite) = FavoriteServer::parse(value) {
@@ -182,11 +250,11 @@ impl Game {
 
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         let section = game_ini
-            .entry(Some("FavoriteServers".to_string()))
+            .entry(Some(SECTION_FAVORITE_SERVERS.to_string()))
             .or_insert_with(Properties::new);
-        let _ = section.remove_all("ServersList");
+        let _ = section.remove_all(KEY_SERVERS_LIST);
         for favorite in favorites {
-            section.append("ServersList", favorite.to_string());
+            section.append(KEY_SERVERS_LIST, favorite.to_string());
         }
         config::save_ini(&game_ini, &self.game_ini_path)
     }
@@ -275,6 +343,10 @@ impl Game {
         Ok(saves)
     }
 
+    pub fn last_session(&self) -> MutexGuard<Option<Session>> {
+        self.last_session.lock().unwrap()
+    }
+
     pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Launch> {
         let mut exe_path = self.root.join("ConanSandbox/Binaries/Win64");
         exe_path.push(if enable_battleye { "ConanSandbox_BE.exe" } else { "ConanSandbox.exe" });
@@ -296,11 +368,11 @@ impl Game {
     pub fn join_server(&self, addr: SocketAddr, enable_battleye: bool) -> Result<Launch> {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         game_ini
-            .with_section(Some("SavedServers"))
-            .set("LastConnected", addr.to_string());
+            .with_section(Some(SECTION_SAVED_SERVERS))
+            .set(KEY_LAST_CONNECTED, addr.to_string());
         game_ini
-            .with_section(Some("SavedCoopData"))
-            .set("StartedListenServerSession", "False");
+            .with_section(Some(SECTION_SAVED_COOP_DATA))
+            .set(KEY_STARTED_LISTEN_SERVER_SESSION, "False");
         config::save_ini(&game_ini, &self.game_ini_path)?;
 
         self.continue_session(enable_battleye)
@@ -310,10 +382,10 @@ impl Game {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         let map = &self.maps[map_id];
         game_ini
-            .with_section(Some("SavedCoopData"))
-            .set("LastMap", &map.asset_path)
-            .set("StartedListenServerSession", "True")
-            .set("WasCoopEnabled", "False");
+            .with_section(Some(SECTION_SAVED_COOP_DATA))
+            .set(KEY_LAST_MAP, &map.asset_path)
+            .set(KEY_STARTED_LISTEN_SERVER_SESSION, "True")
+            .set(KEY_WAS_COOP_ENABLED, "False");
         config::save_ini(&game_ini, &self.game_ini_path)?;
 
         self.continue_session(enable_battleye)
@@ -372,3 +444,13 @@ lazy_static! {
     static ref BUILD_ID_REGEX: Regex =
         Regex::new(r"^OnlineSubsystem:BuildIdOverride:0\s*=\s*(\d+)$").unwrap();
 }
+
+const SECTION_FAVORITE_SERVERS: &str = "FavoriteServers";
+const SECTION_SAVED_SERVERS: &str = "SavedServers";
+const SECTION_SAVED_COOP_DATA: &str = "SavedCoopData";
+
+const KEY_SERVERS_LIST: &str = "ServersList";
+const KEY_LAST_CONNECTED: &str = "LastConnected";
+const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
+const KEY_LAST_MAP: &str = "LastMap";
+const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";

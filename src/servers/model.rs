@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use bitflags::bitflags;
@@ -166,6 +166,22 @@ impl Server {
 
     pub fn host(&self) -> String {
         format!("{}:{}", self.ip(), self.port)
+    }
+
+    pub fn game_addr(&self) -> Option<SocketAddr> {
+        if self.is_valid() {
+            Some(SocketAddr::new(self.ip, self.port as _))
+        } else {
+            None
+        }
+    }
+
+    pub fn ping_addr(&self) -> Option<SocketAddr> {
+        if self.is_valid() {
+            Some(SocketAddr::new(self.ip, (self.port + 1) as _))
+        } else {
+            None
+        }
     }
 
     pub fn is_valid(&self) -> bool {

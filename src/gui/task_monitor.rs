@@ -10,19 +10,17 @@ use fltk::window::Window;
 use super::prelude::*;
 use super::{button_auto_height, widget_auto_width};
 
-pub struct LaunchMonitor {
+pub struct TaskMonitor {
     window: Window,
     cancel_requested: Rc<Cell<bool>>,
 }
 
-impl LaunchMonitor {
-    pub fn new(parent: &Window) -> Self {
-        let mut window = Window::default()
-            .with_size(320, 90)
-            .with_label("Launching Conan Exiles");
+impl TaskMonitor {
+    pub fn new(parent: &Window, title: &str, message: &str, cancel_label: &str) -> Self {
+        let mut window = Window::default().with_size(320, 90).with_label(title);
 
         let cancel_group = Group::default_fill();
-        let cancel_btn = Button::default_fill().with_label("Cancel");
+        let cancel_btn = Button::default_fill().with_label(cancel_label);
         cancel_group.end();
 
         let btn_width = widget_auto_width(&cancel_btn);
@@ -36,7 +34,7 @@ impl LaunchMonitor {
             .center_of_parent();
 
         Frame::default_fill()
-            .with_label("Waiting for Conan Exiles to start...")
+            .with_label(message)
             .with_size_flex(0, cancel_group.y());
 
         window.end();
@@ -70,7 +68,7 @@ impl LaunchMonitor {
     }
 }
 
-impl Drop for LaunchMonitor {
+impl Drop for TaskMonitor {
     fn drop(&mut self) {
         self.window.hide();
     }

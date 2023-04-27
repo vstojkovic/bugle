@@ -26,14 +26,7 @@ pub struct PingRequest {
 
 impl PingRequest {
     pub fn for_server(server_idx: usize, server: &Server) -> Option<Self> {
-        if server.is_valid() {
-            Some(Self {
-                server_idx,
-                addr: SocketAddr::new(*server.ip(), (server.port + 1) as _),
-            })
-        } else {
-            None
-        }
+        server.ping_addr().map(|addr| Self { server_idx, addr })
     }
 }
 

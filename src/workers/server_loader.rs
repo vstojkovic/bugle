@@ -8,11 +8,12 @@ use tokio::task::JoinHandle;
 use crate::game::Game;
 use crate::gui::{ServerBrowserUpdate, Update};
 use crate::servers::{fetch_server_list, DeserializationContext, PingClient, PingRequest, Server};
+use crate::Message;
 
 pub struct ServerLoaderWorker {
     logger: Logger,
     game: Arc<Game>,
-    tx: app::Sender<Update>,
+    tx: app::Sender<Message>,
     server_loader: Mutex<ServerLoader>,
 }
 
@@ -24,7 +25,7 @@ struct ServerLoader {
 }
 
 impl ServerLoaderWorker {
-    pub fn new(logger: Logger, game: Arc<Game>, tx: app::Sender<Update>) -> Arc<Self> {
+    pub fn new(logger: Logger, game: Arc<Game>, tx: app::Sender<Message>) -> Arc<Self> {
         Arc::new(Self {
             logger,
             game,
@@ -45,6 +46,10 @@ impl ServerLoaderWorker {
         server_loader.pinger = None;
     }
 
+    pub fn is_loading(&self) -> bool {
+        self.server_loader.lock().unwrap().fetcher.is_some()
+    }
+
     pub fn ping_servers(self: &Arc<Self>, requests: Vec<PingRequest>) -> Result<()> {
         self.with_ping_client(|client| client.send(requests))
     }
@@ -62,8 +67,7 @@ impl ServerLoaderWorker {
                 return;
             }
 
-            let update = Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(servers));
-            self.tx.send(update);
+            self.tx.send(Message::ServerList(servers));
 
             server_loader.fetcher = None;
         })
@@ -87,10 +91,9 @@ impl ServerLoaderWorker {
                 if self.server_loader.lock().unwrap().generation != generation {
                     return;
                 }
-                self.tx
-                    .send(Update::ServerBrowser(ServerBrowserUpdate::UpdateServer(
-                        response,
-                    )));
+                self.tx.send(Message::Update(Update::ServerBrowser(
+                    ServerBrowserUpdate::UpdateServer(response),
+                )));
             },
         )?)
     }

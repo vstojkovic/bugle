@@ -42,6 +42,7 @@ impl Deref for MapEntry {
 pub struct Maps {
     maps: Vec<MapEntry>,
     by_object_name: HashMap<String, usize>,
+    by_asset_path: HashMap<String, usize>,
 }
 
 impl Maps {
@@ -49,6 +50,7 @@ impl Maps {
         Self {
             maps: Vec::new(),
             by_object_name: HashMap::new(),
+            by_asset_path: HashMap::new(),
         }
     }
 
@@ -63,7 +65,17 @@ impl Maps {
     {
         self.by_object_name
             .get(object_name)
-            .and_then(|id| self.maps.get(*id))
+            .and_then(|&id| self.maps.get(id))
+    }
+
+    pub fn by_asset_path<Q>(&self, asset_path: &Q) -> Option<&MapEntry>
+    where
+        Q: Hash + Eq + ?Sized,
+        String: Borrow<Q>,
+    {
+        self.by_asset_path
+            .get(asset_path)
+            .and_then(|&id| self.maps.get(id))
     }
 
     fn add(&mut self, map: MapInfo) -> Option<&MapEntry> {
@@ -72,6 +84,7 @@ impl Maps {
         }
         let id = self.maps.len();
         self.by_object_name.insert(map.object_name.clone(), id);
+        self.by_asset_path.insert(map.asset_path.clone(), id);
         self.maps.push(MapEntry { id, info: map });
         Some(&self.maps[id])
     }

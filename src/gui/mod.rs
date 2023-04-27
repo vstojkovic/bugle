@@ -9,24 +9,26 @@ use fltk::table::TableContext;
 use fltk::text::{Cursor, TextBuffer, TextEditor};
 use fltk_table::SmartTable;
 
+mod battleye_choice_dialog;
 mod data;
 pub mod glyph;
 mod home;
-mod launch_monitor;
 mod launcher;
 mod main_menu;
 mod mod_manager;
 mod prelude;
 mod server_browser;
 mod single_player;
+mod task_monitor;
 
 use crate::config::BattlEyeUsage;
 
-pub use self::launch_monitor::LaunchMonitor;
+pub use self::battleye_choice_dialog::BattlEyeChoiceDialog;
 pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
+pub use self::task_monitor::TaskMonitor;
 
 pub enum Action {
     Launch,

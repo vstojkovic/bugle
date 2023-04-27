@@ -11,10 +11,14 @@ use anyhow::Result;
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
-use game::{list_mod_controllers, Launch, ModRef};
-use gui::{prompt_confirm, LaunchMonitor, ModManagerAction, SinglePlayerAction};
+use game::{list_mod_controllers, Launch, ModRef, ServerRef, Session};
+use gui::{
+    prompt_confirm, BattlEyeChoiceDialog, ModManagerAction, ServerBrowserUpdate,
+    SinglePlayerAction, TaskMonitor,
+};
 use regex::Regex;
-use slog::{info, trace, warn, FilterLevel, Logger};
+use servers::Server;
+use slog::{debug, info, trace, warn, FilterLevel, Logger};
 use workers::{SavedGamesWorker, ServerLoaderWorker};
 
 mod config;
@@ -33,16 +37,22 @@ use self::game::Game;
 use self::gui::{Action, LauncherWindow, ServerBrowserAction, Update};
 use self::logger::create_root_logger;
 
+pub enum Message {
+    Update(Update),
+    ServerList(Result<Vec<Server>>),
+}
+
 struct Launcher {
     logger: Logger,
     app: App,
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
-    tx: app::Sender<Update>,
-    rx: app::Receiver<Update>,
+    tx: app::Sender<Message>,
+    rx: app::Receiver<Message>,
     pending_update: RefCell<Option<Update>>,
     main_window: LauncherWindow,
+    waiting_for_server_load: Cell<bool>,
     server_loader_worker: Arc<ServerLoaderWorker>,
     saved_games_worker: Arc<SavedGamesWorker>,
 }
@@ -75,6 +85,7 @@ impl Launcher {
             rx,
             pending_update: RefCell::new(None),
             main_window,
+            waiting_for_server_load: Cell::new(false),
             server_loader_worker,
             saved_games_worker,
         });
@@ -101,7 +112,7 @@ impl Launcher {
     fn run_loop_iteration(&self) -> bool {
         let mut pending_ref = self.pending_update.borrow_mut();
         let pending_update = pending_ref.take();
-        let next_update = self.rx.recv();
+        let next_update = self.rx.recv().and_then(|msg| self.process_message(msg));
         let (ready_update, pending_update) = match (pending_update, next_update) {
             (Some(pending), Some(next)) => match pending.try_consolidate(next) {
                 Ok(consolidated) => (None, Some(consolidated)),
@@ -118,13 +129,52 @@ impl Launcher {
         pending_ref.is_some()
     }
 
+    fn process_message(&self, message: Message) -> Option<Update> {
+        match message {
+            Message::Update(update) => Some(update),
+            Message::ServerList(servers) => {
+                if let Ok(servers) = &servers {
+                    let mut last_session = self.game.last_session();
+                    if let Some(Session::Online(server_ref)) = &mut *last_session {
+                        let addr = match server_ref {
+                            ServerRef::Known(server) => server.game_addr().unwrap(),
+                            ServerRef::Unknown(addr) => *addr,
+                        };
+                        let server = servers
+                            .iter()
+                            .filter(|server| server.is_valid())
+                            .find(|server| server.game_addr().unwrap() == addr);
+                        *server_ref = match server {
+                            Some(server) => ServerRef::Known(server.clone()),
+                            None => ServerRef::Unknown(addr),
+                        };
+                        debug!(
+                            &self.logger,
+                            "Determined last session server";
+                            "server" => ?server_ref
+                        );
+                    }
+                }
+                self.waiting_for_server_load.set(false);
+                Some(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
+                    servers,
+                )))
+            }
+        }
+    }
+
     fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
         match action {
             Action::Launch => {
-                let use_battleye = if let BattlEyeUsage::Always(true) = self.config().use_battleye {
-                    true
-                } else {
-                    false
+                let use_battleye = match self.config().use_battleye {
+                    BattlEyeUsage::Always(enabled) => enabled,
+                    BattlEyeUsage::Auto => {
+                        if let Some(enabled) = self.prompt_battleye() {
+                            enabled
+                        } else {
+                            return Ok(());
+                        }
+                    }
                 };
                 if self.monitor_launch(self.game.launch(use_battleye, &[])?)? {
                     app::quit();
@@ -132,10 +182,10 @@ impl Launcher {
                 Ok(())
             }
             Action::Continue => {
-                let use_battleye = if let BattlEyeUsage::Always(true) = self.config().use_battleye {
-                    true
+                let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
+                    enabled
                 } else {
-                    false
+                    return Ok(());
                 };
                 if self.monitor_launch(self.game.continue_session(use_battleye)?)? {
                     app::quit();
@@ -198,10 +248,9 @@ impl Launcher {
             }
             Action::ModManager(ModManagerAction::LoadModList) => {
                 let active_mods = self.game.load_mod_list()?;
-                self.tx
-                    .send(Update::ModManager(ModManagerUpdate::PopulateModList(
-                        active_mods,
-                    )));
+                self.tx.send(Message::Update(Update::ModManager(
+                    ModManagerUpdate::PopulateModList(active_mods),
+                )));
                 Ok(())
             }
             Action::ModManager(ModManagerAction::SaveModList(active_mods)) => {
@@ -220,10 +269,9 @@ impl Launcher {
 
                 let active_mods = self.game.load_mod_list_from(&mod_list_path)?;
                 self.game.save_mod_list(&active_mods)?;
-                self.tx
-                    .send(Update::ModManager(ModManagerUpdate::PopulateModList(
-                        active_mods,
-                    )));
+                self.tx.send(Message::Update(Update::ModManager(
+                    ModManagerUpdate::PopulateModList(active_mods),
+                )));
 
                 Ok(())
             }
@@ -248,12 +296,92 @@ impl Launcher {
         }
     }
 
+    fn prompt_battleye(&self) -> Option<bool> {
+        let battleye_dialog = BattlEyeChoiceDialog::new(self.main_window.window());
+        battleye_dialog.show();
+        loop {
+            let result = battleye_dialog.result();
+            if result.is_some() {
+                return result;
+            }
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return None;
+            }
+        }
+    }
+
+    fn determine_session_battleye(&self) -> Option<bool> {
+        match self.last_session_battleye() {
+            SessionBattlEyeUsage::Resolved(enabled) => return Some(enabled),
+            SessionBattlEyeUsage::AskUser => return self.prompt_battleye(),
+            _ => (),
+        };
+
+        self.waiting_for_server_load.set(true);
+        let monitor = TaskMonitor::new(
+            self.main_window.window(),
+            "Checking server",
+            "Determining if the server requires BattlEye",
+            "Skip",
+        );
+        monitor.show();
+        loop {
+            if monitor.cancel_requested() {
+                break;
+            }
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return None;
+            }
+            match self.last_session_battleye() {
+                SessionBattlEyeUsage::Resolved(enabled) => return Some(enabled),
+                SessionBattlEyeUsage::AskUser => break,
+                _ => (),
+            };
+        }
+        drop(monitor);
+
+        self.prompt_battleye()
+    }
+
+    fn last_session_battleye(&self) -> SessionBattlEyeUsage {
+        match self.config().use_battleye {
+            BattlEyeUsage::Always(enabled) => SessionBattlEyeUsage::Resolved(enabled),
+            BattlEyeUsage::Auto => match &*self.game.last_session() {
+                Some(Session::Online(server_ref)) => match server_ref {
+                    ServerRef::Known(server) => {
+                        SessionBattlEyeUsage::Resolved(server.battleye_required)
+                    }
+                    _ => {
+                        if self.server_loader_worker.is_loading()
+                            || self.waiting_for_server_load.get()
+                        {
+                            SessionBattlEyeUsage::WaitForServerLoader
+                        } else {
+                            SessionBattlEyeUsage::AskUser
+                        }
+                    }
+                },
+                Some(_) => SessionBattlEyeUsage::Resolved(false),
+                None => SessionBattlEyeUsage::AskUser,
+            },
+        }
+    }
+
     fn monitor_launch(&self, mut launch: Launch) -> Result<bool> {
         if let LaunchState::Ready = launch.poll()? {
             return Ok(true);
         }
 
-        let monitor = LaunchMonitor::new(self.main_window.window());
+        let monitor = TaskMonitor::new(
+            self.main_window.window(),
+            "Launching Conan Exiles",
+            "Waiting for Conan Exiles to start...",
+            "Cancel",
+        );
         monitor.show();
 
         let should_poll = Rc::new(Cell::new(true));
@@ -388,6 +516,12 @@ impl Launcher {
         }
         Ok(())
     }
+}
+
+enum SessionBattlEyeUsage {
+    Resolved(bool),
+    WaitForServerLoader,
+    AskUser,
 }
 
 struct ModMismatch {

@@ -7,24 +7,24 @@ use fltk::app;
 
 use crate::game::Game;
 use crate::gui::{SinglePlayerUpdate, Update};
+use crate::Message;
 
 pub struct SavedGamesWorker {
     game: Arc<Game>,
-    tx: app::Sender<Update>,
+    tx: app::Sender<Message>,
 }
 
 impl SavedGamesWorker {
-    pub fn new(game: Arc<Game>, tx: app::Sender<Update>) -> Arc<Self> {
+    pub fn new(game: Arc<Game>, tx: app::Sender<Message>) -> Arc<Self> {
         Arc::new(Self { game, tx })
     }
 
     pub fn list_games(self: Arc<Self>) -> Result<()> {
         tokio::spawn(async move {
             let games = self.game.load_saved_games();
-            self.tx
-                .send(Update::SinglePlayer(SinglePlayerUpdate::PopulateList(
-                    games,
-                )));
+            self.tx.send(Message::Update(Update::SinglePlayer(
+                SinglePlayerUpdate::PopulateList(games),
+            )));
         });
         Ok(())
     }
