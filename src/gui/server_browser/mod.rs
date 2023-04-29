@@ -452,7 +452,7 @@ impl ServerBrowser {
             battleye_required: filter.battleye_required(),
             include_invalid: filter.include_invalid(),
             include_password_protected: filter.include_password_protected(),
-            include_modded: filter.include_modded(),
+            mods: filter.mods(),
             sort_criteria: order.criteria,
             scroll_lock: self.list_pane.scroll_lock(),
         };

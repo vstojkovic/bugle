@@ -34,7 +34,7 @@ pub(super) enum FilterChange {
     BattlEyeRequired,
     IncludeInvalid,
     IncludePasswordProtected,
-    IncludeModded,
+    Mods,
 }
 
 pub(super) struct FilterPane {
@@ -47,7 +47,7 @@ pub(super) struct FilterPane {
     battleye_input: InputChoice,
     invalid_check: CheckButton,
     pwd_prot_check: CheckButton,
-    modded_check: CheckButton,
+    mods_input: InputChoice,
 }
 
 impl FilterPane {
@@ -67,38 +67,35 @@ impl FilterPane {
         let region_label = Frame::default()
             .with_label("Region:")
             .with_align(label_align);
+        let mods_label = Frame::default().with_label("Mods:").with_align(label_align);
         let battleye_label = Frame::default()
             .with_label("BattlEye:")
             .with_align(label_align);
-        let modded_check =
-            CheckButton::default().with_label(&format!("{} Show modded servers", glyph::TOOLS));
-        let left_width = widget_col_width(&[&name_label, &type_label, &region_label]);
-        let mid_width = widget_col_width(&[&map_label, &mode_label, &battleye_label]);
-        let right_width = widget_col_width(&[&invalid_check, &pwd_prot_check, &modded_check]);
+        let left_width = widget_col_width(&[&name_label, &map_label, &region_label]);
+        let mid_width = widget_col_width(&[&type_label, &mods_label]);
+        let right_width = widget_col_width(&[&mode_label, &battleye_label]);
+        let check_width = widget_col_width(&[&invalid_check, &pwd_prot_check]);
         let height = widget_auto_height(&name_label);
-        let input_width = (root.w() - left_width - mid_width - right_width - 40) / 2;
+        let input_width = (root.w() - left_width - mid_width - right_width - check_width - 60) / 3;
 
         root.set_size(root.w(), height * 3 + 20);
 
         let name_label = name_label.with_size(left_width, height).inside_parent(0, 0);
         let name_input = Input::default()
-            .with_size(input_width, height)
+            .with_size(root.w() - left_width - 10, height)
             .right_of(&name_label, 10);
         let map_label = map_label
-            .with_size(mid_width, height)
-            .right_of(&name_input, 10);
+            .with_size(left_width, height)
+            .below_of(&name_label, 10);
         let mut map_input = InputChoice::default()
             .with_size(input_width, height)
             .right_of(&map_label, 10);
         for map in maps.iter() {
             map_input.add(&map.display_name);
         }
-        let invalid_check = invalid_check
-            .with_size(right_width, height)
-            .right_of(&map_input, 10);
         let type_label = type_label
-            .with_size(left_width, height)
-            .below_of(&name_label, 10);
+            .with_size(mid_width, height)
+            .right_of(&map_input, 10);
         let mut type_input = InputChoice::default()
             .with_size(input_width, height)
             .right_of(&type_label, 10);
@@ -109,7 +106,7 @@ impl FilterPane {
         }
         type_input.set_value_index(0);
         let mode_label = mode_label
-            .with_size(mid_width, height)
+            .with_size(right_width, height)
             .right_of(&type_input, 10);
         let mut mode_input = InputChoice::default()
             .with_size(input_width, height)
@@ -121,12 +118,12 @@ impl FilterPane {
             mode_input.add(mode_name(mode));
         }
         mode_input.set_value_index(0);
-        let pwd_prot_check = pwd_prot_check
-            .with_size(right_width, height)
+        let invalid_check = invalid_check
+            .with_size(check_width, height)
             .right_of(&mode_input, 10);
         let region_label = region_label
             .with_size(left_width, height)
-            .below_of(&type_label, 10);
+            .below_of(&map_label, 10);
         let mut region_input = InputChoice::default()
             .with_size(input_width, height)
             .right_of(&region_label, 10);
@@ -137,9 +134,20 @@ impl FilterPane {
             region_input.add(region_name(region));
         }
         region_input.set_value_index(0);
-        let battleye_label = battleye_label
+        let mods_label = mods_label
             .with_size(mid_width, height)
             .right_of(&region_input, 10);
+        let mut mods_input = InputChoice::default()
+            .with_size(input_width, height)
+            .right_of(&mods_label, 10);
+        mods_input.input().set_readonly(true);
+        mods_input.input().clear_visible_focus();
+        mods_input.add("All");
+        mods_input.add("Unmodded");
+        mods_input.add(&format!("Modded {}", glyph::TOOLS));
+        let battleye_label = battleye_label
+            .with_size(right_width, height)
+            .right_of(&mods_input, 10);
         let mut battleye_input = InputChoice::default()
             .with_size(input_width, height)
             .right_of(&battleye_label, 10);
@@ -149,8 +157,8 @@ impl FilterPane {
         battleye_input.add(&format!("Required {}", glyph::EYE));
         battleye_input.add("Not Required");
         battleye_input.set_value_index(0);
-        let modded_check = modded_check
-            .with_size(right_width, height)
+        let pwd_prot_check = pwd_prot_check
+            .with_size(check_width, height)
             .right_of(&battleye_input, 10);
 
         root.end();
@@ -165,7 +173,7 @@ impl FilterPane {
             battleye_input,
             invalid_check,
             pwd_prot_check,
-            modded_check,
+            mods_input,
         }
     }
 
@@ -209,9 +217,13 @@ impl FilterPane {
         self.pwd_prot_check
             .clone()
             .set_checked(filter.include_password_protected());
-        self.modded_check
+        self.mods_input
             .clone()
-            .set_checked(filter.include_modded());
+            .set_value_index(match filter.mods() {
+                None => 0,
+                Some(false) => 1,
+                Some(true) => 2,
+            });
     }
 
     fn set_callbacks(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
@@ -332,13 +344,16 @@ impl FilterPane {
         }
         {
             let filter_holder = Rc::downgrade(&filter_holder);
-            let mut modded_check = self.modded_check.clone();
-            modded_check.set_trigger(CallbackTrigger::Changed);
-            modded_check.set_callback(move |input| {
+            let mut mods_input = self.mods_input.clone();
+            mods_input.set_trigger(CallbackTrigger::Changed);
+            mods_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder.mutate_filter(FilterChange::IncludeModded, |filter| {
-                        filter.set_include_modded(input.is_checked())
-                    });
+                    let mods = match input.menu_button().value() {
+                        1 => Some(false),
+                        2 => Some(true),
+                        _ => None,
+                    };
+                    filter_holder.mutate_filter(FilterChange::Mods, |filter| filter.set_mods(mods));
                 }
             })
         }

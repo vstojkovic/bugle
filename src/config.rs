@@ -42,7 +42,7 @@ pub struct ServerBrowserConfig {
     pub battleye_required: Option<bool>,
     pub include_invalid: bool,
     pub include_password_protected: bool,
-    pub include_modded: bool,
+    pub mods: Option<bool>,
     pub sort_criteria: SortCriteria,
     pub scroll_lock: bool,
 }
@@ -192,10 +192,9 @@ fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
         .and_then(|section| section.get(KEY_INCLUDE_PASSWORD_PROTECTED))
         .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
         .unwrap_or_default();
-    let include_modded = section
-        .and_then(|section| section.get(KEY_INCLUDE_MODDED))
-        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
-        .unwrap_or_default();
+    let mods = section
+        .and_then(|section| section.get(KEY_MODS))
+        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok());
     let sort_criteria = section
         .and_then(|section| section.get(KEY_SORT_CRITERIA))
         .map(|s| if s.starts_with('-') { (false, &s[1..]) } else { (true, s) })
@@ -216,7 +215,7 @@ fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
         battleye_required,
         include_invalid,
         include_password_protected,
-        include_modded,
+        mods,
         sort_criteria,
         scroll_lock,
     }
@@ -237,13 +236,16 @@ fn save_server_browser_config(ini: &mut Ini, config: &ServerBrowserConfig) {
         Some(required) => setter.set(KEY_BATTLEYE_REQUIRED, required.to_string()),
         None => setter,
     };
+    let setter = match config.mods {
+        Some(mods) => setter.set(KEY_MODS, mods.to_string()),
+        None => setter,
+    };
     setter
         .set(KEY_INCLUDE_INVALID, config.include_invalid.to_string())
         .set(
             KEY_INCLUDE_PASSWORD_PROTECTED,
             config.include_password_protected.to_string(),
         )
-        .set(KEY_INCLUDE_MODDED, config.include_modded.to_string())
         .set(
             KEY_SORT_CRITERIA,
             sort_criteria_to_string(&config.sort_criteria),
@@ -266,7 +268,7 @@ const KEY_REGION: &str = "Region";
 const KEY_BATTLEYE_REQUIRED: &str = "BattlEyeRequired";
 const KEY_INCLUDE_INVALID: &str = "IncludeInvalid";
 const KEY_INCLUDE_PASSWORD_PROTECTED: &str = "IncludePasswordProtected";
-const KEY_INCLUDE_MODDED: &str = "IncludeModded";
+const KEY_MODS: &str = "Mods";
 const KEY_SORT_CRITERIA: &str = "SortBy";
 const KEY_SCROLL_LOCK: &str = "ScrollLock";
 

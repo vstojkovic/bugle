@@ -16,7 +16,7 @@ pub struct Filter {
     battleye_required: Option<bool>,
     include_invalid: bool,
     include_password_protected: bool,
-    include_modded: bool,
+    mods: Option<bool>,
 }
 
 impl Filter {
@@ -30,7 +30,7 @@ impl Filter {
             config.battleye_required,
             config.include_invalid,
             config.include_password_protected,
-            config.include_modded,
+            config.mods,
         )
     }
 
@@ -43,7 +43,7 @@ impl Filter {
         battleye_required: impl Into<Option<bool>>,
         include_invalid: bool,
         include_password_protected: bool,
-        include_modded: bool,
+        mods: impl Into<Option<bool>>,
     ) -> Self {
         let name_re = Self::regex(&name);
         let map_re = Self::regex(&map);
@@ -58,7 +58,7 @@ impl Filter {
             battleye_required: battleye_required.into(),
             include_invalid,
             include_password_protected,
-            include_modded,
+            mods: mods.into(),
         }
     }
 
@@ -128,12 +128,12 @@ impl Filter {
         self.include_password_protected = include_password_protected;
     }
 
-    pub fn include_modded(&self) -> bool {
-        self.include_modded
+    pub fn mods(&self) -> Option<bool> {
+        self.mods
     }
 
-    pub fn set_include_modded(&mut self, include_modded: bool) {
-        self.include_modded = include_modded;
+    pub fn set_mods(&mut self, mods: impl Into<Option<bool>>) {
+        self.mods = mods.into();
     }
 
     fn regex(text: &str) -> Regex {
@@ -156,6 +156,6 @@ impl RowFilter<Server> for Filter {
                 .map_or(true, |required| server.battleye_required == required)
             && self.include_invalid >= !server.is_valid()
             && self.include_password_protected >= server.password_protected
-            && self.include_modded >= server.is_modded()
+            && self.mods.map_or(true, |mods| server.is_modded() == mods)
     }
 }
