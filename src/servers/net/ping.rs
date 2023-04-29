@@ -208,7 +208,7 @@ impl Sender {
     fn new(client: Arc<ClientImpl>) -> Self {
         Self {
             client,
-            rate_limiter: RateLimiter::direct(Quota::per_second(500u32.try_into().unwrap())),
+            rate_limiter: RateLimiter::direct(Quota::per_second(250u32.try_into().unwrap())),
         }
     }
 
