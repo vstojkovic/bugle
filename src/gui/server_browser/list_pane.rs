@@ -56,6 +56,7 @@ impl ListPane {
             .with_align(Align::Center);
 
         table.end();
+        table.hide();
 
         let list_pane = Rc::new(Self {
             table: table.clone(),
@@ -85,15 +86,19 @@ impl ListPane {
     }
 
     pub fn populate(&self, server_list: Rc<RefCell<dyn TableSource<Output = Server>>>) {
-        self.loading_label.clone().hide();
+        self.clear_refreshing();
         self.set_server_list(server_list);
     }
 
     pub fn mark_refreshing(&self) {
         self.set_server_list(Rc::new(RefCell::new(Vec::new())));
-        let mut loading_label = self.loading_label.clone();
-        loading_label.show();
-        loading_label.redraw();
+        self.table.clone().hide();
+        self.loading_label.clone().show();
+    }
+
+    pub fn clear_refreshing(&self) {
+        self.loading_label.clone().hide();
+        self.table.clone().show();
     }
 
     pub fn update(&self, indices: impl IntoIterator<Item = usize>) {

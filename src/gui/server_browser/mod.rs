@@ -296,7 +296,10 @@ impl ServerBrowser {
                 if self.root.visible() {
                     match payload {
                         Ok(all_servers) => self.populate_servers(all_servers),
-                        Err(err) => alert_error(ERR_LOADING_SERVERS, &err),
+                        Err(err) => {
+                            self.list_pane.clear_refreshing();
+                            alert_error(ERR_LOADING_SERVERS, &err);
+                        }
                     }
                 } else {
                     self.pending_update
