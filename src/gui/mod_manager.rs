@@ -19,8 +19,10 @@ use lazy_static::lazy_static;
 use crate::game::{ModInfo, ModRef, Mods};
 
 use super::prelude::*;
-use super::{alert_error, is_table_nav_event, CleanupFn, Handler};
-use super::{button_row_height, widget_col_width};
+use super::{
+    alert_error, button_row_height, is_table_nav_event, prompt_confirm, widget_col_width,
+    CleanupFn, Handler,
+};
 
 pub enum ModManagerAction {
     LoadModList,
@@ -441,6 +443,9 @@ impl ModManager {
     }
 
     fn clear_clicked(&self) {
+        if self.state.borrow().active.is_empty() || !prompt_confirm(PROMPT_CLEAR_MODS) {
+            return;
+        }
         if self.save_mod_list(Vec::new()) {
             self.populate_state(Vec::new());
         }
@@ -625,6 +630,7 @@ impl ModManager {
     }
 }
 
+const PROMPT_CLEAR_MODS: &str = "Are you sure you want to clear the mod list?";
 const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
 const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 const CSS_INFO_BODY: &str = include_str!("mod_info.css");
