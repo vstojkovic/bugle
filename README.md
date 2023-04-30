@@ -7,18 +7,15 @@ It's ugly as sin, it's poorly tested, and it's my hobby project that I came up w
 relaxation, so don't expect the stuff you would find in a more serious development project (e.g.
 well-commented code, automated tests, etc.)
 
-ALPHA VERSION WARNING: This is the 1.0.0-alpha.3 version of BUGLE. What that means is that it hasn't
-been used thoroughly on any computer but mine. While I'm reasonably sure that it won't make your
-computer catch fire or delete any of your files, expect it to not actually do its job properly.
-It might crash, or it might mess up your modlist or your game settings. It ***shouldn't***, but it
-***might***.
+BETA VERSION: This is a beta version of BUGLE. Several other people have been kind enough to test
+it and help me find a few bugs. The software works, but it might still have some minor bugs.
 
 For a list of known issues, scroll to the last section of this document. If you run into an issue
 that isn't there, feel free to open a GitHub issue about it, or contact me on Funcom Forums.
 
 ## Installation
 
-Go to the v1.0.0-alpha.3 release and download the `bugle-v1.0.0-alpha.3-x86_64-pc-windows-msvc.zip`
+Go to the v1.0.0-beta.0 release and download the `bugle-v1.0.0-beta.0-x86_64-pc-windows-msvc.zip`
 file. Unpack it into a directory where you're allowed to write files. It's a good idea to put it in
 its own directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
@@ -55,9 +52,7 @@ warns you when you have mods in your list that you haven't previously used with 
 game.
 * **Flexible BattlEye usage.** Just like with Funcom launcher, you can configure BUGLE to enable or
 disable BattlEye. However, you can also tell BUGLE to use it "only when required". In this mode,
-BattlEye will be enabled only if you join a server that requires it. NOTE: For the moment, BUGLE
-does not do this properly when you click on the "Continue" button on the main launcher page, and
-will launch with BattlEye disabled.
+BattlEye will be enabled only if you join a server that requires it.
 
 ## Roadmap
 
@@ -69,6 +64,10 @@ Here are some things that I'm planning to (try to) add to BUGLE:
 implemented". The truth is that I've never even played Conan Exiles in co-op mode, ever, and I don't
 really have anyone to try it with. I intend to implement this, but first I'll need some help from
 a volunteer.
+* **Localization.** BUGLE is currently available only in English. I need to add support for other
+languages.
+* **Tooltips.** It's not always obvious what some of the user interface elements mean. I need to add
+tooltips that explain them.
 * **Support for other platforms.** Right now, I'm building BUGLE only for Windows, and it works only
 with Steam. Ideally, I would like it to support Conan Exiles when installed from a different game
 store, and I would also like to offer support for Linux. However, I'll need help from volunteers to
@@ -79,12 +78,14 @@ of the protocol the game uses to let you play. There is no information on this p
 one used by the server browser, this one will be a much tougher nut to crack, and I'm honestly not
 sure whether I'll have the time, patience, or skill to do it.
 
+For a more detailed view of what ideas I'm investigating and what features I'm planning to add, you
+can visit the [BUGLE Roadmap Trello board](https://trello.com/b/zjDYQsq8/roadmap).
+
 ## Known Issues
 
 * **Does not check if you're logged into Steam.** BUGLE will happily run if you haven't started
 Steam or logged into it. In fact, it will happily launch Conan Exiles and let you discover the hard
 way that Steam isn't running. I'll fix that eventually.
-* **BattlEye usage on "Continue".** If you've configured BUGLE to enable BattlEye "only when
-required" and you press the "Continue" button on the main launcher screen, it will launch the game
-with BattlEye disabled, even if you're connecting to a server that requires BattlEye. This will be
-fixed in the next update.
+* **Mod mismatch warning if you stop using a mod.** If you use a mod in your single-player or co-op
+game and then decide to stop using it, it will leave traces in your game database. BUGLE will detect
+those traces, see that the mod isn't in your mod list, and warn you about mod mismatch.
