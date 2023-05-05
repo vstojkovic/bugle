@@ -11,15 +11,16 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableRow;
 use fltk_table::{SmartTable, TableOpts};
+use slog::FilterLevel;
 use tempfile::tempdir;
 
-use crate::config::{BattlEyeUsage, Config};
+use crate::config::{BattlEyeUsage, Config, LogLevel};
 use crate::game::Game;
 
 use super::prelude::*;
 use super::{
-    alert_error, button_row_height, make_readonly_cell_widget, widget_auto_height,
-    widget_auto_width, widget_col_width, Action, CleanupFn, Handler,
+    alert_error, make_readonly_cell_widget, widget_auto_height, widget_col_width, Action,
+    CleanupFn, Handler,
 };
 
 pub struct Home {
@@ -30,6 +31,7 @@ impl Home {
     pub fn new(
         game: &Game,
         config: &Config,
+        log_level_overridden: bool,
         on_action: impl Handler<Action> + 'static,
     ) -> Rc<Self> {
         let on_action = Rc::new(on_action);
@@ -63,17 +65,22 @@ impl Home {
             editable: false,
             ..Default::default()
         });
+        info_pane.end();
 
+        let settings_group = Group::default_fill();
+        let log_level_label = Frame::default().with_label("BUGLE Logging:");
+        let log_level_input = InputChoice::default_fill();
         let battleye_label = Frame::default().with_label("BattlEye:");
-        let battleye_height = widget_auto_height(&battleye_label);
-        let battleye_group = Group::default_fill();
         let battleye_input = InputChoice::default_fill();
-        battleye_group.end();
+        settings_group.end();
+        let label_width = widget_col_width(&[&log_level_label, &battleye_label]);
+        let height = widget_auto_height(&battleye_label);
+        let settings_group_height = height * 2 + 10;
 
         let launch_button = Button::default().with_label("Launch");
         let continue_button = Button::default().with_label("Continue");
         let button_width = 2 * widget_col_width(&[&launch_button, &continue_button]);
-        let button_height = 2 * button_row_height(&[&launch_button, &continue_button]);
+        let button_height = settings_group_height;
 
         let mut continue_button = continue_button
             .with_size(button_width, button_height)
@@ -82,18 +89,47 @@ impl Home {
             .with_size(button_width, button_height)
             .left_of(&continue_button, 10);
 
-        let battleye_label_width = widget_auto_width(&battleye_label);
         let battleye_label = battleye_label
-            .with_size(battleye_label_width, button_height)
+            .with_size(label_width, button_height)
             .inside_parent(0, -button_height);
 
-        let battleye_group = battleye_group.right_of(&battleye_label, 10);
-        let battleye_group_width = launch_button.x() - battleye_group.x() - button_width;
-        let _battleye_group = battleye_group.with_size(battleye_group_width, button_height);
+        let _settings_group = settings_group
+            .with_size(launch_button.x() - root.x() - 10, settings_group_height)
+            .left_of(&launch_button, 10);
 
+        let log_level_label = log_level_label
+            .with_size(label_width, height)
+            .inside_parent(0, 0);
+        let mut log_level_input = log_level_input
+            .with_size_flex(0, height)
+            .right_of(&log_level_label, 10)
+            .stretch_to_parent(0, None);
+        log_level_input.input().set_readonly(true);
+        log_level_input.input().clear_visible_focus();
+        log_level_input.add("Off");
+        log_level_input.add("Trace");
+        log_level_input.add("Debug");
+        log_level_input.add("Info");
+        log_level_input.add("Warning");
+        log_level_input.add("Error");
+        log_level_input.add("Critical");
+        log_level_input.set_value_index(log_level_to_index(&config.log_level));
+        log_level_input.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                let log_level = index_to_log_leve(input.menu_button().value());
+                on_action(Action::ConfigureLogLevel(log_level)).unwrap();
+            }
+        });
+        log_level_input.set_activated(!log_level_overridden);
+
+        let battleye_label = battleye_label
+            .with_size(label_width, height)
+            .below_of(&log_level_label, 10);
         let mut battleye_input = battleye_input
-            .with_size_flex(0, battleye_height)
-            .center_of_parent();
+            .with_size_flex(0, height)
+            .right_of(&battleye_label, 10)
+            .stretch_to_parent(0, None);
         battleye_input.input().set_readonly(true);
         battleye_input.input().clear_visible_focus();
         battleye_input.add("Enabled");
@@ -195,4 +231,29 @@ fn try_install_crom_font() -> anyhow::Result<Font> {
     let font = Font::load_font(path)?;
     Font::set_font(Font::Zapfdingbats, &font);
     Ok(Font::Zapfdingbats)
+}
+
+fn log_level_to_index(log_level: &LogLevel) -> i32 {
+    match log_level.0 {
+        FilterLevel::Off => 0,
+        FilterLevel::Trace => 1,
+        FilterLevel::Debug => 2,
+        FilterLevel::Info => 3,
+        FilterLevel::Warning => 4,
+        FilterLevel::Error => 5,
+        FilterLevel::Critical => 6,
+    }
+}
+
+fn index_to_log_leve(idx: i32) -> LogLevel {
+    LogLevel(match idx {
+        0 => FilterLevel::Off,
+        1 => FilterLevel::Trace,
+        2 => FilterLevel::Debug,
+        3 => FilterLevel::Info,
+        4 => FilterLevel::Warning,
+        5 => FilterLevel::Error,
+        6 => FilterLevel::Critical,
+        _ => unreachable!(),
+    })
 }

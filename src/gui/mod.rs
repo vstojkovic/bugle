@@ -21,7 +21,7 @@ mod server_browser;
 mod single_player;
 mod task_monitor;
 
-use crate::config::BattlEyeUsage;
+use crate::config::{BattlEyeUsage, LogLevel};
 
 pub use self::battleye_choice_dialog::BattlEyeChoiceDialog;
 pub use self::launcher::LauncherWindow;
@@ -33,6 +33,7 @@ pub use self::task_monitor::TaskMonitor;
 pub enum Action {
     Launch,
     Continue,
+    ConfigureLogLevel(LogLevel),
     ConfigureBattlEye(BattlEyeUsage),
     ServerBrowser(ServerBrowserAction),
     SinglePlayer(SinglePlayerAction),

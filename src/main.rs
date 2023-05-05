@@ -44,6 +44,7 @@ pub enum Message {
 
 struct Launcher {
     logger: Logger,
+    log_level: Option<Arc<AtomicUsize>>,
     app: App,
     game: Arc<Game>,
     config: RefCell<Config>,
@@ -60,6 +61,7 @@ struct Launcher {
 impl Launcher {
     fn new(
         logger: Logger,
+        log_level: Option<Arc<AtomicUsize>>,
         app: App,
         game: Game,
         config: Config,
@@ -73,10 +75,11 @@ impl Launcher {
 
         let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), tx.clone());
 
-        let main_window = LauncherWindow::new(&*game, &config);
+        let main_window = LauncherWindow::new(&*game, &config, log_level.is_none());
 
         let launcher = Rc::new(Self {
             logger,
+            log_level,
             app,
             game,
             config: RefCell::new(config),
@@ -191,6 +194,18 @@ impl Launcher {
                     app::quit();
                 }
                 Ok(())
+            }
+            Action::ConfigureLogLevel(new_log_level) => {
+                let update_result = self.update_config(|config| config.log_level = new_log_level);
+                if update_result.is_ok() {
+                    if let Some(log_level) = &self.log_level {
+                        log_level.store(
+                            new_log_level.0.as_usize(),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                    }
+                }
+                update_result
             }
             Action::ConfigureBattlEye(use_battleye) => {
                 self.update_config(|config| config.use_battleye = use_battleye)
@@ -597,7 +612,14 @@ async fn main() {
         }
     };
 
-    let launcher = Launcher::new(root_logger.clone(), app, game, config, config_persister);
+    let launcher = Launcher::new(
+        root_logger.clone(),
+        if log_level_override.is_none() { Some(log_level) } else { None },
+        app,
+        game,
+        config,
+        config_persister,
+    );
     launcher.run();
 
     info!(root_logger, "Shutting down launcher");

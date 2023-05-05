@@ -13,7 +13,7 @@ pub struct Config {
     pub server_browser: ServerBrowserConfig,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct LogLevel(pub slog::FilterLevel);
 
 impl Default for LogLevel {
