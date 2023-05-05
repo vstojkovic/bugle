@@ -18,7 +18,7 @@ pub struct LogLevel(pub slog::FilterLevel);
 
 impl Default for LogLevel {
     fn default() -> Self {
-        Self(slog::FilterLevel::Info)
+        Self(crate::logger::DEFAULT_LOG_LEVEL)
     }
 }
 

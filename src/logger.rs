@@ -5,6 +5,11 @@ use std::sync::Arc;
 use slog::{o, Discard, Drain, FilterLevel, Logger};
 use slog_async::Async;
 
+#[cfg(default_log_debug)]
+pub const DEFAULT_LOG_LEVEL: FilterLevel = FilterLevel::Debug;
+#[cfg(not(default_log_debug))]
+pub const DEFAULT_LOG_LEVEL: FilterLevel = FilterLevel::Info;
+
 #[cfg(not(windows))]
 pub fn create_root_logger(log_level: &Arc<AtomicUsize>) -> Logger {
     create_term_logger(log_level)

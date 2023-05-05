@@ -560,7 +560,9 @@ async fn main() {
         .ok()
         .unwrap_or_default();
     let log_level = Arc::new(AtomicUsize::new(
-        log_level_override.unwrap_or(FilterLevel::Info).as_usize(),
+        log_level_override
+            .unwrap_or(logger::DEFAULT_LOG_LEVEL)
+            .as_usize(),
     ));
     let root_logger = create_root_logger(&log_level);
 
