@@ -198,7 +198,8 @@ impl Game {
     pub fn revision(&self) -> (u32, u16) {
         let maj = (self.build_id | 0x80000000) >> 13;
         let min = (self.build_id & 0x1fff) as u16;
-        let min = min | (0x8000 - (min & 0x1000));
+        let or_mask = if min > 0x1000 { 0x7000 } else { 0x8000 };
+        let min = min | or_mask;
         (maj, min)
     }
 
