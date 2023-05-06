@@ -9,6 +9,7 @@ use anyhow::Result;
 use fltk::dialog;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
+use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
 use crate::config::ServerBrowserConfig;
@@ -80,6 +81,7 @@ impl From<ServerBrowserUpdate> for super::Update {
 }
 
 pub(super) struct ServerBrowser {
+    logger: Logger,
     root: Group,
     on_action: Box<dyn Handler<ServerBrowserAction>>,
     list_pane: Rc<ListPane>,
@@ -91,6 +93,7 @@ pub(super) struct ServerBrowser {
 
 impl ServerBrowser {
     pub fn new(
+        logger: Logger,
         maps: Arc<Maps>,
         config: &ServerBrowserConfig,
         on_action: impl Handler<ServerBrowserAction> + 'static,
@@ -133,6 +136,7 @@ impl ServerBrowser {
         root.hide();
 
         let browser = Rc::new(Self {
+            logger,
             root,
             on_action: Box::new(on_action),
             list_pane: Rc::clone(&list_pane),
@@ -183,6 +187,7 @@ impl ServerBrowser {
                                     }
                                 };
                                 if let Err(err) = (browser.on_action)(action) {
+                                    error!(browser.logger, "Error joining server"; "error" => %err);
                                     alert_error(ERR_JOINING_SERVER, &err);
                                 }
                             }
@@ -203,6 +208,7 @@ impl ServerBrowser {
                                 });
 
                                 if let Err(err) = (browser.on_action)(action) {
+                                    error!(browser.logger, "Error pinging server"; "error" => %err);
                                     alert_error(ERR_PINGING_SERVERS, &err);
                                 }
                             }
@@ -234,6 +240,11 @@ impl ServerBrowser {
                                     .collect();
                                 let action = ServerBrowserAction::UpdateFavorites(favorites);
                                 if let Err(err) = (browser.on_action)(action) {
+                                    error!(
+                                        browser.logger,
+                                        "Error updating favorites";
+                                        "error" => %err,
+                                    );
                                     alert_error(ERR_UPDATING_FAVORITES, &err);
                                 }
                             }
@@ -262,6 +273,7 @@ impl ServerBrowser {
                                 battleye_required: true,
                             };
                             if let Err(err) = (browser.on_action)(action) {
+                                error!(browser.logger, "Error on direct connect"; "error" => %err);
                                 alert_error(ERR_JOINING_SERVER, &err);
                             }
                         }
@@ -348,6 +360,7 @@ impl ServerBrowser {
         self.list_pane.populate(state);
 
         if let Err(err) = (self.on_action)(ServerBrowserAction::PingServers(ping_requests)) {
+            error!(self.logger, "Error pinging server list"; "error" => %err);
             alert_error(ERR_PINGING_SERVERS, &err);
         }
     }

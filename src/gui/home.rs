@@ -11,7 +11,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableRow;
 use fltk_table::{SmartTable, TableOpts};
-use slog::FilterLevel;
+use slog::{error, FilterLevel, Logger};
 use tempfile::tempdir;
 
 use crate::config::{BattlEyeUsage, Config, LogLevel};
@@ -29,6 +29,7 @@ pub struct Home {
 
 impl Home {
     pub fn new(
+        logger: Logger,
         game: &Game,
         config: &Config,
         log_level_overridden: bool,
@@ -183,16 +184,20 @@ impl Home {
 
         launch_button.set_callback({
             let on_action = Rc::clone(&on_action);
+            let logger = logger.clone();
             move |_| {
                 if let Err(err) = on_action(Action::Launch) {
+                    error!(logger, "Error launching game"; "error" => %err);
                     alert_error(ERR_LAUNCHING_GAME, &err);
                 }
             }
         });
         continue_button.set_callback({
             let on_action = Rc::clone(&on_action);
+            let logger = logger.clone();
             move |_| {
                 if let Err(err) = on_action(Action::Continue) {
+                    error!(logger, "Error launching game"; "error" => %err);
                     alert_error(ERR_LAUNCHING_GAME, &err);
                 }
             }

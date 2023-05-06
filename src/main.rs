@@ -18,7 +18,7 @@ use gui::{
 };
 use regex::Regex;
 use servers::Server;
-use slog::{debug, info, trace, warn, FilterLevel, Logger};
+use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 use workers::{SavedGamesWorker, ServerLoaderWorker};
 
 mod config;
@@ -75,7 +75,7 @@ impl Launcher {
 
         let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), tx.clone());
 
-        let main_window = LauncherWindow::new(&*game, &config, log_level.is_none());
+        let main_window = LauncherWindow::new(logger.clone(), &*game, &config, log_level.is_none());
 
         let launcher = Rc::new(Self {
             logger,
@@ -136,27 +136,30 @@ impl Launcher {
         match message {
             Message::Update(update) => Some(update),
             Message::ServerList(servers) => {
-                if let Ok(servers) = &servers {
-                    let mut last_session = self.game.last_session();
-                    if let Some(Session::Online(server_ref)) = &mut *last_session {
-                        let addr = match server_ref {
-                            ServerRef::Known(server) => server.game_addr().unwrap(),
-                            ServerRef::Unknown(addr) => *addr,
-                        };
-                        let server = servers
-                            .iter()
-                            .filter(|server| server.is_valid())
-                            .find(|server| server.game_addr().unwrap() == addr);
-                        *server_ref = match server {
-                            Some(server) => ServerRef::Known(server.clone()),
-                            None => ServerRef::Unknown(addr),
-                        };
-                        debug!(
-                            &self.logger,
-                            "Determined last session server";
-                            "server" => ?server_ref
-                        );
+                match &servers {
+                    Ok(servers) => {
+                        let mut last_session = self.game.last_session();
+                        if let Some(Session::Online(server_ref)) = &mut *last_session {
+                            let addr = match server_ref {
+                                ServerRef::Known(server) => server.game_addr().unwrap(),
+                                ServerRef::Unknown(addr) => *addr,
+                            };
+                            let server = servers
+                                .iter()
+                                .filter(|server| server.is_valid())
+                                .find(|server| server.game_addr().unwrap() == addr);
+                            *server_ref = match server {
+                                Some(server) => ServerRef::Known(server.clone()),
+                                None => ServerRef::Unknown(addr),
+                            };
+                            debug!(
+                                &self.logger,
+                                "Determined last session server";
+                                "server" => ?server_ref
+                            );
+                        }
                     }
+                    Err(err) => error!(&self.logger, "Error fetching server list"; "error" => %err),
                 }
                 self.waiting_for_server_load.set(false);
                 Some(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(

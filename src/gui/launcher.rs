@@ -7,6 +7,7 @@ use fltk::enums::Event;
 use fltk::group::Group;
 use fltk::prelude::*;
 use fltk::window::Window;
+use slog::Logger;
 
 use crate::config::Config;
 use crate::game::Game;
@@ -30,7 +31,7 @@ pub struct LauncherWindow {
 }
 
 impl LauncherWindow {
-    pub fn new(game: &Game, config: &Config, log_level_overridden: bool) -> Self {
+    pub fn new(logger: Logger, game: &Game, config: &Config, log_level_overridden: bool) -> Self {
         let on_action: Rc<RefCell<Box<dyn Handler<Action>>>> =
             Rc::new(RefCell::new(Box::new(|_| {
                 panic!("Action handler not yet assigned");
@@ -59,14 +60,19 @@ impl LauncherWindow {
 
         let home = {
             let on_action = Rc::clone(&on_action);
-            Home::new(game, config, log_level_overridden, move |action| {
-                on_action.borrow()(action)
-            })
+            Home::new(
+                logger.clone(),
+                game,
+                config,
+                log_level_overridden,
+                move |action| on_action.borrow()(action),
+            )
         };
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
             ServerBrowser::new(
+                logger.clone(),
                 Arc::clone(game.maps()),
                 &config.server_browser,
                 move |browser_action| on_action.borrow()(Action::ServerBrowser(browser_action)),
@@ -75,16 +81,18 @@ impl LauncherWindow {
 
         let single_player = {
             let on_action = Rc::clone(&on_action);
-            SinglePlayer::new(Arc::clone(game.maps()), move |sp_action| {
+            SinglePlayer::new(logger.clone(), Arc::clone(game.maps()), move |sp_action| {
                 on_action.borrow()(Action::SinglePlayer(sp_action))
             })
         };
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
-            ModManager::new(Arc::clone(game.installed_mods()), move |mod_mgr_action| {
-                on_action.borrow()(Action::ModManager(mod_mgr_action))
-            })
+            ModManager::new(
+                logger.clone(),
+                Arc::clone(game.installed_mods()),
+                move |mod_mgr_action| on_action.borrow()(Action::ModManager(mod_mgr_action)),
+            )
         };
 
         content_group.end();

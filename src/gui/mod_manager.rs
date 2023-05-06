@@ -15,6 +15,7 @@ use fltk::window::Window;
 use fltk_table::{SmartTable, TableOpts};
 use fltk_webview::Webview;
 use lazy_static::lazy_static;
+use slog::{error, Logger};
 
 use crate::game::{ModInfo, ModRef, Mods};
 
@@ -83,6 +84,7 @@ impl ModListState {
 }
 
 pub(super) struct ModManager {
+    logger: Logger,
     root: Group,
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: SmartTable,
@@ -98,7 +100,11 @@ pub(super) struct ModManager {
 }
 
 impl ModManager {
-    pub fn new(mods: Arc<Mods>, on_action: impl Handler<ModManagerAction> + 'static) -> Rc<Self> {
+    pub fn new(
+        logger: Logger,
+        mods: Arc<Mods>,
+        on_action: impl Handler<ModManagerAction> + 'static,
+    ) -> Rc<Self> {
         let mut root = Group::default_fill();
 
         let tiles = Tile::default_fill();
@@ -276,6 +282,7 @@ impl ModManager {
         }
 
         let manager = Rc::new(Self {
+            logger,
             root,
             on_action: Box::new(on_action),
             available_list: available_list.clone(),
@@ -336,6 +343,7 @@ impl ModManager {
         root.show();
 
         if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
+            error!(self.logger, "Error loading mod list"; "error" => %err);
             alert_error(ERR_LOADING_MOD_LIST, &err);
         }
 
@@ -453,6 +461,7 @@ impl ModManager {
 
     fn import_clicked(&self) {
         if let Err(err) = (self.on_action)(ModManagerAction::ImportModList) {
+            error!(self.logger, "Error importing mod list"; "error" => %err);
             alert_error(ERR_LOADING_MOD_LIST, &err);
         }
     }
@@ -460,6 +469,7 @@ impl ModManager {
     fn export_clicked(&self) {
         let state = self.state.borrow();
         if let Err(err) = (self.on_action)(ModManagerAction::ExportModList(state.active.clone())) {
+            error!(self.logger, "Error exporting mod list"; "error" => %err);
             alert_error(ERR_SAVING_MOD_LIST, &err);
         }
     }
@@ -582,6 +592,7 @@ impl ModManager {
         match (self.on_action)(ModManagerAction::SaveModList(mod_list)) {
             Ok(()) => true,
             Err(err) => {
+                error!(self.logger, "Error saving mod list"; "error" => %err);
                 alert_error(ERR_SAVING_MOD_LIST, &err);
                 false
             }

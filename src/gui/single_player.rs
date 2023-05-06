@@ -14,6 +14,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
+use slog::{error, Logger};
 
 use crate::game::{GameDB, Maps};
 
@@ -74,6 +75,7 @@ impl SinglePlayerState {
 }
 
 pub struct SinglePlayer {
+    logger: Logger,
     root: Group,
     on_action: Box<dyn Handler<SinglePlayerAction>>,
     in_progress_table: SmartTable,
@@ -88,7 +90,11 @@ pub struct SinglePlayer {
 }
 
 impl SinglePlayer {
-    pub fn new(maps: Arc<Maps>, on_action: impl Handler<SinglePlayerAction> + 'static) -> Rc<Self> {
+    pub fn new(
+        logger: Logger,
+        maps: Arc<Maps>,
+        on_action: impl Handler<SinglePlayerAction> + 'static,
+    ) -> Rc<Self> {
         let mut root = Group::default_fill();
 
         let label_align = Align::Right | Align::Inside;
@@ -184,6 +190,7 @@ impl SinglePlayer {
         root.hide();
 
         let single_player = Rc::new(Self {
+            logger,
             root,
             on_action: Box::new(on_action),
             in_progress_table,
@@ -243,7 +250,10 @@ impl SinglePlayer {
         match update {
             SinglePlayerUpdate::PopulateList(result) => match result {
                 Ok(games) => self.set_games(games),
-                Err(err) => super::alert_error(ERR_LISTING_SAVED_GAMES, &err),
+                Err(err) => {
+                    error!(self.logger, "Error listing saved games"; "error" => %err);
+                    super::alert_error(ERR_LISTING_SAVED_GAMES, &err);
+                }
             },
         }
     }
@@ -302,6 +312,7 @@ impl SinglePlayer {
             return;
         }
         if let Err(err) = (self.on_action)(SinglePlayerAction::NewSavedGame { map_id }) {
+            error!(self.logger, "Error launching singleplayer game"; "error" => %err);
             alert_error(ERR_LAUNCHING_SP, &err);
         }
     }
@@ -309,6 +320,7 @@ impl SinglePlayer {
     fn continue_clicked(&self) {
         let map_id = self.state.borrow().filter().map_id;
         if let Err(err) = (self.on_action)(SinglePlayerAction::ContinueSavedGame { map_id }) {
+            error!(self.logger, "Error launching singleplayer game"; "error" => %err);
             alert_error(ERR_LAUNCHING_SP, &err);
         }
     }
@@ -328,6 +340,7 @@ impl SinglePlayer {
         drop(state);
 
         if let Err(err) = (self.on_action)(action) {
+            error!(self.logger, "Error loading singleplayer backup"; "error" => %err);
             alert_error(ERR_LOADING_GAME, &err);
             return;
         }
@@ -357,6 +370,7 @@ impl SinglePlayer {
         drop(state);
 
         if let Err(err) = (self.on_action)(action) {
+            error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
             alert_error(ERR_SAVING_GAME, &err);
             return;
         }
@@ -409,6 +423,7 @@ impl SinglePlayer {
         drop(state);
 
         if let Err(err) = (self.on_action)(action) {
+            error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
             alert_error(ERR_SAVING_GAME, &err);
             return;
         }
@@ -441,7 +456,8 @@ impl SinglePlayer {
         drop(state);
 
         if let Err(err) = (self.on_action)(action) {
-            alert_error(ERR_SAVING_GAME, &err);
+            error!(self.logger, "Error deleting singleplayer backup"; "error" => %err);
+            alert_error(ERR_DELETING_GAME, &err);
             return;
         }
 
@@ -512,6 +528,7 @@ const ERR_LISTING_SAVED_GAMES: &str = "Error while enumerating saves games.";
 const ERR_LAUNCHING_SP: &str = "Error while trying to launch the single-player game.";
 const ERR_LOADING_GAME: &str = "Error while loading a saved game.";
 const ERR_SAVING_GAME: &str = "Error while saving the in-progress game.";
+const ERR_DELETING_GAME: &str = "Error while deleting a saved game.";
 const ERR_INVALID_BACKUP_NAME: &str =
     "Invalid backup name. Please use a non-empty filename without a path.";
 const ERR_PREFIX_INVALID_NAME: &str = "Invalid filename";
