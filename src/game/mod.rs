@@ -234,8 +234,16 @@ impl Game {
                 if key != KEY_SERVERS_LIST {
                     continue;
                 }
-                if let Ok(favorite) = FavoriteServer::parse(value) {
-                    favorites.insert(favorite);
+                match FavoriteServer::parse(value) {
+                    Ok(favorite) => {
+                        favorites.insert(favorite);
+                    }
+                    Err(err) => warn!(
+                        self.logger,
+                        "Error parsing favorite";
+                        "value" => value,
+                        "error" => ?err,
+                    ),
                 }
             }
         }

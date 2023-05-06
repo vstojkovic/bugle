@@ -32,8 +32,8 @@ impl FavoriteServer {
         }
     }
 
-    pub fn parse(input: &str) -> Result<FavoriteServer, ()> {
-        extract_value(parse_favorite_impl(input)).map_err(|_| ())
+    pub fn parse(input: &str) -> Result<FavoriteServer, nom::Err<()>> {
+        extract_value(parse_favorite_impl(input))
     }
 
     pub fn to_string(&self) -> String {
