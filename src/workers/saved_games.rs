@@ -1,11 +1,10 @@
-use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use fltk::app;
 
-use crate::game::Game;
+use crate::game::{create_empty_db, Game};
 use crate::gui::{SinglePlayerUpdate, Update};
 use crate::Message;
 
@@ -29,9 +28,8 @@ impl SavedGamesWorker {
         Ok(())
     }
 
-    pub fn clear_progress(&self, map_id: usize) -> Result<()> {
-        let _ = File::create(self.game.in_progress_game_path(map_id))?;
-        Ok(())
+    pub fn clear_progress(&self, map_id: usize, fls_account_id: Option<&str>) -> Result<()> {
+        create_empty_db(self.game.in_progress_game_path(map_id), fls_account_id)
     }
 
     pub fn restore_backup(&self, map_id: usize, backup_name: PathBuf) -> Result<()> {

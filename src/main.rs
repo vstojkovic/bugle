@@ -7,15 +7,12 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::{list_mod_controllers, Launch, ModRef, ServerRef, Session};
-use gui::{
-    prompt_confirm, BattlEyeChoiceDialog, ModManagerAction, ServerBrowserUpdate,
-    SinglePlayerAction, TaskMonitor,
-};
+use gui::{prompt_confirm, Dialog, ModManagerAction, ServerBrowserUpdate, SinglePlayerAction};
 use regex::Regex;
 use servers::Server;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
@@ -27,9 +24,11 @@ mod game;
 mod gui;
 mod logger;
 mod net;
+mod parser_utils;
 mod servers;
 mod workers;
 
+use crate::game::platform::steam::Steam;
 use crate::game::{LaunchState, Mods};
 use crate::gui::ModManagerUpdate;
 
@@ -46,6 +45,7 @@ struct Launcher {
     logger: Logger,
     log_level: Option<Arc<AtomicUsize>>,
     app: App,
+    steam: RefCell<Steam>,
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
@@ -63,6 +63,7 @@ impl Launcher {
         logger: Logger,
         log_level: Option<Arc<AtomicUsize>>,
         app: App,
+        steam: Steam,
         game: Game,
         config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
@@ -81,6 +82,7 @@ impl Launcher {
             logger,
             log_level,
             app,
+            steam: RefCell::new(steam),
             game,
             config: RefCell::new(config),
             config_persister,
@@ -172,6 +174,9 @@ impl Launcher {
     fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
         match action {
             Action::Launch => {
+                if !self.can_launch() {
+                    return Ok(());
+                }
                 let use_battleye = match self.config().use_battleye {
                     BattlEyeUsage::Always(enabled) => enabled,
                     BattlEyeUsage::Auto => {
@@ -188,6 +193,14 @@ impl Launcher {
                 Ok(())
             }
             Action::Continue => {
+                if !self.can_launch() {
+                    return Ok(());
+                }
+                if let Some(Session::Online(_)) = &*self.game.last_session() {
+                    if !self.steam.borrow().can_play_online() {
+                        bail!(ERR_STEAM_NOT_ONLINE);
+                    }
+                }
                 let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
                     enabled
                 } else {
@@ -221,6 +234,12 @@ impl Launcher {
                 addr,
                 battleye_required,
             }) => {
+                if !self.can_launch() {
+                    return Ok(());
+                }
+                if !self.steam.borrow().can_play_online() {
+                    bail!(ERR_STEAM_NOT_ONLINE);
+                }
                 let use_battleye = match self.config().use_battleye {
                     BattlEyeUsage::Auto => battleye_required,
                     BattlEyeUsage::Always(enabled) => enabled,
@@ -246,11 +265,45 @@ impl Launcher {
                 Arc::clone(&self.saved_games_worker).list_games()
             }
             Action::SinglePlayer(SinglePlayerAction::NewSavedGame { map_id }) => {
-                self.saved_games_worker.clear_progress(map_id)?;
-                self.launch_single_player(map_id)
+                if !self.can_launch() {
+                    return Ok(());
+                }
+                let steam = self.steam.borrow();
+                let fls_account_id = steam
+                    .user_id()
+                    .and_then(|platform_id| {
+                        self.game
+                            .cached_users()
+                            .by_platform_id(&platform_id.to_string())
+                    })
+                    .map(|user| user.master_account_id.as_str());
+                if !steam.can_play_online() {
+                    if fls_account_id.is_none() {
+                        bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
+                    }
+                    self.saved_games_worker
+                        .clear_progress(map_id, fls_account_id)?;
+                    self.show_offline_singleplayer_bug_warning();
+                }
+                self.launch_single_player(map_id, true)
             }
             Action::SinglePlayer(SinglePlayerAction::ContinueSavedGame { map_id }) => {
-                self.launch_single_player(map_id)
+                if !self.can_launch() {
+                    return Ok(());
+                }
+                let steam = self.steam.borrow();
+                if !steam.can_play_online() {
+                    let cached_user = steam.user_id().and_then(|platform_id| {
+                        self.game
+                            .cached_users()
+                            .by_platform_id(&platform_id.to_string())
+                    });
+                    if cached_user.is_none() {
+                        bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
+                    }
+                    self.show_offline_singleplayer_bug_warning();
+                }
+                self.launch_single_player(map_id, false)
             }
             Action::SinglePlayer(SinglePlayerAction::LoadSavedGame {
                 map_id,
@@ -314,8 +367,57 @@ impl Launcher {
         }
     }
 
+    fn can_launch(&self) -> bool {
+        let mut steam = self.steam.borrow_mut();
+        if steam.check_can_launch() {
+            return true;
+        }
+
+        let monitor = self.task_monitor(
+            "Waiting for Steam",
+            "Please ensure that Steam is running\nand you have Conan Exiles in your library.",
+            "Cancel",
+        );
+        monitor.show();
+
+        let should_poll = Rc::new(Cell::new(true));
+        app::add_timeout3(1.0, {
+            let should_poll = Rc::downgrade(&should_poll);
+            let logger = self.logger.clone();
+            move |handle| {
+                if let Some(should_poll) = should_poll.upgrade() {
+                    let poll_skipped = should_poll.replace(true);
+                    trace!(logger, "Firing steam poll timer"; "poll_skipped" => poll_skipped);
+                    app::repeat_timeout3(1.0, handle);
+                    app::awake();
+                }
+            }
+        });
+        loop {
+            if should_poll.replace(false) {
+                if steam.check_can_launch() {
+                    return true;
+                }
+            }
+            if monitor.result().is_some() {
+                return false;
+            }
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return false;
+            }
+        }
+    }
+
     fn prompt_battleye(&self) -> Option<bool> {
-        let battleye_dialog = BattlEyeChoiceDialog::new(self.main_window.window());
+        let battleye_dialog = Dialog::default(
+            self.main_window.window(),
+            "Enable BattlEye?",
+            "BUGLE could not determine whether BattlEye is required for this session.\nStart Conan \
+            Exiles with BattlEye enabled or disabled?",
+            &[("Enabled", true), ("Disabled", false)]
+        );
         battleye_dialog.show();
         loop {
             let result = battleye_dialog.result();
@@ -338,15 +440,14 @@ impl Launcher {
         };
 
         self.waiting_for_server_load.set(true);
-        let monitor = TaskMonitor::new(
-            self.main_window.window(),
+        let monitor = self.task_monitor(
             "Checking server",
             "Determining if the server requires BattlEye",
             "Skip",
         );
         monitor.show();
         loop {
-            if monitor.cancel_requested() {
+            if monitor.result().is_some() {
                 break;
             }
             if self.run_loop_iteration() {
@@ -394,8 +495,7 @@ impl Launcher {
             return Ok(true);
         }
 
-        let monitor = TaskMonitor::new(
-            self.main_window.window(),
+        let monitor = self.task_monitor(
             "Launching Conan Exiles",
             "Waiting for Conan Exiles to start...",
             "Cancel",
@@ -409,7 +509,7 @@ impl Launcher {
             move |handle| {
                 if let Some(should_poll) = should_poll.upgrade() {
                     let poll_skipped = should_poll.replace(true);
-                    trace!(logger, "Firing poll timer"; "poll_skipped" => poll_skipped);
+                    trace!(logger, "Firing launch poll timer"; "poll_skipped" => poll_skipped);
                     app::repeat_timeout3(1.0, handle);
                     app::awake();
                 }
@@ -421,7 +521,7 @@ impl Launcher {
                     return Ok(true);
                 }
             }
-            if monitor.cancel_requested() {
+            if monitor.result().is_some() {
                 launch.cancel();
                 return Ok(false);
             }
@@ -433,7 +533,7 @@ impl Launcher {
         }
     }
 
-    fn launch_single_player(&self, map_id: usize) -> Result<()> {
+    fn launch_single_player(&self, map_id: usize, skip_mod_checks: bool) -> Result<()> {
         fn join_mod_names(heading: &str, mods: &Mods, refs: HashSet<ModRef>) -> String {
             let mut result = String::new();
             if refs.is_empty() {
@@ -455,16 +555,18 @@ impl Launcher {
             result
         }
 
-        if let Some(mismatch) = self.validate_single_player_mods(map_id)? {
-            let installed_mods = self.game.installed_mods();
-            let prompt = format!(
-                "{}{}{}",
-                PROMPT_SP_MOD_MISMATCH,
-                join_mod_names(TXT_MISSING_MODS, installed_mods, mismatch.missing_mods),
-                join_mod_names(TXT_ADDED_MODS, installed_mods, mismatch.added_mods),
-            );
-            if !prompt_confirm(&prompt) {
-                return Ok(());
+        if !skip_mod_checks {
+            if let Some(mismatch) = self.validate_single_player_mods(map_id)? {
+                let installed_mods = self.game.installed_mods();
+                let prompt = format!(
+                    "{}{}{}",
+                    PROMPT_SP_MOD_MISMATCH,
+                    join_mod_names(TXT_MISSING_MODS, installed_mods, mismatch.missing_mods),
+                    join_mod_names(TXT_ADDED_MODS, installed_mods, mismatch.added_mods),
+                );
+                if !prompt_confirm(&prompt) {
+                    return Ok(());
+                }
             }
         }
         let use_battleye =
@@ -534,6 +636,50 @@ impl Launcher {
         }
         Ok(())
     }
+
+    fn task_monitor(&self, title: &str, message: &str, button: &str) -> Dialog<()> {
+        Dialog::new(
+            self.main_window.window(),
+            title,
+            message,
+            320,
+            90,
+            &[(button, ())],
+        )
+    }
+
+    fn show_message(&self, title: &str, message: &str, button: &str, width: i32, height: i32) {
+        let dialog = Dialog::new(
+            self.main_window.window(),
+            title,
+            message,
+            width,
+            height,
+            &[(button, ())],
+        );
+        dialog.show();
+        while dialog.shown() {
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return;
+            }
+        }
+    }
+
+    fn show_offline_singleplayer_bug_warning(&self) {
+        self.show_message(
+            "Bug Warning",
+            "ATTENTION: Conan Exiles currently has a bug that doesn't let you\n \
+            automatically jump into a single-player game while in offline mode.\nWhen \
+            the game starts, it will display \"Failed to Log In\" error message.\nYou \
+            can still play offline, but you have to click on \"Singleplayer\"\n\
+            and then on \"Continue\" in the main menu.",
+            "OK",
+            480,
+            160,
+        );
+    }
 }
 
 enum SessionBattlEyeUsage {
@@ -552,6 +698,10 @@ const PROMPT_SP_MOD_MISMATCH: &str =
 const TXT_MISSING_MODS: &str = "Missing mods:";
 const TXT_ADDED_MODS: &str = "Added mods:";
 const DLG_FILTER_MODLIST: &str = "Mod List Files\t*.txt";
+const ERR_STEAM_NOT_ONLINE: &str = "Steam is in offline mode. Online play is disabled.";
+const ERR_FLS_ACCOUNT_NOT_CACHED: &str =
+    "Steam is offline and the game has not stored your FLS account info. You need to start the \
+    game in online mode at least once before you can play offline.";
 
 #[tokio::main]
 async fn main() {
@@ -596,17 +746,17 @@ async fn main() {
 
     let app = App::default();
 
-    let game_location = match Game::locate(&root_logger) {
-        Some(root) => root,
+    let mut steam = match Steam::locate(&root_logger) {
+        Some(steam) => steam,
         None => {
             dialog::alert_default(
-                "Cannot locate Conan Exiles installation. Please verify that you have Conan \
-                 Exiles installed in a Steam library and try again.",
+                "Cannot locate Steam installation. Please verify that you have Steam installed and\
+                 try again.",
             );
             return;
         }
     };
-    let game = match Game::new(root_logger.clone(), game_location) {
+    let game = match steam.locate_game() {
         Ok(game) => game,
         Err(err) => {
             gui::alert_error(
@@ -621,6 +771,7 @@ async fn main() {
         root_logger.clone(),
         if log_level_override.is_none() { Some(log_level) } else { None },
         app,
+        steam,
         game,
         config,
         config_persister,

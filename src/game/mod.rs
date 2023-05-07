@@ -6,21 +6,23 @@ use std::process::Command;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use ini::Properties;
 use lazy_static::lazy_static;
 use regex::Regex;
 use slog::{debug, info, warn, Logger};
-use steamlocate::SteamDir;
 
 mod engine;
 mod launch;
 mod mod_info;
+pub mod platform;
+mod user;
 
 use crate::config;
+use crate::game::user::{CachedUser, CachedUsers};
 use crate::servers::{FavoriteServer, FavoriteServers, Server};
 
-pub use self::engine::db::{list_mod_controllers, GameDB};
+pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::{MapInfo, Maps};
 pub use self::launch::{Launch, LaunchState};
@@ -36,6 +38,7 @@ pub struct Game {
     installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
     last_session: Mutex<Option<Session>>,
+    cached_users: CachedUsers,
 }
 
 #[derive(Debug)]
@@ -58,31 +61,11 @@ pub enum ServerRef {
 }
 
 impl Game {
-    pub fn locate(logger: &Logger) -> Option<GameLocation> {
-        debug!(logger, "Locating the game path");
-        let mut steam = SteamDir::locate()?;
-        let app = steam.app(&440900)?;
-        let game_path = app.path.clone();
-
-        debug!(logger, "Determining the workshop path");
-        let workshop_path = steam
-            .libraryfolders()
-            .paths
-            .iter()
-            .find(|path| game_path.starts_with(path))?
-            .join("workshop");
-
-        Some(GameLocation {
-            game_path,
-            workshop_path,
-        })
-    }
-
-    pub fn new(logger: Logger, location: GameLocation) -> Result<Self> {
-        let save_path = location.game_path.join("ConanSandbox/Saved");
+    fn new(logger: Logger, game_path: PathBuf, mut installed_mods: Vec<ModInfo>) -> Result<Self> {
+        let save_path = game_path.join("ConanSandbox/Saved");
         let config_path = save_path.join("Config/WindowsNoEditor");
 
-        let cooked_ini_path = location.game_path.join("ConanSandbox/CookedIniVersion.txt");
+        let cooked_ini_path = game_path.join("ConanSandbox/CookedIniVersion.txt");
 
         debug!(logger, "Reading build ID override");
         let cooked_ini = config::load_ini(cooked_ini_path)?;
@@ -97,9 +80,7 @@ impl Game {
             .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
             .and_then(|s| Ok(s.parse::<u32>()?))?;
 
-        debug!(logger, "Enumerating installed mods");
-        let mod_list_path = location.game_path.join("ConanSandbox/Mods/modlist.txt");
-        let mut installed_mods = location.collect_mods()?;
+        let mod_list_path = game_path.join("ConanSandbox/Mods/modlist.txt");
         installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
 
         let mut maps = Maps::new();
@@ -107,9 +88,7 @@ impl Game {
 
         debug!(logger, "Enumerating base game maps");
         map_extractor.extract_base_game_maps(
-            &location
-                .game_path
-                .join("ConanSandbox/Content/Paks/Base.pak"),
+            game_path.join("ConanSandbox/Content/Paks/Base.pak"),
             &mut maps,
         )?;
 
@@ -125,11 +104,12 @@ impl Game {
             }
         }
 
-        debug!(logger, "Reading last session information");
         let game_ini_path = config_path.join("Game.ini");
-        let last_session = if game_ini_path.exists() {
-            let game_ini = config::load_ini(&game_ini_path)?;
+        let game_ini =
+            if game_ini_path.exists() { Some(config::load_ini(&game_ini_path)?) } else { None };
 
+        debug!(logger, "Reading last session information");
+        let last_session = if let Some(game_ini) = &game_ini {
             let coop_section = game_ini.section(Some(SECTION_SAVED_COOP_DATA));
             let is_local = coop_section
                 .and_then(|section| section.get(KEY_STARTED_LISTEN_SERVER_SESSION))
@@ -171,16 +151,34 @@ impl Game {
             None
         };
 
+        debug!(logger, "Reading cached users");
+        let mut cached_users = CachedUsers::new();
+        if let Some(game_ini) = &game_ini {
+            if let Some(section) = game_ini.section(Some(SECTION_FUNCOM_LIVE_SERVICES)) {
+                for value in section.get_all(KEY_CACHED_USERS) {
+                    match CachedUser::parse(value) {
+                        Ok(user) => cached_users.insert(user),
+                        Err(err) => warn!(
+                            logger,
+                            "Error parsing cached user";
+                            "value" => value,
+                            "error" => %err,
+                        ),
+                    }
+                }
+            }
+        }
+
         info!(
             logger,
             "Valid Conan Exiles installation found";
-            "path" => location.game_path.display(),
+            "path" => game_path.display(),
             "build_id" => build_id,
         );
 
         Ok(Self {
             logger,
-            root: location.game_path,
+            root: game_path,
             build_id,
             save_path,
             game_ini_path,
@@ -188,6 +186,7 @@ impl Game {
             installed_mods: Arc::new(Mods::new(installed_mods)),
             maps: Arc::new(maps),
             last_session: Mutex::new(last_session),
+            cached_users,
         })
     }
 
@@ -223,6 +222,10 @@ impl Game {
         &self.maps
     }
 
+    pub fn cached_users(&self) -> &CachedUsers {
+        &self.cached_users
+    }
+
     pub fn load_favorites(&self) -> Result<FavoriteServers> {
         debug!(self.logger, "Loading favorite servers");
 
@@ -230,10 +233,7 @@ impl Game {
         let mut favorites = FavoriteServers::new();
 
         if let Some(section) = game_ini.section(Some(SECTION_FAVORITE_SERVERS)) {
-            for (key, value) in section.iter() {
-                if key != KEY_SERVERS_LIST {
-                    continue;
-                }
+            for value in section.get_all(KEY_SERVERS_LIST) {
                 match FavoriteServer::parse(value) {
                     Ok(favorite) => {
                         favorites.insert(favorite);
@@ -242,7 +242,7 @@ impl Game {
                         self.logger,
                         "Error parsing favorite";
                         "value" => value,
-                        "error" => ?err,
+                        "error" => %err,
                     ),
                 }
             }
@@ -401,65 +401,19 @@ impl Game {
     }
 }
 
-pub struct GameLocation {
-    pub game_path: PathBuf,
-    workshop_path: PathBuf,
-}
-
-impl GameLocation {
-    fn collect_mods(&self) -> Result<Vec<ModInfo>> {
-        // TODO: Log warnings for recoverable errors
-
-        let manifest_path = self.workshop_path.join("appworkshop_440900.acf");
-        if !manifest_path.exists() {
-            return Ok(Vec::new());
-        }
-
-        let manifest = steamy_vdf::load(manifest_path)?;
-        let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
-
-        let mut path = self.workshop_path.join("content/440900");
-        let mut mods = Vec::with_capacity(mod_ids.len());
-        for mod_id in mod_ids {
-            path.push(mod_id);
-            for pak_path in std::fs::read_dir(&path)? {
-                let pak_path = pak_path?.path();
-                match pak_path.extension() {
-                    Some(ext) if ext == "pak" => {
-                        mods.push(ModInfo::new(pak_path)?);
-                    }
-                    _ => (),
-                };
-            }
-            path.pop();
-        }
-
-        Ok(mods)
-    }
-}
-
-fn collect_mod_ids(manifest: &steamy_vdf::Entry) -> Option<Vec<&String>> {
-    Some(
-        manifest
-            .lookup("AppWorkshop.WorkshopItemsInstalled")?
-            .as_table()?
-            .keys()
-            .into_iter()
-            .collect(),
-    )
-}
-
 lazy_static! {
     static ref BUILD_ID_REGEX: Regex =
         Regex::new(r"^OnlineSubsystem:BuildIdOverride:0\s*=\s*(\d+)$").unwrap();
 }
 
 const SECTION_FAVORITE_SERVERS: &str = "FavoriteServers";
+const SECTION_FUNCOM_LIVE_SERVICES: &str = "FuncomLiveServices";
 const SECTION_SAVED_SERVERS: &str = "SavedServers";
 const SECTION_SAVED_COOP_DATA: &str = "SavedCoopData";
 
-const KEY_SERVERS_LIST: &str = "ServersList";
+const KEY_CACHED_USERS: &str = "CachedUsers";
 const KEY_LAST_CONNECTED: &str = "LastConnected";
-const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_LAST_MAP: &str = "LastMap";
+const KEY_SERVERS_LIST: &str = "ServersList";
+const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";

@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
@@ -98,6 +99,27 @@ pub fn list_mod_controllers<P: AsRef<Path>>(db_path: P) -> Result<Vec<String>> {
         .prepare("SELECT class FROM actor_position WHERE id IN (SELECT id FROM mod_controllers)")?;
     let controllers: rusqlite::Result<_> = query.query_map([], |row| row.get(0))?.collect();
     Ok(controllers?)
+}
+
+pub fn create_empty_db<P: AsRef<Path>>(db_path: P, fls_account_id: Option<&str>) -> Result<()> {
+    let _ = File::create(db_path.as_ref())?;
+    if let Some(account_id) = fls_account_id {
+        let db = Connection::open(db_path.as_ref())?;
+
+        let mut stmt = db.prepare(
+            "CREATE TABLE account (
+                id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                user   TEXT    UNIQUE,
+                online BOOL    NOT NULL
+                            DEFAULT 0
+            );",
+        )?;
+        stmt.execute([])?;
+
+        let mut stmt = db.prepare("INSERT INTO account (user, online) VALUES (:account_id, 1)")?;
+        stmt.execute([account_id])?;
+    }
+    Ok(())
 }
 
 fn get_db_last_played_char(db: &Connection) -> Result<Option<Character>> {

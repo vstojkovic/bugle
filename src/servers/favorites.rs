@@ -1,17 +1,14 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::net::IpAddr;
 use std::str::FromStr;
 
+use anyhow::Result;
 use lazy_static::lazy_static;
-use nom::branch::alt;
-use nom::bytes::complete::{escaped, escaped_transform, is_not, take_while_m_n};
-use nom::character::complete::{anychar, char, multispace0};
-use nom::combinator::{all_consuming, map, recognize};
-use nom::multi::{fold_many0, many1_count};
-use nom::sequence::{delimited, preceded};
-use nom::{AsChar, IResult};
+use nom::IResult;
 use regex::Regex;
+
+use crate::parser_utils::{extract_value, parse_hex, parse_map, parse_quoted, ParserError};
 
 use super::Server;
 
@@ -32,8 +29,9 @@ impl FavoriteServer {
         }
     }
 
-    pub fn parse(input: &str) -> Result<FavoriteServer, nom::Err<()>> {
-        extract_value(parse_favorite_impl(input))
+    pub fn parse(input: &str) -> Result<Self> {
+        Ok(extract_value(parse_favorite_impl(input))
+            .map_err(|err| ParserError::from_err(input, err))?)
     }
 
     pub fn to_string(&self) -> String {
@@ -105,8 +103,8 @@ fn escape_string(s: &str) -> Cow<str> {
     RE_ESCAPABLE.replace_all(s, "\\$0")
 }
 
-fn parse_favorite_impl(input: &str) -> IResult<&str, FavoriteServer, ()> {
-    let (input, map) = all_consuming(delimited(char('('), parse_map, char(')')))(input)?;
+fn parse_favorite_impl(input: &str) -> IResult<&str, FavoriteServer> {
+    let (input, map) = parse_map(input)?;
     let name = map
         .get(KEY_NAME)
         .and_then(|value| extract_value(parse_quoted(value)).ok());
@@ -123,60 +121,4 @@ fn parse_favorite_impl(input: &str) -> IResult<&str, FavoriteServer, ()> {
         .map(str::to_string);
     let favorite = FavoriteServer { name, ip, port, id };
     Ok((input, favorite))
-}
-
-fn parse_map(input: &str) -> IResult<&str, HashMap<&str, &str>, ()> {
-    let (input, (key, value)) = parse_entry(input)?;
-    fold_many0(
-        preceded(char(','), parse_entry),
-        move || {
-            let mut map = HashMap::new();
-            map.insert(key, value);
-            map
-        },
-        |mut map, (key, value)| {
-            map.entry(key).or_insert(value);
-            map
-        },
-    )(input)
-}
-
-fn parse_entry(input: &str) -> IResult<&str, (&str, &str), ()> {
-    let (input, key) = parse_key(input)?;
-    let (input, _) = char('=')(input)?;
-    let (input, value) = parse_value(input)?;
-    Ok((input, (key, value)))
-}
-
-fn parse_key(input: &str) -> IResult<&str, &str, ()> {
-    map(preceded(multispace0, is_not("=")), str::trim_end)(input)
-}
-
-fn parse_value(input: &str) -> IResult<&str, &str, ()> {
-    map(
-        preceded(
-            multispace0,
-            recognize(many1_count(alt((
-                is_not("\",)"),
-                delimited(char('"'), escaped(is_not("\\\""), '\\', anychar), char('"')),
-            )))),
-        ),
-        str::trim_end,
-    )(input)
-}
-
-fn parse_quoted(input: &str) -> IResult<&str, String, ()> {
-    delimited(
-        char('"'),
-        escaped_transform(is_not("\\\""), '\\', anychar),
-        char('"'),
-    )(input)
-}
-
-fn parse_hex(input: &str, len: usize) -> IResult<&str, &str, ()> {
-    all_consuming(take_while_m_n(len, len, AsChar::is_hex_digit))(input)
-}
-
-fn extract_value<V>(result: IResult<&str, V, ()>) -> Result<V, nom::Err<()>> {
-    result.map(|(_, value)| value)
 }

@@ -32,6 +32,7 @@ slog = { version = "2", features = ["release_max_level_trace"] }
 slog-async = "2"
 slog-term = "2"
 steamlocate = "2.0.0-alpha.0"
+steamworks = { git = "https://github.com/vstojkovic/steamworks-rs" }
 steamy-vdf = "0.2.0"
 strum = "0.24"
 strum_macros = "0.24"
@@ -62,3 +63,5 @@ rust-toolchain-version = "1.67.1"
 ci = ["github"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-pc-windows-msvc"]
+# Include the redistributable
+include = ["redist/steam_api64.dll"]

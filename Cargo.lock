@@ -188,6 +188,7 @@ dependencies = [
  "slog-async",
  "slog-term",
  "steamlocate",
+ "steamworks",
  "steamy-vdf",
  "strum",
  "strum_macros",
@@ -1688,6 +1689,22 @@ dependencies = [
  "serde",
  "winreg",
 ]
+
+[[package]]
+name = "steamworks"
+version = "0.10.0"
+source = "git+https://github.com/vstojkovic/steamworks-rs#63967df9523ee9f983fef9593490fc40a15c17d1"
+dependencies = [
+ "bitflags 1.3.2",
+ "lazy_static",
+ "steamworks-sys",
+ "thiserror",
+]
+
+[[package]]
+name = "steamworks-sys"
+version = "0.10.0"
+source = "git+https://github.com/vstojkovic/steamworks-rs#63967df9523ee9f983fef9593490fc40a15c17d1"
 
 [[package]]
 name = "steamy-vdf"

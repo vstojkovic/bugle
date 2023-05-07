@@ -2,15 +2,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use fltk::app;
-use fltk::dialog;
+use fltk::dialog as fltk_dialog;
 use fltk::enums::Event;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk::text::{Cursor, TextBuffer, TextEditor};
 use fltk_table::SmartTable;
 
-mod battleye_choice_dialog;
 mod data;
+mod dialog;
 pub mod glyph;
 mod home;
 mod launcher;
@@ -19,16 +19,14 @@ mod mod_manager;
 mod prelude;
 mod server_browser;
 mod single_player;
-mod task_monitor;
 
 use crate::config::{BattlEyeUsage, LogLevel};
 
-pub use self::battleye_choice_dialog::BattlEyeChoiceDialog;
+pub use self::dialog::Dialog;
 pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
-pub use self::task_monitor::TaskMonitor;
 
 pub enum Action {
     Launch,
@@ -72,11 +70,11 @@ impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 type CleanupFn = Box<dyn FnMut()>;
 
 pub fn alert_error(message: &str, err: &anyhow::Error) {
-    dialog::alert_default(&format!("{}\n{}", message, err));
+    fltk_dialog::alert_default(&format!("{}\n{}", message, err));
 }
 
 pub fn prompt_confirm(prompt: &str) -> bool {
-    dialog::choice2_default(prompt, "No", "Yes", "")
+    fltk_dialog::choice2_default(prompt, "No", "Yes", "")
         .map(|choice| choice == 1)
         .unwrap_or_default()
 }
