@@ -311,10 +311,19 @@ impl SinglePlayer {
         if state.in_progress.contains_key(&map_id) && !prompt_confirm(PROMPT_REPLACE_IN_PROGRESS) {
             return;
         }
+        drop(state);
+
         if let Err(err) = (self.on_action)(SinglePlayerAction::NewSavedGame { map_id }) {
             error!(self.logger, "Error launching singleplayer game"; "error" => %err);
             alert_error(ERR_LAUNCHING_SP, &err);
+            return;
         }
+
+        {
+            let mut state = self.state.borrow_mut();
+            state.in_progress.remove(&map_id);
+        }
+        self.populate_list();
     }
 
     fn continue_clicked(&self) {
