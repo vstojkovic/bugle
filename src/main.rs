@@ -196,11 +196,30 @@ impl Launcher {
                 if !self.can_launch() {
                     return Ok(());
                 }
-                if let Some(Session::Online(_)) = &*self.game.last_session() {
-                    if !self.steam.borrow().can_play_online() {
-                        bail!(ERR_STEAM_NOT_ONLINE);
+
+                let steam = self.steam.borrow();
+                if !steam.can_play_online() {
+                    match &*self.game.last_session() {
+                        Some(Session::Online(_)) => bail!(ERR_STEAM_NOT_ONLINE),
+                        Some(Session::SinglePlayer(_)) => {
+                            let fls_account_id = steam
+                                .user_id()
+                                .and_then(|platform_id| {
+                                    self.game
+                                        .cached_users()
+                                        .by_platform_id(&platform_id.to_string())
+                                })
+                                .map(|user| user.master_account_id.as_str());
+                            if fls_account_id.is_none() {
+                                bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
+                            }
+                            self.show_offline_singleplayer_bug_warning();
+                        }
+                        _ => (),
                     }
                 }
+                drop(steam);
+
                 let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
                     enabled
                 } else {
