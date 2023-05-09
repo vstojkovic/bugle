@@ -91,6 +91,7 @@ impl FilterPane {
             .with_size(input_width, height)
             .right_of(&map_label, 10);
         for map in maps.iter() {
+            map_input.add("<clear map filter>");
             map_input.add(&map.display_name);
         }
         let type_label = type_label
@@ -244,6 +245,10 @@ impl FilterPane {
             map_input.set_trigger(CallbackTrigger::Changed);
             map_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
+                    if input.menu_button().value() == 0 {
+                        input.set_value("");
+                    }
+                    input.menu_button().set_value(-1);
                     filter_holder.mutate_filter(FilterChange::Map, |filter| {
                         filter.set_map(input.value().unwrap_or_default())
                     });
