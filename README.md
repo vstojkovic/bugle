@@ -15,7 +15,7 @@ that isn't there, feel free to open a GitHub issue about it, or contact me on Fu
 
 ## Installation
 
-Go to the v1.0.0-beta.1 release and download the `bugle-v1.0.0-beta.1-x86_64-pc-windows-msvc.zip`
+Go to the v1.0.0-beta.2 release and download the `bugle-v1.0.0-beta.2-x86_64-pc-windows-msvc.zip`
 file. Unpack it into a directory where you're allowed to write files. It's a good idea to put it in
 its own directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
