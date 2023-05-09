@@ -15,7 +15,7 @@ that isn't there, feel free to open a GitHub issue about it, or contact me on Fu
 
 ## Installation
 
-Go to the v1.0.0-beta.0 release and download the `bugle-v1.0.0-beta.0-x86_64-pc-windows-msvc.zip`
+Go to the v1.0.0-beta.1 release and download the `bugle-v1.0.0-beta.1-x86_64-pc-windows-msvc.zip`
 file. Unpack it into a directory where you're allowed to write files. It's a good idea to put it in
 its own directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
@@ -83,9 +83,6 @@ can visit the [BUGLE Roadmap Trello board](https://trello.com/b/zjDYQsq8/roadmap
 
 ## Known Issues
 
-* **Does not check if you're logged into Steam.** BUGLE will happily run if you haven't started
-Steam or logged into it. In fact, it will happily launch Conan Exiles and let you discover the hard
-way that Steam isn't running. I'll fix that eventually.
 * **Mod mismatch warning if you stop using a mod.** If you use a mod in your single-player or co-op
 game and then decide to stop using it, it will leave traces in your game database. BUGLE will detect
 those traces, see that the mod isn't in your mod list, and warn you about mod mismatch.
