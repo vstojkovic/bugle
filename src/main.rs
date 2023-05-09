@@ -300,10 +300,10 @@ impl Launcher {
                     if fls_account_id.is_none() {
                         bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
                     }
-                    self.saved_games_worker
-                        .clear_progress(map_id, fls_account_id)?;
                     self.show_offline_singleplayer_bug_warning();
                 }
+                self.saved_games_worker
+                    .clear_progress(map_id, fls_account_id)?;
                 self.launch_single_player(map_id, true)
             }
             Action::SinglePlayer(SinglePlayerAction::ContinueSavedGame { map_id }) => {
