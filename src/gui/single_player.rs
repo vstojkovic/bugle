@@ -170,7 +170,8 @@ impl SinglePlayer {
             .below_of(&map_label, 10);
         let in_progress_pane = Group::default_fill()
             .with_size_flex(0, row_height * 2)
-            .below_of(&map_input, 10);
+            .below_of(&map_input, 10)
+            .stretch_to_parent(0, None);
         let in_progress_table = make_db_list();
         in_progress_pane.end();
 
