@@ -51,6 +51,7 @@ pub enum ServerBrowserAction {
 }
 
 pub enum ServerBrowserUpdate {
+    PrefetchDisabled,
     PopulateServers(Result<Vec<Server>>),
     UpdateServer(PingResponse),
     BatchUpdateServers(Vec<PingResponse>),
@@ -304,6 +305,14 @@ impl ServerBrowser {
 
     pub fn handle_update(&self, update: ServerBrowserUpdate) {
         match update {
+            ServerBrowserUpdate::PrefetchDisabled => {
+                if self.root.visible() {
+                    (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
+                } else {
+                    self.pending_update
+                        .set(Some(ServerBrowserUpdate::PrefetchDisabled));
+                }
+            }
             ServerBrowserUpdate::PopulateServers(payload) => {
                 if self.root.visible() {
                     match payload {

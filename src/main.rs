@@ -103,9 +103,15 @@ impl Launcher {
         launcher
     }
 
-    fn run(&self) {
+    fn run(&self, disable_prefetch: bool) {
         self.main_window.show();
-        self.server_loader_worker.load_servers();
+
+        if disable_prefetch {
+            self.main_window
+                .handle_update(ServerBrowserUpdate::PrefetchDisabled.into());
+        } else {
+            self.server_loader_worker.load_servers();
+        }
 
         while self.app.wait() {
             while self.run_loop_iteration() {
@@ -725,6 +731,7 @@ const ERR_FLS_ACCOUNT_NOT_CACHED: &str =
 #[tokio::main]
 async fn main() {
     let mut args = pico_args::Arguments::from_env();
+    let disable_prefetch = args.contains("--no-prefetch");
     let log_level_override = args
         .opt_value_from_fn(["-l", "--log-level"], |s| {
             FilterLevel::from_str(s).map_err(|_| "")
@@ -795,7 +802,7 @@ async fn main() {
         config,
         config_persister,
     );
-    launcher.run();
+    launcher.run(disable_prefetch);
 
     info!(root_logger, "Shutting down launcher");
 }
