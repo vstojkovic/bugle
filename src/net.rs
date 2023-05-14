@@ -1,6 +1,10 @@
 use std::io::{Error, Result};
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs, UdpSocket};
 
+use reqwest::{Client, ClientBuilder};
+
+use crate::game::Game;
+
 pub fn is_valid_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
@@ -20,6 +24,14 @@ pub fn is_valid_port(port: u32) -> bool {
 
 pub fn default_ip() -> IpAddr {
     IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))
+}
+
+pub fn http_client_builder(game: &Game) -> ClientBuilder {
+    let (rev_maj, _) = game.revision();
+    Client::builder().user_agent(format!(
+        "game=ConanSandbox, engine=UE4, version=4.15.3-{}+ue415-dw-osl",
+        rev_maj
+    ))
 }
 
 #[cfg(not(windows))]

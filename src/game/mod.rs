@@ -16,16 +16,15 @@ mod engine;
 mod launch;
 mod mod_info;
 pub mod platform;
-mod user;
 
+use crate::auth::{CachedUser, CachedUsers};
 use crate::config;
-use crate::game::user::{CachedUser, CachedUsers};
 use crate::servers::{FavoriteServer, FavoriteServers, Server};
 
 pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::{MapInfo, Maps};
-pub use self::launch::{Launch, LaunchState};
+pub use self::launch::Launch;
 pub use self::mod_info::{ModInfo, ModRef, Mods};
 
 pub struct Game {
@@ -38,7 +37,6 @@ pub struct Game {
     installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
     last_session: Mutex<Option<Session>>,
-    cached_users: CachedUsers,
 }
 
 #[derive(Debug)]
@@ -151,24 +149,6 @@ impl Game {
             None
         };
 
-        debug!(logger, "Reading cached users");
-        let mut cached_users = CachedUsers::new();
-        if let Some(game_ini) = &game_ini {
-            if let Some(section) = game_ini.section(Some(SECTION_FUNCOM_LIVE_SERVICES)) {
-                for value in section.get_all(KEY_CACHED_USERS) {
-                    match CachedUser::parse(value) {
-                        Ok(user) => cached_users.insert(user),
-                        Err(err) => warn!(
-                            logger,
-                            "Error parsing cached user";
-                            "value" => value,
-                            "error" => %err,
-                        ),
-                    }
-                }
-            }
-        }
-
         info!(
             logger,
             "Valid Conan Exiles installation found";
@@ -186,7 +166,6 @@ impl Game {
             installed_mods: Arc::new(Mods::new(installed_mods)),
             maps: Arc::new(maps),
             last_session: Mutex::new(last_session),
-            cached_users,
         })
     }
 
@@ -222,8 +201,44 @@ impl Game {
         &self.maps
     }
 
-    pub fn cached_users(&self) -> &CachedUsers {
-        &self.cached_users
+    pub fn load_cached_users(&self) -> Result<CachedUsers> {
+        debug!(self.logger, "Loading cached users");
+
+        let game_ini = config::load_ini(&self.game_ini_path)?;
+        let mut cached_users = CachedUsers::new();
+
+        let section = match game_ini.section(Some(SECTION_FUNCOM_LIVE_SERVICES)) {
+            Some(section) => section,
+            None => return Ok(cached_users),
+        };
+
+        for value in section.get_all(KEY_CACHED_USERS) {
+            match CachedUser::parse(value) {
+                Ok(user) => cached_users.insert(user),
+                Err(err) => warn!(
+                    self.logger,
+                    "Error parsing cached user";
+                    "value" => value,
+                    "error" => %err,
+                ),
+            }
+        }
+
+        Ok(cached_users)
+    }
+
+    pub fn save_cached_users(&self, cached_users: &CachedUsers) -> Result<()> {
+        debug!(self.logger, "Saving cached users");
+
+        let mut game_ini = config::load_ini(&self.game_ini_path)?;
+        let section = game_ini
+            .entry(Some(SECTION_FUNCOM_LIVE_SERVICES.to_string()))
+            .or_insert_with(Properties::new);
+        let _ = section.remove_all(KEY_CACHED_USERS);
+        for user in cached_users.iter() {
+            section.append(KEY_CACHED_USERS, user.to_string());
+        }
+        config::save_ini(&game_ini, &self.game_ini_path)
     }
 
     pub fn load_favorites(&self) -> Result<FavoriteServers> {

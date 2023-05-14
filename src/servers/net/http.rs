@@ -5,16 +5,19 @@ use reqwest::{Client, Response, Result};
 use serde::Deserialize;
 use slog::{debug, info, warn, Logger};
 
+use crate::game::Game;
+use crate::net::http_client_builder;
 use crate::servers::{DeserializationContext, Server};
 
 const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
 pub async fn fetch_server_list<'dc>(
     logger: Logger,
+    game: &Game,
     ctx: DeserializationContext<'dc>,
 ) -> anyhow::Result<Vec<Server>> {
     debug!(logger, "Fetching server list");
-    let client = make_client()?;
+    let client = make_client(game)?;
     let bucket_list = client
         .get(format!(
             "{}/buckets/index_Windows.json",
@@ -62,7 +65,7 @@ struct BucketList {
     buckets: Vec<String>,
 }
 
-fn make_client() -> Result<Client> {
+fn make_client(game: &Game) -> Result<Client> {
     let mut default_headers = HeaderMap::new();
     default_headers.insert(
         "X-API-Key",
@@ -71,8 +74,7 @@ fn make_client() -> Result<Client> {
         ),
     );
 
-    Client::builder()
-        .user_agent("game=ConanSandbox, engine=UE4, version=354133")
+    http_client_builder(game)
         .default_headers(default_headers)
         .gzip(true)
         .build()
@@ -86,11 +88,11 @@ async fn parse_servers<'dc>(
     let json = response.json::<serde_json::Value>().await?;
     let json = json
         .as_object()
-        .ok_or(anyhow!("expected a JSON object in response"))?
+        .ok_or_else(|| anyhow!("expected a JSON object in response"))?
         .get("sessions")
-        .ok_or(anyhow!("cannot find 'sessions' key in response"))?
+        .ok_or_else(|| anyhow!("cannot find 'sessions' key in response"))?
         .as_array()
-        .ok_or(anyhow!("expected a JSON array in 'sessions' key"))?;
+        .ok_or_else(|| anyhow!("expected a JSON array in 'sessions' key"))?;
 
     let mut result = Vec::with_capacity(json.len());
     for server in json {

@@ -65,7 +65,7 @@ impl LauncherWindow {
                 game,
                 config,
                 log_level_overridden,
-                move |action| on_action.borrow()(action),
+                move |home_action| on_action.borrow()(Action::HomeAction(home_action)),
             )
         };
 
@@ -155,6 +155,7 @@ impl LauncherWindow {
 
     pub fn handle_update(&self, update: Update) {
         match update {
+            Update::HomeUpdate(update) => self.home.handle_update(update),
             Update::ServerBrowser(update) => self.server_browser.handle_update(update),
             Update::SinglePlayer(update) => self.single_player.handle_update(update),
             Update::ModManager(update) => self.mod_manager.handle_update(update),

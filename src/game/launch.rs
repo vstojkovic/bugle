@@ -4,16 +4,12 @@ use std::process::{Child, Command};
 use anyhow::{bail, Result};
 use slog::{debug, trace, Logger};
 
+use crate::workers::TaskState;
+
 pub struct Launch {
     logger: Logger,
     child: Child,
     poll_impl: PollImpl,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum LaunchState {
-    Pending,
-    Ready,
 }
 
 impl Launch {
@@ -31,7 +27,7 @@ impl Launch {
         })
     }
 
-    pub fn poll(&mut self) -> Result<LaunchState> {
+    pub fn poll(&mut self) -> Result<TaskState<()>> {
         debug!(&self.logger, "Checking if the game is visible");
         if let Some(code) = self.child.try_wait()? {
             bail!("Game process ended unexpectedly with status {}", code);
@@ -55,8 +51,8 @@ impl PollImpl {
         Self
     }
 
-    fn poll(&self) -> Result<LaunchState> {
-        LaunchState::Ready
+    fn poll(&self) -> Result<TaskState<()>> {
+        TaskState::Ready(())
     }
 
     fn cancel(&self) {
@@ -84,7 +80,7 @@ impl PollImpl {
         }
     }
 
-    fn poll(&self) -> Result<LaunchState> {
+    fn poll(&self) -> Result<TaskState<()>> {
         use winapi::shared::minwindef::{BOOL, DWORD, FALSE, LPARAM, TRUE};
         use winapi::shared::windef::HWND;
         use winapi::um::errhandlingapi::{GetLastError, SetLastError};
@@ -109,7 +105,7 @@ impl PollImpl {
                     self.pid.set(Some(pid));
                     pid
                 }
-                None => return Ok(LaunchState::Pending),
+                None => return Ok(TaskState::Pending),
             },
         };
 
@@ -121,13 +117,13 @@ impl PollImpl {
         if enum_result == 0 {
             let err = unsafe { GetLastError() };
             if err == 0 {
-                Ok(LaunchState::Ready)
+                Ok(TaskState::Ready(()))
             } else {
                 bail!("Error enumerating windows, code: {}", err);
             }
         } else {
             trace!(&self.logger, "No visible window found"; "pid" => pid);
-            Ok(LaunchState::Pending)
+            Ok(TaskState::Pending)
         }
     }
 

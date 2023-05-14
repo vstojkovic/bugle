@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 use fltk::app;
@@ -20,25 +21,22 @@ mod prelude;
 mod server_browser;
 mod single_player;
 
-use crate::config::{BattlEyeUsage, LogLevel};
-
 pub use self::dialog::Dialog;
+pub use self::home::{HomeAction, HomeUpdate};
 pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
 
 pub enum Action {
-    Launch,
-    Continue,
-    ConfigureLogLevel(LogLevel),
-    ConfigureBattlEye(BattlEyeUsage),
+    HomeAction(HomeAction),
     ServerBrowser(ServerBrowserAction),
     SinglePlayer(SinglePlayerAction),
     ModManager(ModManagerAction),
 }
 
 pub enum Update {
+    HomeUpdate(HomeUpdate),
     ServerBrowser(ServerBrowserUpdate),
     SinglePlayer(SinglePlayerUpdate),
     ModManager(ModManagerUpdate),
@@ -68,6 +66,72 @@ pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
 impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 
 type CleanupFn = Box<dyn FnMut()>;
+
+#[derive(Clone)]
+pub struct ReadOnlyText {
+    editor: TextEditor,
+    value: Rc<RefCell<String>>,
+}
+
+impl ReadOnlyText {
+    pub fn new(initial_value: String) -> Self {
+        let mut buffer = TextBuffer::default();
+        buffer.set_text(&initial_value);
+
+        let mut editor = TextEditor::default();
+        editor.set_buffer(buffer.clone());
+        editor.show_cursor(true);
+        editor.set_cursor_style(Cursor::Simple);
+
+        let value = Rc::new(RefCell::new(initial_value));
+        {
+            let mut editor = editor.clone();
+            let mut buffer = buffer.clone();
+            let value = Rc::clone(&value);
+            buffer
+                .clone()
+                .add_modify_callback(move |pos, ins, del, _, _| {
+                    if (ins > 0) || (del > 0) {
+                        if let Ok(value) = value.try_borrow_mut() {
+                            buffer.set_text(&value);
+                            editor.set_insert_position(pos);
+                        }
+                    }
+                });
+        }
+
+        Self { editor, value }
+    }
+
+    pub fn widget(&self) -> &TextEditor {
+        &self.editor
+    }
+
+    pub fn set_value(&self, value: String) {
+        let mut value_ref = self.value.borrow_mut();
+        self.editor.buffer().unwrap().set_text(&value);
+        *value_ref = value;
+    }
+}
+
+impl Default for ReadOnlyText {
+    fn default() -> Self {
+        Self::new(String::new())
+    }
+}
+
+impl Deref for ReadOnlyText {
+    type Target = TextEditor;
+    fn deref(&self) -> &Self::Target {
+        &self.editor
+    }
+}
+
+impl DerefMut for ReadOnlyText {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.editor
+    }
+}
 
 pub fn alert_error(message: &str, err: &anyhow::Error) {
     fltk_dialog::alert_default(&format!("{}\n{}", message, err));
@@ -118,13 +182,9 @@ fn is_table_nav_event() -> bool {
     }
 }
 
-fn make_readonly_cell_widget(table: &SmartTable) -> TextEditor {
-    let mut cell = TextEditor::default();
-    let mut cell_buf = TextBuffer::default();
-    cell.set_buffer(cell_buf.clone());
-    cell.show_cursor(true);
+fn make_readonly_cell_widget(table: &SmartTable) -> ReadOnlyText {
+    let mut cell = ReadOnlyText::new(String::new());
     cell.set_scrollbar_size(-1);
-    cell.set_cursor_style(Cursor::Simple);
     cell.hide();
 
     cell.handle(move |cell, event| {
@@ -133,23 +193,6 @@ fn make_readonly_cell_widget(table: &SmartTable) -> TextEditor {
         }
         false
     });
-
-    let cell_text = Rc::new(RefCell::new(String::new()));
-    {
-        let mut cell = cell.clone();
-        let mut cell_buf = cell_buf.clone();
-        let cell_text = Rc::clone(&cell_text);
-        cell_buf
-            .clone()
-            .add_modify_callback(move |pos, ins, del, _, _| {
-                if (ins > 0) || (del > 0) {
-                    if let Ok(cell_text) = cell_text.try_borrow_mut() {
-                        cell_buf.set_text(&cell_text);
-                        cell.set_insert_position(pos);
-                    }
-                }
-            });
-    }
 
     {
         let mut cell = cell.clone();
@@ -164,12 +207,10 @@ fn make_readonly_cell_widget(table: &SmartTable) -> TextEditor {
                     let col = table.callback_col();
                     if let Some((x, y, w, h)) = table.find_cell(TableContext::Cell, row, col) {
                         cell.resize(x, y, w, h);
-                        {
-                            let mut cell_text = cell_text.borrow_mut();
-                            *cell_text = table.cell_value(row, col);
-                            cell_buf.set_text(&cell_text);
-                            cell_buf.select(0, cell_text.len() as _);
-                        }
+                        let cell_value = table.cell_value(row, col);
+                        let cell_value_len = cell_value.len();
+                        cell.set_value(cell_value);
+                        cell.buffer().unwrap().select(0, cell_value_len as _);
                         cell.show();
                         let _ = cell.take_focus();
                     }

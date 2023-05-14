@@ -7,17 +7,15 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
+use auth::{CachedUser, CachedUsers};
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
-use game::{list_mod_controllers, Launch, ModRef, ServerRef, Session};
-use gui::{prompt_confirm, Dialog, ModManagerAction, ServerBrowserUpdate, SinglePlayerAction};
 use regex::Regex;
-use servers::Server;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
-use workers::{SavedGamesWorker, ServerLoaderWorker};
 
+mod auth;
 mod config;
 mod env;
 mod game;
@@ -29,17 +27,26 @@ mod servers;
 mod workers;
 
 use crate::game::platform::steam::Steam;
-use crate::game::{LaunchState, Mods};
+use crate::game::Mods;
 use crate::gui::ModManagerUpdate;
 
-use self::game::Game;
-use self::gui::{Action, LauncherWindow, ServerBrowserAction, Update};
+use self::auth::{Account, AuthState, Capability, PlatformUser};
+use self::game::{list_mod_controllers, Game, Launch, ModRef, ServerRef, Session};
+use self::gui::{
+    prompt_confirm, Action, Dialog, HomeAction, HomeUpdate, LauncherWindow, ModManagerAction,
+    ServerBrowserAction, ServerBrowserUpdate, SinglePlayerAction, Update,
+};
 use self::logger::create_root_logger;
+use self::servers::Server;
+use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
 
 pub enum Message {
     Update(Update),
     ServerList(Result<Vec<Server>>),
+    Account(Result<Account>),
 }
+
+type CachedUsersPersister = fn(&Game, &CachedUsers) -> Result<()>;
 
 struct Launcher {
     logger: Logger,
@@ -51,11 +58,14 @@ struct Launcher {
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     tx: app::Sender<Message>,
     rx: app::Receiver<Message>,
-    pending_update: RefCell<Option<Update>>,
     main_window: LauncherWindow,
+    pending_update: RefCell<Option<Update>>,
+    cached_users: RefCell<CachedUsers>,
+    cached_users_persister: CachedUsersPersister,
     waiting_for_server_load: Cell<bool>,
     server_loader_worker: Arc<ServerLoaderWorker>,
     saved_games_worker: Arc<SavedGamesWorker>,
+    fls_worker: Arc<FlsWorker>,
 }
 
 impl Launcher {
@@ -71,12 +81,27 @@ impl Launcher {
         let game = Arc::new(game);
         let (tx, rx) = app::channel();
 
+        let main_window = LauncherWindow::new(logger.clone(), &*game, &config, log_level.is_none());
+
+        let (cached_users, cached_users_persister) = match game.load_cached_users() {
+            Ok(cached_users) => (
+                cached_users,
+                Game::save_cached_users as CachedUsersPersister,
+            ),
+            Err(err) => {
+                warn!(logger, "Error loading cached users"; "error" => %err);
+                fn noop_persister(_: &Game, _: &CachedUsers) -> Result<()> {
+                    Ok(())
+                }
+                (CachedUsers::new(), noop_persister as CachedUsersPersister)
+            }
+        };
+
         let server_loader_worker =
             ServerLoaderWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
 
         let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), tx.clone());
-
-        let main_window = LauncherWindow::new(logger.clone(), &*game, &config, log_level.is_none());
+        let fls_worker = FlsWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
 
         let launcher = Rc::new(Self {
             logger,
@@ -88,11 +113,14 @@ impl Launcher {
             config_persister,
             tx,
             rx,
-            pending_update: RefCell::new(None),
             main_window,
+            pending_update: RefCell::new(None),
+            cached_users: RefCell::new(cached_users),
+            cached_users_persister,
             waiting_for_server_load: Cell::new(false),
             server_loader_worker,
             saved_games_worker,
+            fls_worker,
         });
 
         launcher.main_window.set_on_action({
@@ -112,6 +140,11 @@ impl Launcher {
         } else {
             self.server_loader_worker.load_servers();
         }
+
+        self.main_window
+            .handle_update(Update::HomeUpdate(HomeUpdate::AuthState(
+                self.check_auth_state(),
+            )));
 
         while self.app.wait() {
             while self.run_loop_iteration() {
@@ -174,12 +207,36 @@ impl Launcher {
                     servers,
                 )))
             }
+            Message::Account(account) => {
+                if let Ok(account) = &account {
+                    if let Err(err) = self.cache_user(account) {
+                        warn!(self.logger, "Error saving cached users"; "error" => %err);
+                    }
+                }
+
+                let mut steam = self.steam.borrow_mut();
+                steam.check_client();
+
+                let platform_user = steam.user().ok_or(anyhow!("Steam not running"));
+                let fls_account = TaskState::Ready(account);
+                let online_capability =
+                    self.online_capability(&*steam, &platform_user, &fls_account);
+                let sp_capability = self.sp_capability(&platform_user, &fls_account);
+                let auth_state = AuthState {
+                    platform_user,
+                    fls_account,
+                    online_capability,
+                    sp_capability,
+                };
+
+                Some(Update::HomeUpdate(HomeUpdate::AuthState(auth_state)))
+            }
         }
     }
 
     fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
         match action {
-            Action::Launch => {
+            Action::HomeAction(HomeAction::Launch) => {
                 if !self.can_launch() {
                     return Ok(());
                 }
@@ -198,7 +255,7 @@ impl Launcher {
                 }
                 Ok(())
             }
-            Action::Continue => {
+            Action::HomeAction(HomeAction::Continue) => {
                 if !self.can_launch() {
                     return Ok(());
                 }
@@ -208,14 +265,11 @@ impl Launcher {
                     match &*self.game.last_session() {
                         Some(Session::Online(_)) => bail!(ERR_STEAM_NOT_ONLINE),
                         Some(Session::SinglePlayer(_)) => {
+                            let cached_users = self.cached_users();
                             let fls_account_id = steam
-                                .user_id()
-                                .and_then(|platform_id| {
-                                    self.game
-                                        .cached_users()
-                                        .by_platform_id(&platform_id.to_string())
-                                })
-                                .map(|user| user.master_account_id.as_str());
+                                .user()
+                                .and_then(|user| cached_users.by_platform_id(&user.id))
+                                .map(|user| user.account.master_id.as_str());
                             if fls_account_id.is_none() {
                                 bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
                             }
@@ -236,7 +290,7 @@ impl Launcher {
                 }
                 Ok(())
             }
-            Action::ConfigureLogLevel(new_log_level) => {
+            Action::HomeAction(HomeAction::ConfigureLogLevel(new_log_level)) => {
                 let update_result = self.update_config(|config| config.log_level = new_log_level);
                 if update_result.is_ok() {
                     if let Some(log_level) = &self.log_level {
@@ -248,8 +302,15 @@ impl Launcher {
                 }
                 update_result
             }
-            Action::ConfigureBattlEye(use_battleye) => {
+            Action::HomeAction(HomeAction::ConfigureBattlEye(use_battleye)) => {
                 self.update_config(|config| config.use_battleye = use_battleye)
+            }
+            Action::HomeAction(HomeAction::RefreshAuthState) => {
+                self.main_window
+                    .handle_update(Update::HomeUpdate(HomeUpdate::AuthState(
+                        self.check_auth_state(),
+                    )));
+                Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
                 self.server_loader_worker.load_servers();
@@ -294,14 +355,11 @@ impl Launcher {
                     return Ok(());
                 }
                 let steam = self.steam.borrow();
+                let cached_users = self.cached_users();
                 let fls_account_id = steam
-                    .user_id()
-                    .and_then(|platform_id| {
-                        self.game
-                            .cached_users()
-                            .by_platform_id(&platform_id.to_string())
-                    })
-                    .map(|user| user.master_account_id.as_str());
+                    .user()
+                    .and_then(|user| cached_users.by_platform_id(&user.id))
+                    .map(|user| user.account.master_id.as_str());
                 if !steam.can_play_online() {
                     if fls_account_id.is_none() {
                         bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
@@ -317,12 +375,11 @@ impl Launcher {
                     return Ok(());
                 }
                 let steam = self.steam.borrow();
+                let cached_users = self.cached_users();
                 if !steam.can_play_online() {
-                    let cached_user = steam.user_id().and_then(|platform_id| {
-                        self.game
-                            .cached_users()
-                            .by_platform_id(&platform_id.to_string())
-                    });
+                    let cached_user = steam
+                        .user()
+                        .and_then(|user| cached_users.by_platform_id(&user.id));
                     if cached_user.is_none() {
                         bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
                     }
@@ -392,9 +449,86 @@ impl Launcher {
         }
     }
 
-    fn can_launch(&self) -> bool {
+    fn check_auth_state(&self) -> AuthState {
         let mut steam = self.steam.borrow_mut();
-        if steam.check_can_launch() {
+        steam.check_client();
+
+        let platform_user = steam.user().ok_or(anyhow!("Steam not running"));
+        let fls_account = match &platform_user {
+            Ok(user) => {
+                if let Some(cached) = self.cached_users().by_platform_id(&user.id).as_deref() {
+                    TaskState::Ready(Ok(cached.account.clone()))
+                } else {
+                    if steam.can_play_online() {
+                        TaskState::Pending
+                    } else {
+                        TaskState::Ready(Err(anyhow!("Steam in offline mode")))
+                    }
+                }
+            }
+            Err(err) => TaskState::Ready(Err(anyhow!(err.to_string()))),
+        };
+        let online_capability = self.online_capability(&*steam, &platform_user, &fls_account);
+        let sp_capability = self.sp_capability(&platform_user, &fls_account);
+
+        if let TaskState::Pending = &fls_account {
+            Arc::clone(&self.fls_worker).login_with_steam(&*steam.auth_ticket().unwrap());
+        }
+
+        AuthState {
+            platform_user,
+            fls_account,
+            online_capability,
+            sp_capability,
+        }
+    }
+
+    fn online_capability(
+        &self,
+        steam: &Steam,
+        platform_user: &Result<PlatformUser>,
+        fls_account: &TaskState<Result<Account>>,
+    ) -> TaskState<Capability> {
+        match &platform_user {
+            Err(err) => TaskState::Ready(Err(anyhow!(err.to_string()))),
+            Ok(_) => {
+                if !steam.can_play_online() {
+                    TaskState::Ready(Err(anyhow!("Steam in offline mode")))
+                } else {
+                    match &fls_account {
+                        TaskState::Pending => TaskState::Pending,
+                        TaskState::Ready(Ok(_)) => TaskState::Ready(Ok(())),
+                        TaskState::Ready(Err(_)) => TaskState::Ready(Err(anyhow!("FLS error"))),
+                    }
+                }
+            }
+        }
+    }
+
+    fn sp_capability(
+        &self,
+        platform_user: &Result<PlatformUser>,
+        fls_account: &TaskState<Result<Account>>,
+    ) -> TaskState<Capability> {
+        match &platform_user {
+            Err(err) => TaskState::Ready(Err(anyhow!(err.to_string()))),
+            Ok(_) => match &fls_account {
+                TaskState::Pending => TaskState::Pending,
+                TaskState::Ready(Ok(_)) => TaskState::Ready(Ok(())),
+                TaskState::Ready(Err(_)) => {
+                    TaskState::Ready(Err(anyhow!("FLS account not cached")))
+                }
+            },
+        }
+    }
+
+    fn can_launch(&self) -> bool {
+        let can_launch = {
+            let mut steam = self.steam.borrow_mut();
+            steam.check_client();
+            steam.can_launch()
+        };
+        if can_launch {
             return true;
         }
 
@@ -420,7 +554,12 @@ impl Launcher {
         });
         loop {
             if should_poll.replace(false) {
-                if steam.check_can_launch() {
+                let can_launch = {
+                    let mut steam = self.steam.borrow_mut();
+                    steam.check_client();
+                    steam.can_launch()
+                };
+                if can_launch {
                     return true;
                 }
             }
@@ -516,7 +655,7 @@ impl Launcher {
     }
 
     fn monitor_launch(&self, mut launch: Launch) -> Result<bool> {
-        if let LaunchState::Ready = launch.poll()? {
+        if let TaskState::Ready(()) = launch.poll()? {
             return Ok(true);
         }
 
@@ -542,7 +681,7 @@ impl Launcher {
         });
         loop {
             if should_poll.replace(false) {
-                if let LaunchState::Ready = launch.poll()? {
+                if let TaskState::Ready(()) = launch.poll()? {
                     return Ok(true);
                 }
             }
@@ -660,6 +799,16 @@ impl Launcher {
             warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
         }
         Ok(())
+    }
+
+    fn cached_users(&self) -> Ref<CachedUsers> {
+        self.cached_users.borrow()
+    }
+
+    fn cache_user(&self, account: &Account) -> Result<()> {
+        let mut cached_users = self.cached_users.borrow_mut();
+        cached_users.insert(CachedUser::new(account.clone()));
+        (self.cached_users_persister)(&self.game, &*cached_users)
     }
 
     fn task_monitor(&self, title: &str, message: &str, button: &str) -> Dialog<()> {

@@ -102,6 +102,7 @@ impl ServerLoaderWorker {
         let favorites = self.game.load_favorites()?;
         Ok(fetch_server_list(
             self.logger.clone(),
+            &*self.game,
             DeserializationContext {
                 build_id: self.game.build_id(),
                 favorites: &favorites,

@@ -1,16 +1,20 @@
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
 use slog::{debug, o, Logger};
 use steamlocate::SteamDir;
-use steamworks::Client;
+use steamworks::{AuthTicket, Client, ClientManager, User};
 
+use crate::auth::PlatformUser;
 use crate::game::{Game, ModInfo};
 
 pub struct Steam {
     logger: Logger,
     installation: SteamDir,
     client: Option<Client>,
+    ticket: RefCell<Option<Rc<SteamTicket>>>,
 }
 
 impl Steam {
@@ -22,6 +26,7 @@ impl Steam {
             logger: logger.new(o!("platform" => "steam")),
             installation,
             client: init_client(),
+            ticket: RefCell::new(None),
         })
     }
 
@@ -58,10 +63,13 @@ impl Steam {
         Game::new(self.logger.clone(), game_path, installed_mods)
     }
 
-    pub fn check_can_launch(&mut self) -> bool {
+    pub fn check_client(&mut self) {
         if self.client.is_none() {
             self.client = init_client();
         }
+    }
+
+    pub fn can_launch(&mut self) -> bool {
         self.client.is_some()
     }
 
@@ -72,10 +80,49 @@ impl Steam {
         }
     }
 
-    pub fn user_id(&self) -> Option<u64> {
-        self.client
-            .as_ref()
-            .map(|client| client.user().steam_id().raw())
+    pub fn user(&self) -> Option<PlatformUser> {
+        self.client.as_ref().map(|client| PlatformUser {
+            id: client.user().steam_id().raw().to_string(),
+            display_name: client.friends().name(),
+        })
+    }
+
+    pub fn auth_ticket(&self) -> Option<Rc<SteamTicket>> {
+        let mut ticket = self.ticket.borrow_mut();
+        if ticket.is_none() {
+            *ticket = self.client.as_ref().and_then(|client| {
+                let user = client.user();
+                if user.logged_on() {
+                    Some(Rc::new(SteamTicket::new(user)))
+                } else {
+                    None
+                }
+            });
+        }
+        ticket.clone()
+    }
+}
+
+pub struct SteamTicket {
+    user: User<ClientManager>,
+    ticket: AuthTicket,
+    data: Vec<u8>,
+}
+
+impl SteamTicket {
+    fn new(user: User<ClientManager>) -> Self {
+        let (ticket, data) = user.authentication_session_ticket();
+        Self { user, ticket, data }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+impl Drop for SteamTicket {
+    fn drop(&mut self) {
+        self.user.cancel_authentication_ticket(self.ticket);
     }
 }
 

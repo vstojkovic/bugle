@@ -1,20 +1,19 @@
 use std::borrow::Cow;
 
 use fltk::prelude::*;
-use fltk::text::TextEditor;
 use fltk_table::{SmartTable, TableOpts};
 use nom::character::complete::{char, digit1};
 use nom::sequence::separated_pair;
 use nom::IResult;
 
-use crate::gui::make_readonly_cell_widget;
+use crate::gui::{make_readonly_cell_widget, ReadOnlyText};
 use crate::servers::{Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name};
 
 pub(super) struct DetailsPane {
     table: SmartTable,
-    cell: TextEditor,
+    cell: ReadOnlyText,
 }
 
 impl DetailsPane {
