@@ -32,11 +32,22 @@ impl ActionsPane {
     pub fn new(scroll_lock: bool) -> Rc<Self> {
         let root = Group::default_fill();
 
-        let direct_conn_button = Button::default().with_label("Direct Connect...");
-        let refresh_button = Button::default().with_label("Refresh");
-        let toggle_favorite_button = Button::default().with_label("Unfavorite");
-        let ping_button = Button::default().with_label("Ping");
-        let join_button = Button::default().with_label("Join");
+        let direct_conn_button = Button::default()
+            .with_label("Direct Connect...")
+            .with_tooltip("Specify the address and port of the server to connect to");
+        let refresh_button = Button::default()
+            .with_label("Refresh")
+            .with_tooltip("Reload the server list");
+        let toggle_favorite_button = Button::default()
+            .with_label("Unfavorite")
+            .with_tooltip("Toggle whether the selected server is in your favorites");
+        let ping_button = Button::default().with_label("Ping").with_tooltip(
+            "Get updated information about the selected server's ping, age, and number of \
+            connected players",
+        );
+        let join_button = Button::default()
+            .with_label("Join")
+            .with_tooltip("Connect to the selected server");
         let button_height = button_row_height(&[
             &direct_conn_button,
             &refresh_button,
@@ -45,7 +56,9 @@ impl ActionsPane {
             &join_button,
         ]);
 
-        let scroll_lock_check = CheckButton::default().with_label("Scroll lock");
+        let scroll_lock_check = CheckButton::default()
+            .with_label("Scroll lock")
+            .with_tooltip("Make sure the selected server is always visible in the list");
         let scroll_lock_width = widget_auto_width(&scroll_lock_check);
         let scroll_lock_height = widget_auto_height(&scroll_lock_check);
 

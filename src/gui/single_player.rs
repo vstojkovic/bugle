@@ -107,12 +107,24 @@ impl SinglePlayer {
             .with_label("Backups:")
             .with_align(label_align);
 
-        let new_button = Button::default().with_label("New");
-        let continue_button = Button::default().with_label("Continue");
-        let load_button = Button::default().with_label("Load");
-        let save_button = Button::default().with_label("Save");
-        let save_as_button = Button::default().with_label("Save As...");
-        let delete_button = Button::default().with_label("Delete");
+        let new_button = Button::default()
+            .with_label("New")
+            .with_tooltip("Start a new singleplayer game from scratch");
+        let continue_button = Button::default()
+            .with_label("Continue")
+            .with_tooltip("Continue the current singleplayer game");
+        let load_button = Button::default()
+            .with_label("Load")
+            .with_tooltip("Replace the current singleplayer game with the selected backup");
+        let save_button = Button::default()
+            .with_label("Save")
+            .with_tooltip("Replace the selected backup with the current singleplayer game");
+        let save_as_button = Button::default()
+            .with_label("Save As...")
+            .with_tooltip("Create a new backup of the current singleplayer game");
+        let delete_button = Button::default()
+            .with_label("Delete")
+            .with_tooltip("Delete the selected backup");
 
         let label_width = widget_col_width(&[&map_label, &in_progress_label, &backups_label]);
         let button_width = widget_col_width(&[

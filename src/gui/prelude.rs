@@ -23,6 +23,7 @@ pub(super) trait LayoutExt {
         horz_margin: impl Into<Option<i32>>,
         vert_margin: impl Into<Option<i32>>,
     ) -> Self;
+    fn with_tooltip(self, tooltip: &str) -> Self;
 }
 
 impl<T: WidgetExt> LayoutExt for T {
@@ -64,6 +65,11 @@ impl<T: WidgetExt> LayoutExt for T {
             self.h()
         };
         self.with_size(width, height)
+    }
+
+    fn with_tooltip(mut self, tooltip: &str) -> Self {
+        self.set_tooltip(tooltip);
+        self
     }
 }
 

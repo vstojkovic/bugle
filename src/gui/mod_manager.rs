@@ -146,16 +146,36 @@ impl ModManager {
         button_group.make_resizable(true);
         button_group.set_frame(FrameType::FlatBox);
 
-        let clear_button = Button::default().with_label("@filenew");
-        let import_button = Button::default().with_label("@fileopen");
-        let export_button = Button::default().with_label("@filesave");
-        let activate_button = Button::default().with_label("@>");
-        let deactivate_button = Button::default().with_label("@<");
-        let move_top_button = Button::default().with_label("@#8>|");
-        let move_up_button = Button::default().with_label("@#8>");
-        let move_down_button = Button::default().with_label("@#2>");
-        let move_bottom_button = Button::default().with_label("@#2>|");
-        let mut more_info_button = MenuButton::default().with_label("\u{1f4dc}");
+        let clear_button = Button::default()
+            .with_label("@filenew")
+            .with_tooltip("Clear the mod list");
+        let import_button = Button::default()
+            .with_label("@fileopen")
+            .with_tooltip("Import the mod list from a file");
+        let export_button = Button::default()
+            .with_label("@filesave")
+            .with_tooltip("Export the mod list into a file");
+        let activate_button = Button::default()
+            .with_label("@>")
+            .with_tooltip("Activate the selected mod");
+        let deactivate_button = Button::default()
+            .with_label("@<")
+            .with_tooltip("Deactivate the selected mod");
+        let move_top_button = Button::default()
+            .with_label("@#8>|")
+            .with_tooltip("Move the selected mod to top");
+        let move_up_button = Button::default()
+            .with_label("@#8>")
+            .with_tooltip("Move the selected mod up");
+        let move_down_button = Button::default()
+            .with_label("@#2>")
+            .with_tooltip("Move the selected mod down");
+        let move_bottom_button = Button::default()
+            .with_label("@#2>|")
+            .with_tooltip("Move the selected mod to the bottom");
+        let mut more_info_button = MenuButton::default()
+            .with_label("\u{1f4dc}")
+            .with_tooltip("Show information about the selected mod");
         more_info_button.deactivate();
 
         let button_width = widget_col_width(&[
