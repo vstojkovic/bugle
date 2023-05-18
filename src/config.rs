@@ -191,7 +191,7 @@ fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
     let include_password_protected = section
         .and_then(|section| section.get(KEY_INCLUDE_PASSWORD_PROTECTED))
         .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
-        .unwrap_or_default();
+        .unwrap_or(true);
     let mods = section
         .and_then(|section| section.get(KEY_MODS))
         .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok());
