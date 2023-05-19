@@ -3,6 +3,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
+use keyvalues_parser::Vdf;
 use slog::{debug, o, Logger};
 use steamlocate::SteamDir;
 use steamworks::{AuthTicket, Client, ClientManager, User};
@@ -138,7 +139,8 @@ fn collect_mods(workshop_path: &Path) -> Result<Vec<ModInfo>> {
         return Ok(Vec::new());
     }
 
-    let manifest = steamy_vdf::load(manifest_path)?;
+    let manifest = std::fs::read_to_string(manifest_path)?;
+    let manifest = Vdf::parse(&manifest)?;
     let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
 
     let mut path = workshop_path.join("content/440900");
@@ -160,13 +162,18 @@ fn collect_mods(workshop_path: &Path) -> Result<Vec<ModInfo>> {
     Ok(mods)
 }
 
-fn collect_mod_ids(manifest: &steamy_vdf::Entry) -> Option<Vec<&String>> {
+fn collect_mod_ids<'m>(manifest: &'m Vdf) -> Option<Vec<&'m str>> {
     Some(
         manifest
-            .lookup("AppWorkshop.WorkshopItemsInstalled")?
-            .as_table()?
+            .value
+            .get_obj()?
+            .get("WorkshopItemsInstalled")?
+            .into_iter()
+            .next()?
+            .get_obj()?
             .keys()
             .into_iter()
+            .map(|key| key.as_ref())
             .collect(),
     )
 }
