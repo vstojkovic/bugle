@@ -20,6 +20,7 @@ mod mod_manager;
 mod prelude;
 mod server_browser;
 mod single_player;
+pub mod theme;
 
 pub use self::dialog::Dialog;
 pub use self::home::{HomeAction, HomeUpdate};

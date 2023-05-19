@@ -10,6 +10,7 @@ use crate::servers::{Mode, Region, SortCriteria, SortKey, TypeFilter};
 pub struct Config {
     pub log_level: LogLevel,
     pub use_battleye: BattlEyeUsage,
+    pub theme: ThemeChoice,
     pub server_browser: ServerBrowserConfig,
 }
 
@@ -22,7 +23,7 @@ impl Default for LogLevel {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum BattlEyeUsage {
     Auto,
     Always(bool),
@@ -31,6 +32,18 @@ pub enum BattlEyeUsage {
 impl Default for BattlEyeUsage {
     fn default() -> Self {
         Self::Always(true)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ThemeChoice {
+    Light,
+    Dark,
+}
+
+impl Default for ThemeChoice {
+    fn default() -> Self {
+        Self::Light
     }
 }
 
@@ -106,10 +119,19 @@ impl ConfigPersister for IniConfigPersister {
                 _ => None,
             })
             .unwrap_or_default();
+        let theme = section
+            .and_then(|section| section.get(KEY_THEME))
+            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+                THEME_LIGHT => Some(ThemeChoice::Light),
+                THEME_DARK => Some(ThemeChoice::Dark),
+                _ => None,
+            })
+            .unwrap_or_default();
 
         Ok(Config {
             log_level,
             use_battleye,
+            theme,
             server_browser: load_server_browser_config(&ini),
         })
     }
@@ -117,6 +139,10 @@ impl ConfigPersister for IniConfigPersister {
     fn save(&self, config: &Config) -> Result<()> {
         let mut ini = Ini::new();
         ini.with_general_section()
+            .set(
+                KEY_LOG_LEVEL,
+                config.log_level.0.as_str().to_ascii_lowercase(),
+            )
             .set(
                 KEY_USE_BATTLEYE,
                 match config.use_battleye {
@@ -126,8 +152,11 @@ impl ConfigPersister for IniConfigPersister {
                 },
             )
             .set(
-                KEY_LOG_LEVEL,
-                config.log_level.0.as_str().to_ascii_lowercase(),
+                KEY_THEME,
+                match config.theme {
+                    ThemeChoice::Light => THEME_LIGHT,
+                    ThemeChoice::Dark => THEME_DARK,
+                },
             );
         save_server_browser_config(&mut ini, &config.server_browser);
         save_ini(&ini, &self.config_path)
@@ -262,6 +291,7 @@ const SECTION_SERVER_BROWSER: &str = "ServerBrowser";
 
 const KEY_LOG_LEVEL: &str = "LogLevel";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
+const KEY_THEME: &str = "Theme";
 const KEY_TYPE_FILTER: &str = "Type";
 const KEY_MODE: &str = "Mode";
 const KEY_REGION: &str = "Region";
@@ -275,3 +305,6 @@ const KEY_SCROLL_LOCK: &str = "ScrollLock";
 const BATTLEYE_AUTO: &str = "auto";
 const BATTLEYE_ALWAYS: &str = "always";
 const BATTLEYE_NEVER: &str = "never";
+
+const THEME_LIGHT: &str = "light";
+const THEME_DARK: &str = "dark";

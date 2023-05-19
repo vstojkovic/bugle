@@ -27,15 +27,13 @@ mod parser_utils;
 mod servers;
 mod workers;
 
-use crate::game::platform::steam::Steam;
-use crate::game::Mods;
-use crate::gui::ModManagerUpdate;
-
 use self::auth::{Account, AuthState, Capability, PlatformUser};
-use self::game::{list_mod_controllers, Game, Launch, ModRef, ServerRef, Session};
+use self::game::platform::steam::Steam;
+use self::game::{list_mod_controllers, Game, Launch, ModRef, Mods, ServerRef, Session};
+use self::gui::theme::Theme;
 use self::gui::{
     prompt_confirm, Action, Dialog, HomeAction, HomeUpdate, LauncherWindow, ModManagerAction,
-    ServerBrowserAction, ServerBrowserUpdate, SinglePlayerAction, Update,
+    ModManagerUpdate, ServerBrowserAction, ServerBrowserUpdate, SinglePlayerAction, Update,
 };
 use self::logger::create_root_logger;
 use self::servers::Server;
@@ -253,6 +251,9 @@ impl Launcher {
             }
             Action::HomeAction(HomeAction::ConfigureBattlEye(use_battleye)) => {
                 self.update_config(|config| config.use_battleye = use_battleye)
+            }
+            Action::HomeAction(HomeAction::ConfigureTheme(theme)) => {
+                self.update_config(|config| config.theme = theme)
             }
             Action::HomeAction(HomeAction::RefreshAuthState) => {
                 self.main_window
@@ -935,6 +936,7 @@ async fn main() {
     }
 
     let app = App::default();
+    Theme::from_config(config.theme).apply();
 
     let mut steam = match Steam::locate(&root_logger) {
         Some(steam) => steam,

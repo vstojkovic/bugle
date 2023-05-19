@@ -563,6 +563,8 @@ fn make_db_list() -> SmartTable {
     let mut db_list = SmartTable::default_fill().with_opts(TableOpts {
         rows: 1,
         cols: 5,
+        cell_selection_color: fltk::enums::Color::Free,
+        header_font_color: fltk::enums::Color::Gray0,
         ..Default::default()
     });
 

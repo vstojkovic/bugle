@@ -36,6 +36,8 @@ impl ListPane {
             rows: 0,
             cols: SERVER_LIST_COLS.len() as _,
             editable: false,
+            cell_selection_color: fltk::enums::Color::Free,
+            header_font_color: fltk::enums::Color::Gray0,
             ..Default::default()
         });
         table.make_resizable(true);

@@ -12,18 +12,23 @@ use slog::{error, FilterLevel, Logger};
 use tempfile::tempdir;
 
 use crate::auth::AuthState;
-use crate::config::{BattlEyeUsage, Config, LogLevel};
+use crate::config::{BattlEyeUsage, Config, LogLevel, ThemeChoice};
 use crate::game::Game;
 use crate::workers::TaskState;
 
-use super::{alert_error, widget_auto_height, widget_col_width, CleanupFn, Handler};
-use super::{button_auto_height, prelude::*, ReadOnlyText};
+use super::prelude::*;
+use super::theme::Theme;
+use super::{
+    alert_error, button_auto_height, widget_auto_height, widget_col_width, CleanupFn, Handler,
+    ReadOnlyText,
+};
 
 pub enum HomeAction {
     Launch,
     Continue,
     ConfigureLogLevel(LogLevel),
     ConfigureBattlEye(BattlEyeUsage),
+    ConfigureTheme(ThemeChoice),
     RefreshAuthState,
 }
 
@@ -107,6 +112,8 @@ impl Home {
         let log_level_input = InputChoice::default_fill();
         let battleye_label = create_info_label("Use BattlEye:");
         let battleye_input = InputChoice::default_fill();
+        let theme_label = create_info_label("Theme:");
+        let theme_input = InputChoice::default_fill();
         info_pane.end();
 
         let left_width = widget_col_width(&[
@@ -115,11 +122,14 @@ impl Home {
             &build_id_label,
             &platform_user_id_label,
             &fls_acct_id_label,
+            &log_level_label,
+            &theme_label,
         ]);
         let right_width = widget_col_width(&[
             &revision_label,
             &platform_user_name_label,
             &fls_acct_name_label,
+            &battleye_label,
         ]);
         let button_width = widget_col_width(&[&refresh_platform_button, &refresh_fls_button]);
         let button_height = button_auto_height(&refresh_platform_button);
@@ -283,6 +293,33 @@ impl Home {
                     _ => unreachable!(),
                 };
                 on_action(HomeAction::ConfigureBattlEye(use_battleye)).unwrap();
+            }
+        });
+
+        let theme_label = theme_label
+            .with_size(left_width, text_height)
+            .below_of(&log_level_label, 10);
+        let mut theme_input = theme_input
+            .with_size(narrow_width, text_height)
+            .right_of(&theme_label, 10);
+        theme_input.input().set_readonly(true);
+        theme_input.input().clear_visible_focus();
+        theme_input.add("Light");
+        theme_input.add("Dark");
+        theme_input.set_value_index(match config.theme {
+            ThemeChoice::Light => 0,
+            ThemeChoice::Dark => 1,
+        });
+        theme_input.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                let theme = match input.menu_button().value() {
+                    0 => ThemeChoice::Light,
+                    1 => ThemeChoice::Dark,
+                    _ => unreachable!(),
+                };
+                Theme::from_config(theme).apply();
+                on_action(HomeAction::ConfigureTheme(theme)).unwrap();
             }
         });
 

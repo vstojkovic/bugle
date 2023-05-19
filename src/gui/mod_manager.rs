@@ -123,6 +123,8 @@ impl ModManager {
             editable: false,
             cell_align: Align::Left,
             cell_padding: 4,
+            cell_selection_color: fltk::enums::Color::Free,
+            header_font_color: fltk::enums::Color::Gray0,
             ..Default::default()
         });
         available_list.make_resizable(true);
@@ -255,6 +257,8 @@ impl ModManager {
             editable: false,
             cell_align: Align::Left,
             cell_padding: 4,
+            cell_selection_color: fltk::enums::Color::Free,
+            header_font_color: fltk::enums::Color::Gray0,
             ..Default::default()
         });
         active_list.make_resizable(true);

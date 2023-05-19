@@ -22,6 +22,8 @@ impl DetailsPane {
             rows: SERVER_DETAILS_ROWS.len() as _,
             cols: 1,
             editable: false,
+            cell_selection_color: fltk::enums::Color::Free,
+            header_font_color: fltk::enums::Color::Gray0,
             ..Default::default()
         });
         table.set_col_resize(true);
