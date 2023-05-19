@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::rc::Rc;
 
-use fltk::enums::Align;
+use fltk::enums::{Align, Event};
 use fltk::frame::Frame;
+use fltk::misc::Tooltip;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_table::{SmartTable, TableOpts};
@@ -81,6 +83,16 @@ impl ListPane {
                         list_pane.clicked();
                     }
                 }
+            });
+        }
+        {
+            let list_pane = Rc::downgrade(&list_pane);
+            let mut tooltip_pos = None;
+            table.handle(move |_, event| {
+                if let Some(list_pane) = list_pane.upgrade() {
+                    list_pane.update_tooltip(event, &mut tooltip_pos);
+                }
+                false
             });
         }
 
@@ -251,6 +263,53 @@ impl ListPane {
             }
         }
     }
+
+    fn update_tooltip(&self, event: Event, tooltip_pos: &mut Option<(TableContext, i32, i32)>) {
+        let table_widget: &fltk::table::TableRow = &self.table;
+        match event {
+            Event::Move => {
+                let mut new_pos = match self.table.cursor2rowcol() {
+                    Some((TableContext::ColHeader, row, col, _)) if col < 6 => {
+                        Some((TableContext::ColHeader, row, col))
+                    }
+                    Some((TableContext::Cell, row, col, _)) if col < 6 => {
+                        Some((TableContext::Cell, row, col))
+                    }
+                    _ => None,
+                };
+                if *tooltip_pos != new_pos {
+                    if let Some((TableContext::Cell, row, col)) = &new_pos {
+                        let data_ref = self.table.data_ref();
+                        let data_ref = data_ref.lock().unwrap();
+                        if data_ref[*row as usize][*col as usize].is_empty() {
+                            new_pos = None;
+                        }
+                    }
+                }
+                if *tooltip_pos != new_pos {
+                    *tooltip_pos = new_pos;
+                    Tooltip::current(&self.table.parent().unwrap());
+                    if let Some((ctx, row, col)) = &tooltip_pos {
+                        let (x, y, w, h) = self.table.find_cell(*ctx, *row, *col).unwrap();
+                        Tooltip::enter_area(
+                            table_widget,
+                            x - &self.table.x(),
+                            y - &self.table.y(),
+                            w,
+                            h,
+                            COL_TOOLTIPS[*col as usize].as_c_str(),
+                        );
+                    }
+                }
+            }
+            Event::Leave => {
+                if tooltip_pos.is_some() {
+                    *tooltip_pos = None;
+                }
+            }
+            _ => (),
+        }
+    }
 }
 
 struct Column {
@@ -330,6 +389,14 @@ lazy_static! {
         }
         map
     };
+    static ref COL_TOOLTIPS: [CString; 6] = [
+        CString::new("Invalid").unwrap(),
+        CString::new("Password protected").unwrap(),
+        CString::new("Modded").unwrap(),
+        CString::new("Official").unwrap(),
+        CString::new("BattlEye required").unwrap(),
+        CString::new("Favorite").unwrap(),
+    ];
 }
 
 fn sort_key_to_column(sort_key: SortKey) -> i32 {
