@@ -2,6 +2,7 @@
 
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
@@ -236,60 +237,8 @@ impl Launcher {
 
     fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
         match action {
-            Action::HomeAction(HomeAction::Launch) => {
-                if !self.can_launch() {
-                    return Ok(());
-                }
-                let use_battleye = match self.config().use_battleye {
-                    BattlEyeUsage::Always(enabled) => enabled,
-                    BattlEyeUsage::Auto => {
-                        if let Some(enabled) = self.prompt_battleye() {
-                            enabled
-                        } else {
-                            return Ok(());
-                        }
-                    }
-                };
-                if self.monitor_launch(self.game.launch(use_battleye, &[])?)? {
-                    app::quit();
-                }
-                Ok(())
-            }
-            Action::HomeAction(HomeAction::Continue) => {
-                if !self.can_launch() {
-                    return Ok(());
-                }
-
-                let steam = self.steam.borrow();
-                if !steam.can_play_online() {
-                    match &*self.game.last_session() {
-                        Some(Session::Online(_)) => bail!(ERR_STEAM_NOT_ONLINE),
-                        Some(Session::SinglePlayer(_)) => {
-                            let cached_users = self.cached_users();
-                            let fls_account_id = steam
-                                .user()
-                                .and_then(|user| cached_users.by_platform_id(&user.id))
-                                .map(|user| user.account.master_id.as_str());
-                            if fls_account_id.is_none() {
-                                bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
-                            }
-                            self.show_offline_singleplayer_bug_warning();
-                        }
-                        _ => (),
-                    }
-                }
-                drop(steam);
-
-                let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
-                    enabled
-                } else {
-                    return Ok(());
-                };
-                if self.monitor_launch(self.game.continue_session(use_battleye)?)? {
-                    app::quit();
-                }
-                Ok(())
-            }
+            Action::HomeAction(HomeAction::Launch) => self.launch_game(),
+            Action::HomeAction(HomeAction::Continue) => self.continue_last_session(),
             Action::HomeAction(HomeAction::ConfigureLogLevel(new_log_level)) => {
                 let update_result = self.update_config(|config| config.log_level = new_log_level);
                 if update_result.is_ok() {
@@ -319,22 +268,7 @@ impl Launcher {
             Action::ServerBrowser(ServerBrowserAction::JoinServer {
                 addr,
                 battleye_required,
-            }) => {
-                if !self.can_launch() {
-                    return Ok(());
-                }
-                if !self.steam.borrow().can_play_online() {
-                    bail!(ERR_STEAM_NOT_ONLINE);
-                }
-                let use_battleye = match self.config().use_battleye {
-                    BattlEyeUsage::Auto => battleye_required,
-                    BattlEyeUsage::Always(enabled) => enabled,
-                };
-                if self.monitor_launch(self.game.join_server(addr, use_battleye)?)? {
-                    app::quit();
-                }
-                Ok(())
-            }
+            }) => self.join_server(addr, battleye_required),
             Action::ServerBrowser(ServerBrowserAction::PingServer(request)) => {
                 self.server_loader_worker.ping_server(request)
             }
@@ -351,41 +285,10 @@ impl Launcher {
                 Arc::clone(&self.saved_games_worker).list_games()
             }
             Action::SinglePlayer(SinglePlayerAction::NewSavedGame { map_id }) => {
-                if !self.can_launch() {
-                    return Ok(());
-                }
-                let steam = self.steam.borrow();
-                let cached_users = self.cached_users();
-                let fls_account_id = steam
-                    .user()
-                    .and_then(|user| cached_users.by_platform_id(&user.id))
-                    .map(|user| user.account.master_id.as_str());
-                if !steam.can_play_online() {
-                    if fls_account_id.is_none() {
-                        bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
-                    }
-                    self.show_offline_singleplayer_bug_warning();
-                }
-                self.saved_games_worker
-                    .clear_progress(map_id, fls_account_id)?;
-                self.launch_single_player(map_id, true)
+                self.start_new_singleplayer_game(map_id)
             }
             Action::SinglePlayer(SinglePlayerAction::ContinueSavedGame { map_id }) => {
-                if !self.can_launch() {
-                    return Ok(());
-                }
-                let steam = self.steam.borrow();
-                let cached_users = self.cached_users();
-                if !steam.can_play_online() {
-                    let cached_user = steam
-                        .user()
-                        .and_then(|user| cached_users.by_platform_id(&user.id));
-                    if cached_user.is_none() {
-                        bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
-                    }
-                    self.show_offline_singleplayer_bug_warning();
-                }
-                self.launch_single_player(map_id, false)
+                self.continue_singleplayer_game(map_id)
             }
             Action::SinglePlayer(SinglePlayerAction::LoadSavedGame {
                 map_id,
@@ -447,6 +350,118 @@ impl Launcher {
                     .save_mod_list_to(&mod_list_path, active_mods.iter())
             }
         }
+    }
+
+    fn launch_game(&self) -> Result<()> {
+        if !self.can_launch() {
+            return Ok(());
+        }
+        let use_battleye = match self.config().use_battleye {
+            BattlEyeUsage::Always(enabled) => enabled,
+            BattlEyeUsage::Auto => {
+                if let Some(enabled) = self.prompt_battleye() {
+                    enabled
+                } else {
+                    return Ok(());
+                }
+            }
+        };
+        if self.monitor_launch(self.game.launch(use_battleye, &[])?)? {
+            app::quit();
+        }
+        Ok(())
+    }
+
+    fn continue_last_session(&self) -> Result<()> {
+        if !self.can_launch() {
+            return Ok(());
+        }
+
+        let steam = self.steam.borrow();
+        if !steam.can_play_online() {
+            match &*self.game.last_session() {
+                Some(Session::Online(_)) => bail!(ERR_STEAM_NOT_ONLINE),
+                Some(Session::SinglePlayer(_)) => {
+                    let cached_users = self.cached_users();
+                    let fls_account_id = steam
+                        .user()
+                        .and_then(|user| cached_users.by_platform_id(&user.id))
+                        .map(|user| user.account.master_id.as_str());
+                    if fls_account_id.is_none() {
+                        bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
+                    }
+                    self.show_offline_singleplayer_bug_warning();
+                }
+                _ => (),
+            }
+        }
+        drop(steam);
+
+        let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
+            enabled
+        } else {
+            return Ok(());
+        };
+        if self.monitor_launch(self.game.continue_session(use_battleye)?)? {
+            app::quit();
+        }
+        Ok(())
+    }
+
+    fn join_server(&self, addr: SocketAddr, battleye_required: bool) -> Result<()> {
+        if !self.can_launch() {
+            return Ok(());
+        }
+        if !self.steam.borrow().can_play_online() {
+            bail!(ERR_STEAM_NOT_ONLINE);
+        }
+        let use_battleye = match self.config().use_battleye {
+            BattlEyeUsage::Auto => battleye_required,
+            BattlEyeUsage::Always(enabled) => enabled,
+        };
+        if self.monitor_launch(self.game.join_server(addr, use_battleye)?)? {
+            app::quit();
+        }
+        Ok(())
+    }
+
+    fn start_new_singleplayer_game(&self, map_id: usize) -> Result<()> {
+        if !self.can_launch() {
+            return Ok(());
+        }
+        let steam = self.steam.borrow();
+        let cached_users = self.cached_users();
+        let fls_account_id = steam
+            .user()
+            .and_then(|user| cached_users.by_platform_id(&user.id))
+            .map(|user| user.account.master_id.as_str());
+        if !steam.can_play_online() {
+            if fls_account_id.is_none() {
+                bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
+            }
+            self.show_offline_singleplayer_bug_warning();
+        }
+        self.saved_games_worker
+            .clear_progress(map_id, fls_account_id)?;
+        self.launch_single_player(map_id, true)
+    }
+
+    fn continue_singleplayer_game(&self, map_id: usize) -> Result<()> {
+        if !self.can_launch() {
+            return Ok(());
+        }
+        let steam = self.steam.borrow();
+        let cached_users = self.cached_users();
+        if !steam.can_play_online() {
+            let cached_user = steam
+                .user()
+                .and_then(|user| cached_users.by_platform_id(&user.id));
+            if cached_user.is_none() {
+                bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
+            }
+            self.show_offline_singleplayer_bug_warning();
+        }
+        self.launch_single_player(map_id, false)
     }
 
     fn check_auth_state(&self) -> AuthState {
