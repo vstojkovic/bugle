@@ -10,7 +10,7 @@ use regex::Regex;
 
 pub mod playfab;
 
-use crate::parser_utils::{extract_value, parse_map, parse_quoted, ParserError};
+use crate::parser_utils::{escape_string, extract_value, parse_map, parse_quoted, ParserError};
 use crate::workers::TaskState;
 
 pub type Capability = Result<()>;
@@ -59,19 +59,18 @@ impl CachedUser {
     }
 
     pub fn to_string(&self) -> String {
-        // TODO: Escape values
         format!(
             "({}=\"{}\",{}=\"{}\",{}=\"{}\",{}=\"{}\",{}=\"{}\")",
             KEY_MASTER_ACCOUNT_ID,
-            &self.account.master_id,
+            escape_string(&self.account.master_id),
             KEY_TITLE_PLAYER_ID,
-            &self.account.title_id,
+            escape_string(&self.account.title_id),
             KEY_PLATFORM_ID,
-            &self.account.platform_id,
+            escape_string(&self.account.platform_id),
             KEY_TITLE_DISPLAY_NAME,
-            &self.account.display_name,
+            escape_string(&self.account.display_name),
             KEY_USER_TOKEN,
-            &self.user_token,
+            escape_string(&self.user_token),
         )
     }
 }

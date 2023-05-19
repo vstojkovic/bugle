@@ -1,7 +1,9 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 
+use lazy_static::lazy_static;
 use nom::branch::alt;
 use nom::bytes::complete::{escaped, escaped_transform, is_not, take_while_m_n};
 use nom::character::complete::{anychar, char, multispace0};
@@ -10,6 +12,7 @@ use nom::error::ErrorKind;
 use nom::multi::{fold_many0, many1_count};
 use nom::sequence::{delimited, preceded};
 use nom::{AsChar, IResult};
+use regex::Regex;
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -102,4 +105,12 @@ pub fn parse_hex(input: &str, len: usize) -> IResult<&str, &str> {
 
 pub fn extract_value<V>(result: IResult<&str, V>) -> Result<V, nom::Err<nom::error::Error<&str>>> {
     result.map(|(_, value)| value)
+}
+
+pub fn escape_string(s: &str) -> Cow<str> {
+    RE_ESCAPABLE.replace_all(s, "\\$0")
+}
+
+lazy_static! {
+    static ref RE_ESCAPABLE: Regex = Regex::new(r#"['"\\]"#).unwrap();
 }

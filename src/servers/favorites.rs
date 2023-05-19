@@ -1,14 +1,13 @@
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::net::IpAddr;
 use std::str::FromStr;
 
 use anyhow::Result;
-use lazy_static::lazy_static;
 use nom::IResult;
-use regex::Regex;
 
-use crate::parser_utils::{extract_value, parse_hex, parse_map, parse_quoted, ParserError};
+use crate::parser_utils::{
+    escape_string, extract_value, parse_hex, parse_map, parse_quoted, ParserError,
+};
 
 use super::Server;
 
@@ -90,18 +89,10 @@ impl FavoriteServers {
     }
 }
 
-lazy_static! {
-    static ref RE_ESCAPABLE: Regex = Regex::new(r#"['"\\]"#).unwrap();
-}
-
 const KEY_NAME: &str = "ServerName";
 const KEY_IP: &str = "IPAddress";
 const KEY_PORT: &str = "Port";
 const KEY_ID: &str = "UID";
-
-fn escape_string(s: &str) -> Cow<str> {
-    RE_ESCAPABLE.replace_all(s, "\\$0")
-}
 
 fn parse_favorite_impl(input: &str) -> IResult<&str, FavoriteServer> {
     let (input, map) = parse_map(input)?;
