@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::{debug, error, trace, Logger};
 
-use crate::game::Game;
+use crate::game::{Branch, Game};
 use crate::net::http_client_builder;
 
 use super::Account;
@@ -14,7 +14,7 @@ pub async fn login_with_steam(logger: &Logger, game: &Game, ticket: Vec<u8>) -> 
     debug!(logger, "Fetching FLS account info");
 
     let request = LoginWithSteamRequest {
-        title_id: TITLE_ID.to_string(),
+        title_id: title_id(game.branch()).to_string(),
         create_account: false,
         steam_ticket: hex::encode_upper(ticket),
         params: GetPlayerCombinedInfoRequestParams {
@@ -71,7 +71,7 @@ pub async fn login_with_steam(logger: &Logger, game: &Game, ticket: Vec<u8>) -> 
 async fn post_request<R: Serialize>(game: &Game, endpoint: &str, request: R) -> Result<Value> {
     let client = make_client(game)?;
     Ok(client
-        .post(endpoint_url(endpoint))
+        .post(endpoint_url(game.branch(), endpoint))
         .query(&[("sdk", SDK)])
         .json(&request)
         .send()
@@ -200,8 +200,14 @@ struct EntityKey {
     id: String,
 }
 
-const TITLE_ID: &str = "A5B4F";
 const SDK: &str = "UE4MKPL-1.31.200121";
+
+fn title_id(branch: Branch) -> &'static str {
+    match branch {
+        Branch::Main => "A5B4F",
+        Branch::PublicBeta => "9A23E",
+    }
+}
 
 fn make_client(game: &Game) -> Result<Client> {
     let mut default_headers = HeaderMap::new();
@@ -212,6 +218,6 @@ fn make_client(game: &Game) -> Result<Client> {
         .build()?)
 }
 
-fn endpoint_url(path: &str) -> String {
-    format!("https://{}.playfabapi.com/{}", TITLE_ID, path)
+fn endpoint_url(branch: Branch, path: &str) -> String {
+    format!("https://{}.playfabapi.com/{}", title_id(branch), path)
 }

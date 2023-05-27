@@ -29,7 +29,7 @@ mod workers;
 
 use self::auth::{Account, AuthState, Capability, PlatformUser};
 use self::game::platform::steam::Steam;
-use self::game::{list_mod_controllers, Game, Launch, ModRef, Mods, ServerRef, Session};
+use self::game::{list_mod_controllers, Branch, Game, Launch, ModRef, Mods, ServerRef, Session};
 use self::gui::theme::Theme;
 use self::gui::{
     prompt_confirm, Action, Dialog, HomeAction, HomeUpdate, LauncherWindow, ModManagerAction,
@@ -71,6 +71,7 @@ impl Launcher {
     fn new(
         logger: Logger,
         log_level: Option<Arc<AtomicUsize>>,
+        can_switch_branch: bool,
         app: App,
         steam: Steam,
         game: Game,
@@ -80,7 +81,13 @@ impl Launcher {
         let game = Arc::new(game);
         let (tx, rx) = app::channel();
 
-        let main_window = LauncherWindow::new(logger.clone(), &*game, &config, log_level.is_none());
+        let main_window = LauncherWindow::new(
+            logger.clone(),
+            &*game,
+            &config,
+            log_level.is_none(),
+            can_switch_branch,
+        );
 
         let (cached_users, cached_users_persister) = match game.load_cached_users() {
             Ok(cached_users) => (
@@ -214,7 +221,7 @@ impl Launcher {
                 }
 
                 let mut steam = self.steam.borrow_mut();
-                steam.check_client();
+                steam.check_client(self.game.branch());
 
                 let platform_user = steam.user().ok_or(anyhow!("Steam not running"));
                 let fls_account = TaskState::Ready(account);
@@ -237,6 +244,12 @@ impl Launcher {
         match action {
             Action::HomeAction(HomeAction::Launch) => self.launch_game(),
             Action::HomeAction(HomeAction::Continue) => self.continue_last_session(),
+            Action::HomeAction(HomeAction::SwitchBranch(branch)) => {
+                self.update_config(|config| config.branch = branch)?;
+                env::restart_process()?;
+                app::quit();
+                Ok(())
+            }
             Action::HomeAction(HomeAction::ConfigureLogLevel(new_log_level)) => {
                 let update_result = self.update_config(|config| config.log_level = new_log_level);
                 if update_result.is_ok() {
@@ -467,7 +480,7 @@ impl Launcher {
 
     fn check_auth_state(&self) -> AuthState {
         let mut steam = self.steam.borrow_mut();
-        steam.check_client();
+        steam.check_client(self.game.branch());
 
         let platform_user = steam.user().ok_or(anyhow!("Steam not running"));
         let fls_account = match &platform_user {
@@ -539,9 +552,10 @@ impl Launcher {
     }
 
     fn can_launch(&self) -> bool {
+        let branch = self.game.branch();
         let can_launch = {
             let mut steam = self.steam.borrow_mut();
-            steam.check_client();
+            steam.check_client(branch);
             steam.can_launch()
         };
         if can_launch {
@@ -572,7 +586,7 @@ impl Launcher {
             if should_poll.replace(false) {
                 let can_launch = {
                     let mut steam = self.steam.borrow_mut();
-                    steam.check_client();
+                    steam.check_client(branch);
                     steam.can_launch()
                 };
                 if can_launch {
@@ -923,7 +937,7 @@ async fn main() {
                 Box::new(TransientConfig)
             }
         };
-    let config = config_persister.load().unwrap_or_else(|err| {
+    let mut config = config_persister.load().unwrap_or_else(|err| {
         warn!(root_logger, "Error while loading the configuration"; "error" => err.to_string());
         Config::default()
     });
@@ -948,13 +962,53 @@ async fn main() {
             return;
         }
     };
-    let game = match steam.locate_game() {
+    let can_switch_branch = steam
+        .locate_game(match config.branch {
+            Branch::Main => Branch::PublicBeta,
+            Branch::PublicBeta => Branch::Main,
+        })
+        .is_ok();
+    let game = match steam
+        .locate_game(config.branch)
+        .and_then(|loc| steam.init_game(loc))
+    {
         Ok(game) => game,
         Err(err) => {
-            gui::alert_error(
-                "There was a problem with your Conan Exiles installation.",
-                &err,
-            );
+            if can_switch_branch {
+                let (this_name, other_name, other_branch) = match config.branch {
+                    Branch::Main => ("Live", "TestLive", Branch::PublicBeta),
+                    Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
+                };
+                let should_switch = gui::prompt_confirm(&format!(
+                    "There was a problem with your {} installation of Conan Exiles.\nHowever, \
+                        BUGLE has detected that the {} installation is also available.\nDo you \
+                        want to restart BUGLE and switch to {1} installation?",
+                    this_name, other_name,
+                ));
+                if should_switch {
+                    config.branch = other_branch;
+                    if let Err(err) = config_persister.save(&config) {
+                        error!(
+                            root_logger,
+                            "Error switching to other branch";
+                            "branch" => ?other_branch,
+                            "error" => %err,
+                        );
+                    }
+                    if let Err(err) = env::restart_process() {
+                        error!(
+                            root_logger,
+                            "Error restarting BUGLE";
+                            "error" => %err,
+                        );
+                    }
+                }
+            } else {
+                gui::alert_error(
+                    "There was a problem with your Conan Exiles installation.",
+                    &err,
+                );
+            }
             return;
         }
     };
@@ -962,6 +1016,7 @@ async fn main() {
     let launcher = Launcher::new(
         root_logger.clone(),
         if log_level_override.is_none() { Some(log_level) } else { None },
+        can_switch_branch,
         app,
         steam,
         game,

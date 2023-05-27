@@ -4,11 +4,13 @@ use anyhow::Result;
 use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
 
 use crate::env::current_exe_dir;
+use crate::game::Branch;
 use crate::servers::{Mode, Region, SortCriteria, SortKey, TypeFilter};
 
 #[derive(Debug, Default)]
 pub struct Config {
     pub log_level: LogLevel,
+    pub branch: Branch,
     pub use_battleye: BattlEyeUsage,
     pub theme: ThemeChoice,
     pub server_browser: ServerBrowserConfig,
@@ -110,6 +112,14 @@ impl ConfigPersister for IniConfigPersister {
             .and_then(|value| slog::FilterLevel::from_str(value.trim()).ok())
             .map(|level| LogLevel(level))
             .unwrap_or_default();
+        let branch = section
+            .and_then(|section| section.get(KEY_BRANCH))
+            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+                BRANCH_MAIN => Some(Branch::Main),
+                BRANCH_PUBLIC_BETA => Some(Branch::PublicBeta),
+                _ => None,
+            })
+            .unwrap_or_default();
         let use_battleye = section
             .and_then(|section| section.get(KEY_USE_BATTLEYE))
             .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
@@ -130,6 +140,7 @@ impl ConfigPersister for IniConfigPersister {
 
         Ok(Config {
             log_level,
+            branch,
             use_battleye,
             theme,
             server_browser: load_server_browser_config(&ini),
@@ -142,6 +153,13 @@ impl ConfigPersister for IniConfigPersister {
             .set(
                 KEY_LOG_LEVEL,
                 config.log_level.0.as_str().to_ascii_lowercase(),
+            )
+            .set(
+                KEY_BRANCH,
+                match config.branch {
+                    Branch::Main => BRANCH_MAIN,
+                    Branch::PublicBeta => BRANCH_PUBLIC_BETA,
+                },
             )
             .set(
                 KEY_USE_BATTLEYE,
@@ -290,6 +308,7 @@ fn sort_criteria_to_string(criteria: &SortCriteria) -> String {
 const SECTION_SERVER_BROWSER: &str = "ServerBrowser";
 
 const KEY_LOG_LEVEL: &str = "LogLevel";
+const KEY_BRANCH: &str = "Branch";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
 const KEY_THEME: &str = "Theme";
 const KEY_TYPE_FILTER: &str = "Type";
@@ -301,6 +320,9 @@ const KEY_INCLUDE_PASSWORD_PROTECTED: &str = "IncludePasswordProtected";
 const KEY_MODS: &str = "Mods";
 const KEY_SORT_CRITERIA: &str = "SortBy";
 const KEY_SCROLL_LOCK: &str = "ScrollLock";
+
+const BRANCH_MAIN: &str = "live";
+const BRANCH_PUBLIC_BETA: &str = "testlive";
 
 const BATTLEYE_AUTO: &str = "auto";
 const BATTLEYE_ALWAYS: &str = "always";

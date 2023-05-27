@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
@@ -9,13 +9,19 @@ use steamlocate::SteamDir;
 use steamworks::{AuthTicket, Client, ClientManager, User};
 
 use crate::auth::PlatformUser;
-use crate::game::{Game, ModInfo};
+use crate::game::{Branch, Game, ModInfo};
 
 pub struct Steam {
     logger: Logger,
     installation: SteamDir,
     client: Option<Client>,
     ticket: RefCell<Option<Rc<SteamTicket>>>,
+}
+
+pub struct SteamGameLocation {
+    game_path: PathBuf,
+    workshop_path: Option<PathBuf>,
+    branch: Branch,
 }
 
 impl Steam {
@@ -26,16 +32,16 @@ impl Steam {
         Some(Self {
             logger: logger.new(o!("platform" => "steam")),
             installation,
-            client: init_client(),
+            client: None,
             ticket: RefCell::new(None),
         })
     }
 
-    pub fn locate_game(&mut self) -> Result<Game> {
+    pub fn locate_game(&mut self, branch: Branch) -> Result<SteamGameLocation> {
         debug!(self.logger, "Locating game installation");
         let game_path = self
             .installation
-            .app(&440900)
+            .app(&app_id(branch))
             .ok_or_else(|| {
                 anyhow!(
                     "Cannot locate Conan Exiles installation. Please verify that you have Conan \
@@ -54,19 +60,38 @@ impl Steam {
             .find(|path| game_path.starts_with(path))
             .map(|path| path.join("workshop"));
 
-        debug!(self.logger, "Enumerating installed mods"; "workshop_path" => ?workshop_path);
-        let installed_mods = if let Some(workshop_path) = workshop_path {
-            collect_mods(&workshop_path)?
+        Ok(SteamGameLocation {
+            game_path,
+            workshop_path,
+            branch,
+        })
+    }
+
+    pub fn init_game(&mut self, location: SteamGameLocation) -> Result<Game> {
+        debug!(
+            self.logger,
+            "Enumerating installed mods";
+            "workshop_path" => ?location.workshop_path
+        );
+        let installed_mods = if let Some(workshop_path) = location.workshop_path {
+            collect_mods(&workshop_path, location.branch)?
         } else {
             Vec::new()
         };
 
-        Game::new(self.logger.clone(), game_path, installed_mods)
+        self.client = init_client(location.branch);
+
+        Game::new(
+            self.logger.clone(),
+            location.game_path,
+            location.branch,
+            installed_mods,
+        )
     }
 
-    pub fn check_client(&mut self) {
+    pub fn check_client(&mut self, branch: Branch) {
         if self.client.is_none() {
-            self.client = init_client();
+            self.client = init_client(branch);
         }
     }
 
@@ -127,14 +152,23 @@ impl Drop for SteamTicket {
     }
 }
 
-fn init_client() -> Option<Client> {
-    Client::init_app(440900).ok().map(|(client, _)| client)
+fn app_id(branch: Branch) -> u32 {
+    match branch {
+        Branch::Main => 440900,
+        Branch::PublicBeta => 931180,
+    }
 }
 
-fn collect_mods(workshop_path: &Path) -> Result<Vec<ModInfo>> {
+fn init_client(branch: Branch) -> Option<Client> {
+    Client::init_app(app_id(branch))
+        .ok()
+        .map(|(client, _)| client)
+}
+
+fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModInfo>> {
     // TODO: Log warnings for recoverable errors
 
-    let manifest_path = workshop_path.join("appworkshop_440900.acf");
+    let manifest_path = workshop_path.join(format!("appworkshop_{}.acf", app_id(branch)));
     if !manifest_path.exists() {
         return Ok(Vec::new());
     }
@@ -143,7 +177,7 @@ fn collect_mods(workshop_path: &Path) -> Result<Vec<ModInfo>> {
     let manifest = Vdf::parse(&manifest)?;
     let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
 
-    let mut path = workshop_path.join("content/440900");
+    let mut path = workshop_path.join(format!("content/{}", app_id(branch)));
     let mut mods = Vec::with_capacity(mod_ids.len());
     for mod_id in mod_ids {
         path.push(mod_id);

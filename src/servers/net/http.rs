@@ -5,24 +5,21 @@ use reqwest::{Client, Response, Result};
 use serde::Deserialize;
 use slog::{debug, info, warn, Logger};
 
-use crate::game::Game;
+use crate::game::{Branch, Game};
 use crate::net::http_client_builder;
 use crate::servers::{DeserializationContext, Server};
-
-const SERVER_DIRECTORY_URL: &str = "https://ce-fcsd-winoff-ams.funcom.com";
 
 pub async fn fetch_server_list<'dc>(
     logger: Logger,
     game: &Game,
     ctx: DeserializationContext<'dc>,
 ) -> anyhow::Result<Vec<Server>> {
+    let url = directory_url(game.branch());
+
     debug!(logger, "Fetching server list");
     let client = make_client(game)?;
     let bucket_list = client
-        .get(format!(
-            "{}/buckets/index_Windows.json",
-            SERVER_DIRECTORY_URL
-        ))
+        .get(format!("{}/buckets/index_Windows.json", url))
         .send()
         .await?
         .json::<BucketList>()
@@ -33,11 +30,12 @@ pub async fn fetch_server_list<'dc>(
         "Fetching servers from buckets";
         "num_buckets" => bucket_list.buckets.len()
     );
-    let responses = try_join_all(bucket_list.buckets.iter().map(|bucket| {
-        client
-            .get(format!("{}/buckets/{}", SERVER_DIRECTORY_URL, bucket))
-            .send()
-    }))
+    let responses = try_join_all(
+        bucket_list
+            .buckets
+            .iter()
+            .map(|bucket| client.get(format!("{}/buckets/{}", url, bucket)).send()),
+    )
     .await?;
 
     debug!(logger, "Parsing servers from responses");
@@ -63,6 +61,13 @@ pub async fn fetch_server_list<'dc>(
 #[derive(Debug, Deserialize)]
 struct BucketList {
     buckets: Vec<String>,
+}
+
+fn directory_url(branch: Branch) -> &'static str {
+    match branch {
+        Branch::Main => "https://ce-fcsd-winoff-ams.funcom.com",
+        Branch::PublicBeta => "https://ce-fcsd-winoff-wdc.funcom.com",
+    }
 }
 
 fn make_client(game: &Game) -> Result<Client> {

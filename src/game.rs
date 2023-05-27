@@ -30,6 +30,7 @@ pub use self::mod_info::{ModInfo, ModRef, Mods};
 pub struct Game {
     logger: Logger,
     root: PathBuf,
+    branch: Branch,
     build_id: u32,
     save_path: PathBuf,
     game_ini_path: PathBuf,
@@ -37,6 +38,18 @@ pub struct Game {
     installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
     last_session: Mutex<Option<Session>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Branch {
+    Main,
+    PublicBeta,
+}
+
+impl Default for Branch {
+    fn default() -> Self {
+        Branch::Main
+    }
 }
 
 #[derive(Debug)]
@@ -59,7 +72,12 @@ pub enum ServerRef {
 }
 
 impl Game {
-    fn new(logger: Logger, game_path: PathBuf, mut installed_mods: Vec<ModInfo>) -> Result<Self> {
+    fn new(
+        logger: Logger,
+        game_path: PathBuf,
+        branch: Branch,
+        mut installed_mods: Vec<ModInfo>,
+    ) -> Result<Self> {
         let save_path = game_path.join("ConanSandbox/Saved");
         let config_path = save_path.join("Config/WindowsNoEditor");
 
@@ -159,6 +177,7 @@ impl Game {
         Ok(Self {
             logger,
             root: game_path,
+            branch,
             build_id,
             save_path,
             game_ini_path,
@@ -167,6 +186,10 @@ impl Game {
             maps: Arc::new(maps),
             last_session: Mutex::new(last_session),
         })
+    }
+
+    pub fn branch(&self) -> Branch {
+        self.branch
     }
 
     pub fn build_id(&self) -> u32 {

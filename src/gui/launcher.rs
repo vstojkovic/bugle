@@ -31,7 +31,13 @@ pub struct LauncherWindow {
 }
 
 impl LauncherWindow {
-    pub fn new(logger: Logger, game: &Game, config: &Config, log_level_overridden: bool) -> Self {
+    pub fn new(
+        logger: Logger,
+        game: &Game,
+        config: &Config,
+        log_level_overridden: bool,
+        can_switch_branch: bool,
+    ) -> Self {
         let on_action: Rc<RefCell<Box<dyn Handler<Action>>>> =
             Rc::new(RefCell::new(Box::new(|_| {
                 panic!("Action handler not yet assigned");
@@ -65,6 +71,7 @@ impl LauncherWindow {
                 game,
                 config,
                 log_level_overridden,
+                can_switch_branch,
                 move |home_action| on_action.borrow()(Action::HomeAction(home_action)),
             )
         };

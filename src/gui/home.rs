@@ -13,7 +13,7 @@ use tempfile::tempdir;
 
 use crate::auth::AuthState;
 use crate::config::{BattlEyeUsage, Config, LogLevel, ThemeChoice};
-use crate::game::Game;
+use crate::game::{Branch, Game};
 use crate::workers::TaskState;
 
 use super::prelude::*;
@@ -26,6 +26,7 @@ use super::{
 pub enum HomeAction {
     Launch,
     Continue,
+    SwitchBranch(Branch),
     ConfigureLogLevel(LogLevel),
     ConfigureBattlEye(BattlEyeUsage),
     ConfigureTheme(ThemeChoice),
@@ -54,9 +55,15 @@ impl Home {
         game: &Game,
         config: &Config,
         log_level_overridden: bool,
+        can_switch_branch: bool,
         on_action: impl Handler<HomeAction> + 'static,
     ) -> Rc<Self> {
         let on_action = Rc::new(on_action);
+
+        let (branch_name, other_branch_name, other_branch) = match game.branch() {
+            Branch::Main => ("Live", "TestLive", Branch::PublicBeta),
+            Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
+        };
 
         let mut root = Group::default_fill();
 
@@ -87,13 +94,13 @@ impl Home {
         let game_path_label = create_info_label("Conan Exiles Installation Path:");
         let game_path_text =
             ReadOnlyText::new(game.installation_path().to_string_lossy().into_owned());
-        let build_id_label = create_info_label("Conan Exiles Build ID:");
-        let build_id_text = ReadOnlyText::new(format!("{}", game.build_id()));
         let revision_label = create_info_label("Conan Exiles Revision:");
         let revision_text = ReadOnlyText::new({
             let (maj, min) = game.revision();
-            format!("{}/{}", maj, min)
+            format!("{}/{} ({})", maj, min, branch_name)
         });
+        let build_id_label = create_info_label("Conan Exiles Build ID:");
+        let build_id_text = ReadOnlyText::new(format!("{}", game.build_id()));
         let platform_user_id_label = create_info_label("Steam Account ID:");
         let platform_user_id_text = ReadOnlyText::default();
         let platform_user_name_label = create_info_label("Steam Account Name:");
@@ -119,14 +126,14 @@ impl Home {
         let left_width = widget_col_width(&[
             &version_label,
             &game_path_label,
-            &build_id_label,
+            &revision_label,
             &platform_user_id_label,
             &fls_acct_id_label,
             &log_level_label,
             &theme_label,
         ]);
         let right_width = widget_col_width(&[
-            &revision_label,
+            &build_id_label,
             &platform_user_name_label,
             &fls_acct_name_label,
             &battleye_label,
@@ -136,6 +143,12 @@ impl Home {
 
         let launch_button = Button::default().with_label("Launch");
         let continue_button = Button::default().with_label("Continue");
+        let switch_branch_button = if can_switch_branch {
+            let switch_label = format!("Switch to {}", other_branch_name);
+            Some(Button::default().with_label(&switch_label))
+        } else {
+            None
+        };
         let action_width = root.w() / 4 - 5;
         let action_height = 2 * button_height;
 
@@ -145,6 +158,11 @@ impl Home {
         let mut launch_button = launch_button
             .with_size(action_width, action_height)
             .left_of(&continue_button, 10);
+        let switch_branch_button = switch_branch_button.map(|button| {
+            button
+                .with_size(action_width, action_height)
+                .inside_parent(0, -action_height)
+        });
 
         let info_pane = info_pane.below_of(&btm_welcome_line, 10);
         let info_height = launch_button.y() - info_pane.y() - 10;
@@ -168,25 +186,25 @@ impl Home {
             .clone()
             .with_size(text_width, text_height)
             .right_of(&game_path_label, 10);
-        let build_id_label = build_id_label
+        let revision_label = revision_label
             .with_size(left_width, text_height)
             .below_of(&game_path_label, 10);
+        let _ = revision_text
+            .widget()
+            .clone()
+            .with_size(narrow_width, text_height)
+            .right_of(&revision_label, 10);
+        let build_id_label = build_id_label
+            .with_size(right_width, text_height)
+            .right_of(revision_text.widget(), 10);
         let _ = build_id_text
             .widget()
             .clone()
             .with_size(narrow_width, text_height)
             .right_of(&build_id_label, 10);
-        let revision_label = revision_label
-            .with_size(right_width, text_height)
-            .right_of(build_id_text.widget(), 10);
-        revision_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&revision_label, 10);
         let platform_user_id_label = platform_user_id_label
             .with_size(left_width, text_height)
-            .below_of(&build_id_label, 10);
+            .below_of(&revision_label, 10);
         let _ = platform_user_id_text
             .widget()
             .clone()
@@ -352,6 +370,28 @@ impl Home {
                 }
             }
         });
+        if let Some(mut button) = switch_branch_button {
+            button.set_callback({
+                let on_action = Rc::clone(&on_action);
+                let logger = logger.clone();
+                let branch = game.branch();
+                move |_| {
+                    if let Err(err) = on_action(HomeAction::SwitchBranch(other_branch)) {
+                        error!(
+                            logger,
+                            "Error switching to other branch";
+                            "branch" => ?other_branch,
+                            "error" => %err,
+                        );
+                        let err_msg = match branch {
+                            Branch::Main => ERR_SWITCHING_TO_MAIN,
+                            Branch::PublicBeta => ERR_SWITCHING_TO_PUBLIC_BETA,
+                        };
+                        alert_error(err_msg, &err);
+                    }
+                }
+            });
+        }
 
         root.end();
         root.hide();
@@ -433,6 +473,8 @@ impl Home {
 }
 
 const ERR_LAUNCHING_GAME: &str = "Error while trying to launch the game.";
+const ERR_SWITCHING_TO_MAIN: &str = "Error while trying to switch to Live.";
+const ERR_SWITCHING_TO_PUBLIC_BETA: &str = "Error while trying to switch to TestLive.";
 
 fn install_crom_font() -> Font {
     try_install_crom_font().unwrap_or(Font::TimesBold)
