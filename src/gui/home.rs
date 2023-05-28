@@ -278,7 +278,7 @@ impl Home {
         log_level_input.set_callback({
             let on_action = Rc::clone(&on_action);
             move |input| {
-                let log_level = index_to_log_leve(input.menu_button().value());
+                let log_level = index_to_log_level(input.menu_button().value());
                 on_action(HomeAction::ConfigureLogLevel(log_level)).unwrap();
             }
         });
@@ -511,7 +511,7 @@ fn log_level_to_index(log_level: &LogLevel) -> i32 {
     }
 }
 
-fn index_to_log_leve(idx: i32) -> LogLevel {
+fn index_to_log_level(idx: i32) -> LogLevel {
     LogLevel(match idx {
         0 => FilterLevel::Off,
         1 => FilterLevel::Trace,
