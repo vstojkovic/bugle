@@ -130,8 +130,14 @@ impl Launcher {
         });
 
         launcher.main_window.set_on_action({
-            let this = Rc::clone(&launcher);
-            move |action| this.on_action(action)
+            let this = Rc::downgrade(&launcher);
+            move |action| {
+                if let Some(this) = this.upgrade() {
+                    this.on_action(action)
+                } else {
+                    Ok(())
+                }
+            }
         });
 
         launcher
