@@ -3,6 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use bitflags::bitflags;
+use serde::de::{MapAccess, Visitor};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
@@ -321,7 +322,7 @@ pub struct SurvivalSettings {
     pub active_hunger_mult: Multiplier,
 
     #[serde(rename = "S7")]
-    pub drop_items_on_death: bool,
+    pub drop_items_on_death: DropOnDeath,
 
     #[serde(rename = "Sa")]
     pub anyone_can_loot_corpse: bool,
@@ -364,6 +365,59 @@ pub struct CraftingSettings {
 
     #[serde(rename = "S4")]
     pub thrall_crafting_time_mult: Multiplier,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum DropOnDeath {
+    Nothing,
+    All,
+    Backpack,
+}
+
+impl<'de> Deserialize<'de> for DropOnDeath {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct DropOnDeathVisitor;
+
+        impl<'de> Visitor<'de> for DropOnDeathVisitor {
+            type Value = DropOnDeath;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("false, true, 0, 1, or 2")
+            }
+
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(match v {
+                    false => DropOnDeath::Nothing,
+                    true => DropOnDeath::All,
+                })
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                if v >= 0 {
+                    self.visit_u64(v as u64)
+                } else {
+                    Err(E::invalid_value(
+                        serde::de::Unexpected::Signed(v),
+                        &"0, 1, or 2",
+                    ))
+                }
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                match v {
+                    0 => Ok(DropOnDeath::Nothing),
+                    1 => Ok(DropOnDeath::All),
+                    2 => Ok(DropOnDeath::Backpack),
+                    _ => Err(E::invalid_value(
+                        serde::de::Unexpected::Unsigned(v),
+                        &"0, 1, or 2",
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(DropOnDeathVisitor)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -413,8 +467,6 @@ impl RaidHours {
 
 impl<'de> Deserialize<'de> for RaidHours {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use serde::de::{MapAccess, Visitor};
-
         fn hours_entry_index(key: &str) -> Option<(Weekday, usize)> {
             match key {
                 "S92" => Some((Weekday::Mon, 0)),
@@ -454,7 +506,7 @@ impl<'de> Deserialize<'de> for RaidHours {
             type Value = RaidHours;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("the Ultimate Answer")
+                formatter.write_str("map")
             }
 
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {

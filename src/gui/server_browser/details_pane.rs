@@ -7,7 +7,7 @@ use nom::sequence::separated_pair;
 use nom::IResult;
 
 use crate::gui::{make_readonly_cell_widget, ReadOnlyText};
-use crate::servers::{Server, Validity, Weekday};
+use crate::servers::{DropOnDeath, Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name};
 
@@ -80,7 +80,11 @@ const SERVER_DETAILS_ROWS: &[(&str, fn(&Server) -> Cow<str>)] = &[
         )
     }),
     ("On Death", |server| {
-        Cow::from(if server.survival.drop_items_on_death { "drop items" } else { "keep items" })
+        Cow::from(match server.survival.drop_items_on_death {
+            DropOnDeath::Nothing => "keep all items",
+            DropOnDeath::All => "drop all items",
+            DropOnDeath::Backpack => "drop only backpack",
+        })
     }),
     ("Player Corpse", |server| {
         Cow::from(if server.survival.anyone_can_loot_corpse {
