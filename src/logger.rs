@@ -51,6 +51,7 @@ fn try_create_appdata_logger(log_level: &Arc<AtomicUsize>) -> anyhow::Result<Log
     use std::ptr::null_mut;
 
     use anyhow::bail;
+    use winapi::um::combaseapi::CoTaskMemFree;
     use winapi::um::knownfolders::FOLDERID_LocalAppDataLow;
     use winapi::um::shlobj::SHGetKnownFolderPath;
     use winapi::um::winnt::PWSTR;
@@ -63,7 +64,9 @@ fn try_create_appdata_logger(log_level: &Arc<AtomicUsize>) -> anyhow::Result<Log
         }
         let path_len = (0..).take_while(|&i| *folder_path.offset(i) != 0).count();
         let slice = std::slice::from_raw_parts(folder_path, path_len);
-        OsStringExt::from_wide(slice)
+        let dir = OsStringExt::from_wide(slice);
+        CoTaskMemFree(folder_path as _);
+        dir
     };
 
     let mut log_path = PathBuf::from(log_dir);
