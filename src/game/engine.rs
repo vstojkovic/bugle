@@ -9,6 +9,7 @@ mod name;
 pub(super) mod pak;
 mod property;
 mod uasset;
+pub(super) mod version;
 
 struct UString(String);
 

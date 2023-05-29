@@ -11,6 +11,7 @@ bitflags = "1"
 bit-vec = "0.6.3"
 chrono = "0.4.23"
 crc32fast = "1"
+dlopen = "0.1.8"
 flate2 = "1"
 fltk = { version = "1.4.4" }
 fltk-table = "0.2.1"

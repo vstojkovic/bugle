@@ -19,6 +19,7 @@ pub mod platform;
 
 use crate::auth::{CachedUser, CachedUsers};
 use crate::config;
+use crate::game::engine::version::get_game_version;
 use crate::servers::{FavoriteServer, FavoriteServers, Server};
 
 pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
@@ -31,7 +32,7 @@ pub struct Game {
     logger: Logger,
     root: PathBuf,
     branch: Branch,
-    build_id: u32,
+    version: (u32, u16),
     save_path: PathBuf,
     game_ini_path: PathBuf,
     mod_list_path: PathBuf,
@@ -81,20 +82,8 @@ impl Game {
         let save_path = game_path.join("ConanSandbox/Saved");
         let config_path = save_path.join("Config/WindowsNoEditor");
 
-        let cooked_ini_path = game_path.join("ConanSandbox/CookedIniVersion.txt");
-
-        debug!(logger, "Reading build ID override");
-        let cooked_ini = config::load_ini(cooked_ini_path)?;
-        let build_id = cooked_ini
-            .section(Some("UsedSettings"))
-            .and_then(|section| {
-                section
-                    .get_all("Windows.Engine")
-                    .find_map(|val| BUILD_ID_REGEX.captures(val))
-            })
-            .map(|captures| captures.get(1).unwrap().as_str())
-            .ok_or_else(|| anyhow::Error::msg("Missing build ID override"))
-            .and_then(|s| Ok(s.parse::<u32>()?))?;
+        debug!(logger, "Querying game version");
+        let version = get_game_version(&game_path)?;
 
         let mod_list_path = game_path.join("ConanSandbox/Mods/modlist.txt");
         installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
@@ -171,14 +160,14 @@ impl Game {
             logger,
             "Valid Conan Exiles installation found";
             "path" => game_path.display(),
-            "build_id" => build_id,
+            "version" => ?version,
         );
 
         Ok(Self {
             logger,
             root: game_path,
             branch,
-            build_id,
+            version,
             save_path,
             game_ini_path,
             mod_list_path,
@@ -193,15 +182,13 @@ impl Game {
     }
 
     pub fn build_id(&self) -> u32 {
-        self.build_id
+        let revision_bits = (self.version.0 & 0x3ffff) << 13;
+        let snapshot_bits = (self.version.1 & 0x1fff) as u32;
+        revision_bits + snapshot_bits
     }
 
     pub fn revision(&self) -> (u32, u16) {
-        let maj = (self.build_id | 0x80000000) >> 13;
-        let min = (self.build_id & 0x1fff) as u16;
-        let or_mask = if min > 0x1000 { 0x7000 } else { 0x8000 };
-        let min = min | or_mask;
-        (maj, min)
+        self.version
     }
 
     pub fn installation_path(&self) -> &Path {
