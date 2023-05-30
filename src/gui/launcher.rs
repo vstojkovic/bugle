@@ -33,7 +33,7 @@ pub struct LauncherWindow {
 impl LauncherWindow {
     pub fn new(
         logger: Logger,
-        game: &Game,
+        game: Arc<Game>,
         config: &Config,
         log_level_overridden: bool,
         can_switch_branch: bool,
@@ -68,7 +68,7 @@ impl LauncherWindow {
             let on_action = Rc::clone(&on_action);
             Home::new(
                 logger.clone(),
-                game,
+                Arc::clone(&game),
                 config,
                 log_level_overridden,
                 can_switch_branch,

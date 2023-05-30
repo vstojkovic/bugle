@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use fltk::button::Button;
 use fltk::enums::{Align, CallbackTrigger, Font};
@@ -13,7 +14,7 @@ use tempfile::tempdir;
 
 use crate::auth::AuthState;
 use crate::config::{BattlEyeUsage, Config, LogLevel, ThemeChoice};
-use crate::game::{Branch, Game};
+use crate::game::{Branch, Game, MapRef, Maps, ServerRef, Session};
 use crate::workers::TaskState;
 
 use super::prelude::*;
@@ -34,11 +35,13 @@ pub enum HomeAction {
 }
 
 pub enum HomeUpdate {
+    LastSession,
     AuthState(AuthState),
 }
 
 pub struct Home {
     root: Group,
+    game: Arc<Game>,
     platform_user_id_text: ReadOnlyText,
     platform_user_name_text: ReadOnlyText,
     refresh_platform_button: Button,
@@ -47,12 +50,13 @@ pub struct Home {
     refresh_fls_button: Button,
     online_play_text: ReadOnlyText,
     sp_play_text: ReadOnlyText,
+    last_session_text: ReadOnlyText,
 }
 
 impl Home {
     pub fn new(
         logger: Logger,
-        game: &Game,
+        game: Arc<Game>,
         config: &Config,
         log_level_overridden: bool,
         can_switch_branch: bool,
@@ -90,35 +94,38 @@ impl Home {
 
         let info_pane = Group::default_fill();
         let version_label = create_info_label("BUGLE Version:");
-        let version_text = ReadOnlyText::new(env!("CARGO_PKG_VERSION").to_string());
+        let version_text = info_text(ReadOnlyText::new(env!("CARGO_PKG_VERSION").to_string()));
         let game_path_label = create_info_label("Conan Exiles Installation Path:");
-        let game_path_text =
-            ReadOnlyText::new(game.installation_path().to_string_lossy().into_owned());
+        let game_path_text = info_text(ReadOnlyText::new(
+            game.installation_path().to_string_lossy().into_owned(),
+        ));
         let revision_label = create_info_label("Conan Exiles Revision:");
-        let revision_text = ReadOnlyText::new({
+        let revision_text = info_text(ReadOnlyText::new({
             let (maj, min) = game.revision();
             format!("{}/{} ({})", maj, min, branch_name)
-        });
+        }));
         let build_id_label = create_info_label("Conan Exiles Build ID:");
-        let build_id_text = ReadOnlyText::new(format!("{}", game.build_id()));
+        let build_id_text = info_text(ReadOnlyText::new(format!("{}", game.build_id())));
         let platform_user_id_label = create_info_label("Steam Account ID:");
-        let platform_user_id_text = ReadOnlyText::default();
+        let platform_user_id_text = info_text(ReadOnlyText::default());
         let platform_user_name_label = create_info_label("Steam Account Name:");
-        let platform_user_name_text = ReadOnlyText::default();
+        let platform_user_name_text = info_text(ReadOnlyText::default());
         let refresh_platform_button = Button::default().with_label("Refresh");
         let fls_acct_id_label = create_info_label("FLS Account ID:");
-        let fls_acct_id_text = ReadOnlyText::default();
+        let fls_acct_id_text = info_text(ReadOnlyText::default());
         let fls_acct_name_label = create_info_label("FLS Account Name:");
-        let fls_acct_name_text = ReadOnlyText::default();
+        let fls_acct_name_text = info_text(ReadOnlyText::default());
         let refresh_fls_button = Button::default().with_label("Refresh");
         let online_play_label = create_info_label("Can Play Online?");
-        let online_play_text = ReadOnlyText::default();
+        let online_play_text = info_text(ReadOnlyText::default());
         let sp_play_label = create_info_label("Can Play Singleplayer?");
-        let sp_play_text = ReadOnlyText::default();
-        let log_level_label = create_info_label("BUGLE Logging Level:");
-        let log_level_input = InputChoice::default_fill();
+        let sp_play_text = info_text(ReadOnlyText::default());
+        let last_session_label = create_info_label("Last Session:");
+        let last_session_text = info_text(ReadOnlyText::new(last_session_text(&*game)));
         let battleye_label = create_info_label("Use BattlEye:");
         let battleye_input = InputChoice::default_fill();
+        let log_level_label = create_info_label("BUGLE Logging Level:");
+        let log_level_input = InputChoice::default_fill();
         let theme_label = create_info_label("Theme:");
         let theme_input = InputChoice::default_fill();
         info_pane.end();
@@ -129,14 +136,17 @@ impl Home {
             &revision_label,
             &platform_user_id_label,
             &fls_acct_id_label,
+            &online_play_label,
+            &last_session_label,
             &log_level_label,
-            &theme_label,
         ]);
         let right_width = widget_col_width(&[
             &build_id_label,
             &platform_user_name_label,
             &fls_acct_name_label,
+            &sp_play_label,
             &battleye_label,
+            &theme_label,
         ]);
         let button_width = widget_col_width(&[&refresh_platform_button, &refresh_fls_button]);
         let button_height = button_auto_height(&refresh_platform_button);
@@ -258,35 +268,18 @@ impl Home {
             .clone()
             .with_size(narrow_width, text_height)
             .right_of(&sp_play_label, 10);
-
-        let log_level_label = log_level_label
+        let last_session_label = last_session_label
             .with_size(left_width, text_height)
             .below_of(&online_play_label, 10);
-        let mut log_level_input = log_level_input
+        let _ = last_session_text
+            .widget()
+            .clone()
             .with_size(narrow_width, text_height)
-            .right_of(&log_level_label, 10);
-        log_level_input.input().set_readonly(true);
-        log_level_input.input().clear_visible_focus();
-        log_level_input.add("Off");
-        log_level_input.add("Trace");
-        log_level_input.add("Debug");
-        log_level_input.add("Info");
-        log_level_input.add("Warning");
-        log_level_input.add("Error");
-        log_level_input.add("Critical");
-        log_level_input.set_value_index(log_level_to_index(&config.log_level));
-        log_level_input.set_callback({
-            let on_action = Rc::clone(&on_action);
-            move |input| {
-                let log_level = index_to_log_level(input.menu_button().value());
-                on_action(HomeAction::ConfigureLogLevel(log_level)).unwrap();
-            }
-        });
-        log_level_input.set_activated(!log_level_overridden);
+            .right_of(&last_session_label, 10);
 
         let battleye_label = battleye_label
             .with_size(right_width, text_height)
-            .right_of(&log_level_input, 10);
+            .right_of(last_session_text.widget(), 10);
         let mut battleye_input = battleye_input
             .with_size(narrow_width, text_height)
             .right_of(&battleye_label, 10);
@@ -314,9 +307,34 @@ impl Home {
             }
         });
 
-        let theme_label = theme_label
+        let log_level_label = log_level_label
             .with_size(left_width, text_height)
-            .below_of(&log_level_label, 10);
+            .below_of(&last_session_label, 10);
+        let mut log_level_input = log_level_input
+            .with_size(narrow_width, text_height)
+            .right_of(&log_level_label, 10);
+        log_level_input.input().set_readonly(true);
+        log_level_input.input().clear_visible_focus();
+        log_level_input.add("Off");
+        log_level_input.add("Trace");
+        log_level_input.add("Debug");
+        log_level_input.add("Info");
+        log_level_input.add("Warning");
+        log_level_input.add("Error");
+        log_level_input.add("Critical");
+        log_level_input.set_value_index(log_level_to_index(&config.log_level));
+        log_level_input.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                let log_level = index_to_log_level(input.menu_button().value());
+                on_action(HomeAction::ConfigureLogLevel(log_level)).unwrap();
+            }
+        });
+        log_level_input.set_activated(!log_level_overridden);
+
+        let theme_label = theme_label
+            .with_size(right_width, text_height)
+            .right_of(&log_level_input, 10);
         let mut theme_input = theme_input
             .with_size(narrow_width, text_height)
             .right_of(&theme_label, 10);
@@ -400,6 +418,7 @@ impl Home {
 
         Rc::new(Self {
             root,
+            game,
             platform_user_id_text,
             platform_user_name_text,
             refresh_platform_button,
@@ -408,6 +427,7 @@ impl Home {
             refresh_fls_button,
             online_play_text,
             sp_play_text,
+            last_session_text,
         })
     }
 
@@ -422,6 +442,9 @@ impl Home {
 
     pub fn handle_update(&self, update: HomeUpdate) {
         match update {
+            HomeUpdate::LastSession => self
+                .last_session_text
+                .set_value(last_session_text(&self.game)),
             HomeUpdate::AuthState(state) => self.update_auth_state(state),
         }
     }
@@ -497,6 +520,36 @@ fn create_info_label(text: &str) -> Frame {
     Frame::default()
         .with_align(Align::Right | Align::Inside)
         .with_label(text)
+}
+
+fn info_text(mut widget: ReadOnlyText) -> ReadOnlyText {
+    widget.set_scrollbar_size(-1);
+    widget
+}
+
+fn last_session_text(game: &Game) -> String {
+    match &*game.last_session() {
+        None => "<none>".to_string(),
+        Some(Session::SinglePlayer(map_ref)) => {
+            format!("Singleplayer: {}", map_ref_text(game.maps(), map_ref))
+        }
+        Some(Session::CoOp(map_ref)) => format!("Co-op: {}", map_ref_text(game.maps(), map_ref)),
+        Some(Session::Online(server_ref)) => format!("Online: {}", server_ref_text(server_ref)),
+    }
+}
+
+fn map_ref_text(maps: &Maps, map_ref: &MapRef) -> String {
+    match map_ref {
+        MapRef::Known { map_id } => maps[*map_id].display_name.clone(),
+        MapRef::Unknown { asset_path } => format!("<unknown map: {}>", asset_path),
+    }
+}
+
+fn server_ref_text(server_ref: &ServerRef) -> String {
+    match server_ref {
+        ServerRef::Known(server) => server.name.clone(),
+        ServerRef::Unknown(addr) => addr.to_string(),
+    }
 }
 
 fn log_level_to_index(log_level: &LogLevel) -> i32 {

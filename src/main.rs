@@ -83,7 +83,7 @@ impl Launcher {
 
         let main_window = LauncherWindow::new(
             logger.clone(),
-            &*game,
+            Arc::clone(&game),
             &config,
             log_level.is_none(),
             can_switch_branch,
@@ -215,6 +215,8 @@ impl Launcher {
                     Err(err) => error!(&self.logger, "Error fetching server list"; "error" => %err),
                 }
                 self.waiting_for_server_load.set(false);
+                self.tx
+                    .send(Message::Update(Update::HomeUpdate(HomeUpdate::LastSession)));
                 Some(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
                     servers,
                 )))
