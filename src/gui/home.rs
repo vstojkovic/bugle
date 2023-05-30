@@ -3,8 +3,8 @@ use std::io::Write;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use fltk::button::Button;
-use fltk::enums::{Align, CallbackTrigger, Font};
+use fltk::button::{Button, LightButton};
+use fltk::enums::{Align, CallbackTrigger, Color, Font};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
@@ -128,6 +128,7 @@ impl Home {
         let log_level_input = InputChoice::default_fill();
         let theme_label = create_info_label("Theme:");
         let theme_input = InputChoice::default_fill();
+        let privacy_switch = LightButton::default().with_label("Hide Private Information");
         info_pane.end();
 
         let left_width = widget_col_width(&[
@@ -359,6 +360,11 @@ impl Home {
             }
         });
 
+        let mut privacy_switch = privacy_switch
+            .with_size(narrow_width, button_height)
+            .below_of(&theme_input, 10);
+        privacy_switch.clear_visible_focus();
+
         refresh_platform_button.set_callback({
             let on_action = Rc::clone(&on_action);
             move |_| on_action(HomeAction::RefreshAuthState).unwrap()
@@ -366,6 +372,24 @@ impl Home {
         refresh_fls_button.set_callback({
             let on_action = Rc::clone(&on_action);
             move |_| on_action(HomeAction::RefreshAuthState).unwrap()
+        });
+
+        privacy_switch.set_callback({
+            let mut platform_user_id_text = platform_user_id_text.clone();
+            let mut platform_user_name_text = platform_user_name_text.clone();
+            let mut fls_acct_id_text = fls_acct_id_text.clone();
+            let mut fls_acct_name_text = fls_acct_name_text.clone();
+            move |btn| {
+                let color = if btn.value() { Color::Background2 } else { Color::Foreground };
+                platform_user_id_text.set_text_color(color);
+                platform_user_name_text.set_text_color(color);
+                fls_acct_id_text.set_text_color(color);
+                fls_acct_name_text.set_text_color(color);
+                platform_user_id_text.redraw();
+                platform_user_name_text.redraw();
+                fls_acct_id_text.redraw();
+                fls_acct_name_text.redraw();
+            }
         });
 
         launch_button.set_callback({
