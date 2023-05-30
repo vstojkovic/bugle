@@ -27,10 +27,10 @@ pub fn default_ip() -> IpAddr {
 }
 
 pub fn http_client_builder(game: &Game) -> ClientBuilder {
-    let (rev_maj, _) = game.revision();
+    let (revision, _) = game.version();
     Client::builder().user_agent(format!(
         "game=ConanSandbox, engine=UE4, version=4.15.3-{}+ue415-dw-osl",
-        rev_maj
+        revision
     ))
 }
 

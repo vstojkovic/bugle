@@ -187,7 +187,7 @@ impl Game {
         revision_bits + snapshot_bits
     }
 
-    pub fn revision(&self) -> (u32, u16) {
+    pub fn version(&self) -> (u32, u16) {
         self.version
     }
 

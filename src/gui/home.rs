@@ -101,8 +101,8 @@ impl Home {
         ));
         let revision_label = create_info_label("Conan Exiles Revision:");
         let revision_text = info_text(ReadOnlyText::new({
-            let (maj, min) = game.revision();
-            format!("{}/{} ({})", maj, min, branch_name)
+            let (revision, snapshot) = game.version();
+            format!("#{}/{} ({})", revision, snapshot, branch_name)
         }));
         let build_id_label = create_info_label("Conan Exiles Build ID:");
         let build_id_text = info_text(ReadOnlyText::new(format!("{}", game.build_id())));
