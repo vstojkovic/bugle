@@ -3,21 +3,18 @@
 BUGLE is an unofficial, third-party game launcher for Funcom's videogame Conan Exiles. It aims to
 bring certain QOL features to players, at the expense of good looks and smooth user interface.
 
-It's ugly as sin, it's poorly tested, and it's my hobby project that I came up with for fun and
-relaxation, so don't expect the stuff you would find in a more serious development project (e.g.
-well-commented code, automated tests, etc.)
-
-BETA VERSION: This is a beta version of BUGLE. Several other people have been kind enough to test
-it and help me find a few bugs. The software works, but it might still have some minor bugs.
+It's ugly as sin, and it's my hobby project that I came up with for fun and relaxation, so don't
+expect the stuff you would find in a more serious development project (e.g. well-commented code,
+automated tests, etc.)
 
 For a list of known issues, scroll to the last section of this document. If you run into an issue
 that isn't there, feel free to open a GitHub issue about it, or contact me on Funcom Forums.
 
 ## Installation
 
-Go to the v1.0.0-beta.2 release and download the `bugle-v1.0.0-beta.2-x86_64-pc-windows-msvc.zip`
-file. Unpack it into a directory where you're allowed to write files. It's a good idea to put it in
-its own directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
+Go to the v1.0.0 release and download the `bugle-v1.0.0-x86_64-pc-windows-msvc.zip` file. Unpack it
+into a directory where you're allowed to write files. It's a good idea to put it in its own
+directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
 There's no installer, you just run `bugle.exe`.
 
@@ -53,6 +50,9 @@ game.
 * **Flexible BattlEye usage.** Just like with Funcom launcher, you can configure BUGLE to enable or
 disable BattlEye. However, you can also tell BUGLE to use it "only when required". In this mode,
 BattlEye will be enabled only if you join a server that requires it.
+* **Support for TestLive.** If you also have the TestLive (Public Beta) version of Conan Exiles
+installed, you can use the same installation of BUGLE for both. Switching between Live and TestLive
+is easy and quick.
 
 ## Roadmap
 
@@ -66,8 +66,6 @@ really have anyone to try it with. I intend to implement this, but first I'll ne
 a volunteer.
 * **Localization.** BUGLE is currently available only in English. I need to add support for other
 languages.
-* **Tooltips.** It's not always obvious what some of the user interface elements mean. I need to add
-tooltips that explain them.
 * **Support for other platforms.** Right now, I'm building BUGLE only for Windows, and it works only
 with Steam. Ideally, I would like it to support Conan Exiles when installed from a different game
 store, and I would also like to offer support for Linux. However, I'll need help from volunteers to
@@ -86,3 +84,11 @@ can visit the [BUGLE Roadmap Trello board](https://trello.com/b/zjDYQsq8/roadmap
 * **Mod mismatch warning if you stop using a mod.** If you use a mod in your single-player or co-op
 game and then decide to stop using it, it will leave traces in your game database. BUGLE will detect
 those traces, see that the mod isn't in your mod list, and warn you about mod mismatch.
+* **Switching between Live and TestLive confuses Steam.** Just like with Funcom's launcher, when you
+run BUGLE, Steam shows you as playing Conan Exiles. When you click "Switch to TestLive" (or
+"Switch to Live") button in BUGLE, Steam will show you as playing both Live and TestLive versions
+until you exit BUGLE. This is because of how Steam determines whether you're playing the game.
+* **False positive virus detection.** Some anti-virus software might warn you about BUGLE and try to
+stop you from running it. This is because this is a hobby project, which means I don't have the
+stuff big companies have, like an EV code signing certificate. I'll try to submit BUGLE for malware
+analysis so that this doesn't happen, but it's a slow process.
