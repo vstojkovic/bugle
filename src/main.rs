@@ -289,8 +289,9 @@ impl Launcher {
             }
             Action::ServerBrowser(ServerBrowserAction::JoinServer {
                 addr,
+                password,
                 battleye_required,
-            }) => self.join_server(addr, battleye_required),
+            }) => self.join_server(addr, password, battleye_required),
             Action::ServerBrowser(ServerBrowserAction::PingServer(request)) => {
                 self.server_loader_worker.ping_server(request)
             }
@@ -430,7 +431,12 @@ impl Launcher {
         Ok(())
     }
 
-    fn join_server(&self, addr: SocketAddr, battleye_required: bool) -> Result<()> {
+    fn join_server(
+        &self,
+        addr: SocketAddr,
+        password: Option<String>,
+        battleye_required: Option<bool>,
+    ) -> Result<()> {
         if !self.can_launch() {
             return Ok(());
         }
@@ -438,10 +444,16 @@ impl Launcher {
             bail!(ERR_STEAM_NOT_ONLINE);
         }
         let use_battleye = match self.config().use_battleye {
-            BattlEyeUsage::Auto => battleye_required,
             BattlEyeUsage::Always(enabled) => enabled,
+            BattlEyeUsage::Auto => {
+                if let Some(enabled) = battleye_required.or_else(|| self.prompt_battleye()) {
+                    enabled
+                } else {
+                    return Ok(());
+                }
+            }
         };
-        if self.monitor_launch(self.game.join_server(addr, use_battleye)?)? {
+        if self.monitor_launch(self.game.join_server(addr, password, use_battleye)?)? {
             app::quit();
         }
         Ok(())

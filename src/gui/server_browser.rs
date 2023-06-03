@@ -2,11 +2,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::rc::Rc;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Result;
-use fltk::dialog;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use slog::{error, Logger};
@@ -21,6 +19,7 @@ use crate::servers::{
 };
 
 use self::actions_pane::{Action, ActionsPane};
+use self::connect_dialog::ConnectDialog;
 use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterChange, FilterHolder, FilterPane};
 use self::list_pane::ListPane;
@@ -31,6 +30,7 @@ use super::prelude::*;
 use super::{alert_error, CleanupFn, Handler};
 
 mod actions_pane;
+mod connect_dialog;
 mod details_pane;
 mod filter_pane;
 mod list_pane;
@@ -42,7 +42,8 @@ pub enum ServerBrowserAction {
     LoadServers,
     JoinServer {
         addr: SocketAddr,
-        battleye_required: bool,
+        password: Option<String>,
+        battleye_required: Option<bool>,
     },
     PingServer(PingRequest),
     PingServers(Vec<PingRequest>),
@@ -181,10 +182,23 @@ impl ServerBrowser {
                             if let Some(server_idx) = browser.list_pane.selected_index() {
                                 let action = {
                                     let server = &browser.state.borrow()[server_idx];
-                                    let addr = SocketAddr::new(*server.ip(), server.port as _);
-                                    ServerBrowserAction::JoinServer {
-                                        addr,
-                                        battleye_required: server.battleye_required,
+                                    if server.password_protected {
+                                        let dialog =
+                                            ConnectDialog::server_password(&browser.root, server);
+                                        dialog.show();
+                                        while dialog.shown() {
+                                            fltk::app::wait();
+                                        }
+                                        match dialog.result() {
+                                            Some(action) => action,
+                                            None => return,
+                                        }
+                                    } else {
+                                        ServerBrowserAction::JoinServer {
+                                            addr: server.game_addr().unwrap(),
+                                            password: None,
+                                            battleye_required: Some(server.battleye_required),
+                                        }
                                     }
                                 };
                                 if let Err(err) = (browser.on_action)(action) {
@@ -260,18 +274,14 @@ impl ServerBrowser {
                             (browser.on_action)(ServerBrowserAction::LoadServers).unwrap();
                         }
                         Action::DirectConnect => {
-                            let addr = dialog::input_default("Connect to:", "127.0.0.1:7777");
-                            let addr = match addr {
-                                Some(str) => SocketAddr::from_str(&str).map_err(anyhow::Error::msg),
+                            let dialog = ConnectDialog::direct_connect(&browser.root);
+                            dialog.show();
+                            while dialog.shown() {
+                                fltk::app::wait();
+                            }
+                            let action = match dialog.result() {
+                                Some(action) => action,
                                 None => return,
-                            };
-                            let addr = match addr {
-                                Ok(addr) => addr,
-                                Err(err) => return alert_error(ERR_INVALID_ADDR, &err),
-                            };
-                            let action = ServerBrowserAction::JoinServer {
-                                addr,
-                                battleye_required: true,
                             };
                             if let Err(err) = (browser.on_action)(action) {
                                 error!(browser.logger, "Error on direct connect"; "error" => %err);
@@ -504,7 +514,6 @@ impl FilterHolder for ServerBrowser {
 const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
 const ERR_PINGING_SERVERS: &str = "Error while pinging servers.";
 const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
-const ERR_INVALID_ADDR: &str = "Invalid server address.";
 const ERR_UPDATING_FAVORITES: &str = "Error while updating favorites.";
 
 fn mode_name(mode: Mode) -> &'static str {

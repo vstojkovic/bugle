@@ -399,11 +399,17 @@ impl Game {
         self.launch(enable_battleye, &["-continuesession"])
     }
 
-    pub fn join_server(&self, addr: SocketAddr, enable_battleye: bool) -> Result<Launch> {
+    pub fn join_server(
+        &self,
+        addr: SocketAddr,
+        password: Option<String>,
+        enable_battleye: bool,
+    ) -> Result<Launch> {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         game_ini
             .with_section(Some(SECTION_SAVED_SERVERS))
-            .set(KEY_LAST_CONNECTED, addr.to_string());
+            .set(KEY_LAST_CONNECTED, addr.to_string())
+            .set(KEY_LAST_PASSWORD, password.unwrap_or_default());
         game_ini
             .with_section(Some(SECTION_SAVED_COOP_DATA))
             .set(KEY_STARTED_LISTEN_SERVER_SESSION, "False");
@@ -438,6 +444,7 @@ const SECTION_SAVED_COOP_DATA: &str = "SavedCoopData";
 
 const KEY_CACHED_USERS: &str = "CachedUsers";
 const KEY_LAST_CONNECTED: &str = "LastConnected";
+const KEY_LAST_PASSWORD: &str = "LastPassword";
 const KEY_LAST_MAP: &str = "LastMap";
 const KEY_SERVERS_LIST: &str = "ServersList";
 const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
