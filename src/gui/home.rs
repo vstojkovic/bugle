@@ -122,7 +122,7 @@ impl Home {
         let sp_play_text = info_text(ReadOnlyText::default());
         let last_session_label = create_info_label("Last Session:");
         let last_session_text = info_text(ReadOnlyText::new(last_session_text(&*game)));
-        let battleye_label = create_info_label("Use BattlEye:");
+        let battleye_label = create_info_label("Enable BattlEye:");
         let battleye_input = InputChoice::default_fill();
         let log_level_label = create_info_label("BUGLE Logging Level:");
         let log_level_input = InputChoice::default_fill();
@@ -286,8 +286,8 @@ impl Home {
             .right_of(&battleye_label, 10);
         battleye_input.input().set_readonly(true);
         battleye_input.input().clear_visible_focus();
-        battleye_input.add("Enabled");
-        battleye_input.add("Disabled");
+        battleye_input.add("Always");
+        battleye_input.add("Never");
         battleye_input.add("Only when required");
         battleye_input.set_value_index(match config.use_battleye {
             BattlEyeUsage::Always(true) => 0,
