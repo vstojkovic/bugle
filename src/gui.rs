@@ -1,13 +1,20 @@
-use std::cell::RefCell;
-use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 use fltk::app;
+use fltk::button::{Button, CheckButton, LightButton, ReturnButton};
 use fltk::dialog as fltk_dialog;
 use fltk::enums::Event;
+use fltk::frame::Frame;
+use fltk::input::{Input, SecretInput};
+use fltk::menu::MenuButton;
+use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableContext;
-use fltk::text::{Cursor, TextBuffer, TextEditor};
+use fltk_float::button::{ButtonElement, MenuButtonElement};
+use fltk_float::frame::FrameElement;
+use fltk_float::input::InputElement;
+use fltk_float::misc::InputChoiceElement;
+use fltk_float::WrapperFactory;
 use fltk_table::SmartTable;
 
 mod data;
@@ -21,6 +28,7 @@ mod prelude;
 mod server_browser;
 mod single_player;
 pub mod theme;
+mod widgets;
 
 pub use self::dialog::Dialog;
 pub use self::home::{HomeAction, HomeUpdate};
@@ -28,6 +36,7 @@ pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
+use self::widgets::{ReadOnlyText, ReadOnlyTextElement};
 
 pub enum Action {
     HomeAction(HomeAction),
@@ -68,72 +77,6 @@ impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 
 type CleanupFn = Box<dyn FnMut()>;
 
-#[derive(Clone)]
-pub struct ReadOnlyText {
-    editor: TextEditor,
-    value: Rc<RefCell<String>>,
-}
-
-impl ReadOnlyText {
-    pub fn new(initial_value: String) -> Self {
-        let mut buffer = TextBuffer::default();
-        buffer.set_text(&initial_value);
-
-        let mut editor = TextEditor::default();
-        editor.set_buffer(buffer.clone());
-        editor.show_cursor(true);
-        editor.set_cursor_style(Cursor::Simple);
-
-        let value = Rc::new(RefCell::new(initial_value));
-        {
-            let mut editor = editor.clone();
-            let mut buffer = buffer.clone();
-            let value = Rc::clone(&value);
-            buffer
-                .clone()
-                .add_modify_callback(move |pos, ins, del, _, _| {
-                    if (ins > 0) || (del > 0) {
-                        if let Ok(value) = value.try_borrow_mut() {
-                            buffer.set_text(&value);
-                            editor.set_insert_position(pos);
-                        }
-                    }
-                });
-        }
-
-        Self { editor, value }
-    }
-
-    pub fn widget(&self) -> &TextEditor {
-        &self.editor
-    }
-
-    pub fn set_value(&self, value: String) {
-        let mut value_ref = self.value.borrow_mut();
-        self.editor.buffer().unwrap().set_text(&value);
-        *value_ref = value;
-    }
-}
-
-impl Default for ReadOnlyText {
-    fn default() -> Self {
-        Self::new(String::new())
-    }
-}
-
-impl Deref for ReadOnlyText {
-    type Target = TextEditor;
-    fn deref(&self) -> &Self::Target {
-        &self.editor
-    }
-}
-
-impl DerefMut for ReadOnlyText {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.editor
-    }
-}
-
 pub fn alert_error(message: &str, err: &anyhow::Error) {
     fltk_dialog::alert_default(&format!("{}\n{}", message, err));
 }
@@ -144,35 +87,25 @@ pub fn prompt_confirm(prompt: &str) -> bool {
         .unwrap_or_default()
 }
 
-fn widget_auto_width<W: WidgetExt + ?Sized>(widget: &W) -> i32 {
-    let (w, _) = widget.measure_label();
-    w + 20
+thread_local! {
+    static WRAPPER_FACTORY: Rc<WrapperFactory> = {
+        let mut factory = WrapperFactory::new();
+        factory.set_wrapper::<Button, ButtonElement<Button>>();
+        factory.set_wrapper::<CheckButton, ButtonElement<CheckButton>>();
+        factory.set_wrapper::<Frame, FrameElement>();
+        factory.set_wrapper::<Input, InputElement<Input>>();
+        factory.set_wrapper::<InputChoice, InputChoiceElement>();
+        factory.set_wrapper::<LightButton, ButtonElement<LightButton>>();
+        factory.set_wrapper::<MenuButton, MenuButtonElement>();
+        factory.set_wrapper::<ReadOnlyText, ReadOnlyTextElement>();
+        factory.set_wrapper::<ReturnButton, ButtonElement<ReturnButton>>();
+        factory.set_wrapper::<SecretInput, InputElement<SecretInput>>();
+        Rc::new(factory)
+    }
 }
 
-fn widget_auto_height<W: WidgetExt + ?Sized>(widget: &W) -> i32 {
-    let (_, h) = widget.measure_label();
-    h * 3 / 2
-}
-
-fn button_auto_height<B: ButtonExt + ?Sized>(button: &B) -> i32 {
-    let (_, h) = button.measure_label();
-    h * 14 / 8
-}
-
-fn widget_col_width(widgets: &[&dyn WidgetExt]) -> i32 {
-    widgets
-        .into_iter()
-        .map(|widget| widget_auto_width(*widget))
-        .max()
-        .unwrap()
-}
-
-fn button_row_height(buttons: &[&dyn ButtonExt]) -> i32 {
-    buttons
-        .into_iter()
-        .map(|button| button_auto_height(*button))
-        .max()
-        .unwrap()
+fn wrapper_factory() -> Rc<WrapperFactory> {
+    WRAPPER_FACTORY.with(|factory| Rc::clone(factory))
 }
 
 fn is_table_nav_event() -> bool {

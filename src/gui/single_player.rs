@@ -7,12 +7,14 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use fltk::button::Button;
 use fltk::dialog;
-use fltk::enums::{Align, CallbackTrigger};
+use fltk::enums::CallbackTrigger;
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableContext;
+use fltk_float::grid::{CellAlign, Grid};
+use fltk_float::SimpleWrapper;
 use fltk_table::{SmartTable, TableOpts};
 use slog::{error, Logger};
 
@@ -20,8 +22,8 @@ use crate::game::{GameDB, Maps};
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
-use super::{alert_error, is_table_nav_event, prompt_confirm};
-use super::{button_row_height, widget_col_width, CleanupFn, Handler};
+use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory};
+use super::{CleanupFn, Handler};
 
 pub enum SinglePlayerAction {
     ListSavedGames,
@@ -95,80 +97,20 @@ impl SinglePlayer {
         maps: Arc<Maps>,
         on_action: impl Handler<SinglePlayerAction> + 'static,
     ) -> Rc<Self> {
-        let mut root = Group::default_fill();
+        let mut grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10);
+        grid.col().with_default_align(CellAlign::End).add();
+        grid.col().with_stretch(1).add();
+        let btn_group = grid.col_group().add();
+        grid.extend_group(btn_group).batch(6);
 
-        let label_align = Align::Right | Align::Inside;
-
-        let map_label = Frame::default().with_label("Map:").with_align(label_align);
-        let in_progress_label = Frame::default()
-            .with_label("In Progress:")
-            .with_align(label_align);
-        let backups_label = Frame::default()
-            .with_label("Backups:")
-            .with_align(label_align);
-
-        let new_button = Button::default()
-            .with_label("New")
-            .with_tooltip("Start a new singleplayer game from scratch");
-        let continue_button = Button::default()
-            .with_label("Continue")
-            .with_tooltip("Continue the current singleplayer game");
-        let load_button = Button::default()
-            .with_label("Load")
-            .with_tooltip("Replace the current singleplayer game with the selected backup");
-        let save_button = Button::default()
-            .with_label("Save")
-            .with_tooltip("Replace the selected backup with the current singleplayer game");
-        let save_as_button = Button::default()
-            .with_label("Save As...")
-            .with_tooltip("Create a new backup of the current singleplayer game");
-        let delete_button = Button::default()
-            .with_label("Delete")
-            .with_tooltip("Delete the selected backup");
-
-        let label_width = widget_col_width(&[&map_label, &in_progress_label, &backups_label]);
-        let button_width = widget_col_width(&[
-            &new_button,
-            &continue_button,
-            &load_button,
-            &save_button,
-            &save_as_button,
-            &delete_button,
-        ]);
-        let row_height = button_row_height(&[
-            &new_button,
-            &continue_button,
-            &load_button,
-            &save_button,
-            &save_as_button,
-            &delete_button,
-        ]);
-
-        let mut delete_button = delete_button
-            .with_size(button_width, row_height)
-            .inside_parent(-button_width, 0);
-        let mut save_as_button = save_as_button
-            .with_size(button_width, row_height)
-            .left_of(&delete_button, 10);
-        let mut save_button = save_button
-            .with_size(button_width, row_height)
-            .left_of(&save_as_button, 10);
-        let mut load_button = load_button
-            .with_size(button_width, row_height)
-            .left_of(&save_button, 10);
-        let mut continue_button = continue_button
-            .with_size(button_width, row_height)
-            .left_of(&load_button, 10);
-        let mut new_button = new_button
-            .with_size(button_width, row_height)
-            .left_of(&continue_button, 10);
-
-        let map_label = map_label
-            .inside_parent(0, 0)
-            .with_size(label_width, row_height);
-        let map_input = InputChoice::default_fill().right_of(&map_label, 10);
-        let map_input_width = new_button.x() - map_input.x() - 10;
-        let mut map_input = map_input.with_size(map_input_width, row_height);
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Map:");
+        let mut map_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
         for map in maps.iter() {
             map_input.add(&map.display_name);
         }
@@ -176,30 +118,77 @@ impl SinglePlayer {
         map_input.input().clear_visible_focus();
         map_input.set_value_index(0);
         let selected_map_id = maps.iter().next().unwrap().id;
+        let mut new_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("New")
+            .with_tooltip("Start a new singleplayer game from scratch");
+        let mut continue_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Continue")
+            .with_tooltip("Continue the current singleplayer game");
+        let mut load_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Load")
+            .with_tooltip("Replace the current singleplayer game with the selected backup");
+        let mut save_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Save")
+            .with_tooltip("Replace the selected backup with the current singleplayer game");
+        let mut save_as_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Save As...")
+            .with_tooltip("Create a new backup of the current singleplayer game");
+        let mut delete_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Delete")
+            .with_tooltip("Delete the selected backup");
 
-        let in_progress_label = in_progress_label
-            .with_size(label_width, row_height)
-            .below_of(&map_label, 10);
-        let in_progress_pane = Group::default_fill()
-            .with_size_flex(0, row_height * 2)
-            .below_of(&map_input, 10)
-            .stretch_to_parent(0, None);
+        grid.row().with_stretch(1).add();
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Start)
+            .wrap(Frame::default())
+            .with_label("In Progress:");
         let in_progress_table = make_db_list();
-        in_progress_pane.end();
+        grid.span(1, 7)
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                in_progress_table.as_base_widget(),
+                Default::default(),
+            ));
 
-        let _backups_label = backups_label
-            .with_pos(
-                in_progress_label.x(),
-                in_progress_pane.y() + in_progress_pane.h() + 10,
-            )
-            .with_size(label_width, row_height);
-        let backups_pane = Group::default_fill()
-            .below_of(&in_progress_pane, 10)
-            .stretch_to_parent(0, 0);
+        grid.row().with_stretch(9).add();
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Start)
+            .wrap(Frame::default())
+            .with_label("Backups:");
         let mut backups_table = make_db_list();
-        backups_pane.end();
+        grid.span(1, 7)
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                backups_table.as_base_widget(),
+                Default::default(),
+            ));
 
-        root.end();
+        let grid = grid.end();
+        grid.layout_children();
+
+        let mut root = grid.group();
         root.hide();
 
         let single_player = Rc::new(Self {

@@ -3,17 +3,17 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use fltk::button::CheckButton;
-use fltk::enums::{Align, CallbackTrigger};
+use fltk::enums::CallbackTrigger;
 use fltk::frame::Frame;
-use fltk::group::Group;
 use fltk::input::Input;
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
+use fltk_float::grid::{CellAlign, Grid};
+use fltk_float::LayoutElement;
 use strum::IntoEnumIterator;
 
 use crate::game::Maps;
-use crate::gui::{glyph, prelude::*};
-use crate::gui::{widget_auto_height, widget_col_width};
+use crate::gui::{glyph, wrapper_factory};
 use crate::servers::{Mode, Region, TypeFilter};
 
 use super::state::Filter;
@@ -38,7 +38,7 @@ pub(super) enum FilterChange {
 }
 
 pub(super) struct FilterPane {
-    root: Group,
+    grid: Grid,
     name_input: Input,
     map_input: InputChoice,
     type_input: InputChoice,
@@ -51,67 +51,51 @@ pub(super) struct FilterPane {
 }
 
 impl FilterPane {
-    pub fn new(maps: Arc<Maps>) -> Self {
-        let mut root = Group::default_fill();
-        let label_align = Align::Right | Align::Inside;
-        let name_label = Frame::default()
-            .with_label("Server Name:")
-            .with_align(label_align);
-        let map_label = Frame::default().with_label("Map:").with_align(label_align);
-        let invalid_check =
-            CheckButton::default().with_label(&format!("{} Show invalid servers", glyph::WARNING));
-        let type_label = Frame::default().with_label("Type:").with_align(label_align);
-        let mode_label = Frame::default().with_label("Mode:").with_align(label_align);
-        let pwd_prot_check = CheckButton::default()
-            .with_label(&format!("{} Show password protected servers", glyph::LOCK));
-        let region_label = Frame::default()
-            .with_label("Region:")
-            .with_align(label_align);
-        let mods_label = Frame::default().with_label("Mods:").with_align(label_align);
-        let battleye_label = Frame::default()
-            .with_label("BattlEye:")
-            .with_align(label_align);
-        let left_width = widget_col_width(&[&name_label, &map_label, &region_label]);
-        let mid_width = widget_col_width(&[&type_label, &mods_label]);
-        let right_width = widget_col_width(&[&mode_label, &battleye_label]);
-        let check_width = widget_col_width(&[&invalid_check, &pwd_prot_check]);
-        let height = widget_auto_height(&name_label);
-        let input_width = (root.w() - left_width - mid_width - right_width - check_width - 60) / 3;
+    pub fn new(maps: Arc<Maps>) -> Rc<Self> {
+        let mut grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10);
+        grid.col().with_default_align(CellAlign::End).add();
+        grid.col().with_stretch(1).add();
+        grid.col().with_default_align(CellAlign::End).add();
+        grid.col().with_stretch(1).add();
+        grid.col().with_default_align(CellAlign::End).add();
+        grid.col().with_stretch(1).add();
+        grid.col().add();
 
-        root.set_size(root.w(), height * 3 + 20);
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Server Name:");
+        let name_input = grid.span(1, 6).unwrap().wrap(Input::default());
 
-        let name_label = name_label.with_size(left_width, height).inside_parent(0, 0);
-        let name_input = Input::default()
-            .with_size(root.w() - left_width - 10, height)
-            .right_of(&name_label, 10);
-        let map_label = map_label
-            .with_size(left_width, height)
-            .below_of(&name_label, 10);
-        let mut map_input = InputChoice::default()
-            .with_size(input_width, height)
-            .right_of(&map_label, 10);
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Map:");
+        let mut map_input = grid.cell().unwrap().wrap(InputChoice::default());
         for map in maps.iter() {
             map_input.add("<clear map filter>");
             map_input.add(&map.display_name);
         }
-        let type_label = type_label
-            .with_size(mid_width, height)
-            .right_of(&map_input, 10);
-        let mut type_input = InputChoice::default()
-            .with_size(input_width, height)
-            .right_of(&type_label, 10);
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Type:");
+        let mut type_input = grid.cell().unwrap().wrap(InputChoice::default());
         type_input.input().set_readonly(true);
         type_input.input().clear_visible_focus();
         for type_filter in TypeFilter::iter() {
             type_input.add(type_name(type_filter).as_ref());
         }
         type_input.set_value_index(0);
-        let mode_label = mode_label
-            .with_size(right_width, height)
-            .right_of(&type_input, 10);
-        let mut mode_input = InputChoice::default()
-            .with_size(input_width, height)
-            .right_of(&mode_label, 10);
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Mode:");
+        let mut mode_input = grid.cell().unwrap().wrap(InputChoice::default());
         mode_input.input().set_readonly(true);
         mode_input.input().clear_visible_focus();
         mode_input.add("All");
@@ -119,15 +103,18 @@ impl FilterPane {
             mode_input.add(mode_name(mode));
         }
         mode_input.set_value_index(0);
-        let invalid_check = invalid_check
-            .with_size(check_width, height)
-            .right_of(&mode_input, 10);
-        let region_label = region_label
-            .with_size(left_width, height)
-            .below_of(&map_label, 10);
-        let mut region_input = InputChoice::default()
-            .with_size(input_width, height)
-            .right_of(&region_label, 10);
+        let invalid_check = grid
+            .cell()
+            .unwrap()
+            .wrap(CheckButton::default())
+            .with_label(&format!("{} Show invalid servers", glyph::WARNING));
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Region:");
+        let mut region_input = grid.cell().unwrap().wrap(InputChoice::default());
         region_input.input().set_readonly(true);
         region_input.input().clear_visible_focus();
         region_input.add("All");
@@ -135,37 +122,38 @@ impl FilterPane {
             region_input.add(region_name(region));
         }
         region_input.set_value_index(0);
-        let mods_label = mods_label
-            .with_size(mid_width, height)
-            .right_of(&region_input, 10);
-        let mut mods_input = InputChoice::default()
-            .with_size(input_width, height)
-            .right_of(&mods_label, 10);
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Mods:");
+        let mut mods_input = grid.cell().unwrap().wrap(InputChoice::default());
         mods_input.input().set_readonly(true);
         mods_input.input().clear_visible_focus();
         mods_input.add("All");
         mods_input.add("Unmodded");
         mods_input.add(&format!("Modded {}", glyph::TOOLS));
-        let battleye_label = battleye_label
-            .with_size(right_width, height)
-            .right_of(&mods_input, 10);
-        let mut battleye_input = InputChoice::default()
-            .with_size(input_width, height)
-            .right_of(&battleye_label, 10);
+        mods_input.set_value_index(0);
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("BattlEye:");
+        let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default());
         battleye_input.input().set_readonly(true);
         battleye_input.input().clear_visible_focus();
         battleye_input.add("All");
         battleye_input.add(&format!("Required {}", glyph::EYE));
         battleye_input.add("Not Required");
         battleye_input.set_value_index(0);
-        let pwd_prot_check = pwd_prot_check
-            .with_size(check_width, height)
-            .right_of(&battleye_input, 10);
+        let pwd_prot_check = grid
+            .cell()
+            .unwrap()
+            .wrap(CheckButton::default())
+            .with_label(&format!("{} Show password protected servers", glyph::LOCK));
 
-        root.end();
+        let grid = grid.end();
 
-        Self {
-            root,
+        Rc::new(Self {
+            grid,
             name_input,
             map_input,
             type_input,
@@ -175,11 +163,13 @@ impl FilterPane {
             invalid_check,
             pwd_prot_check,
             mods_input,
-        }
+        })
     }
 
-    pub fn root(&self) -> &Group {
-        &self.root
+    pub fn element(self: &Rc<Self>) -> FilterPaneElement {
+        FilterPaneElement {
+            pane: Rc::clone(self),
+        }
     }
 
     pub fn set_filter_holder(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
@@ -362,6 +352,20 @@ impl FilterPane {
                 }
             })
         }
+    }
+}
+
+pub(super) struct FilterPaneElement {
+    pane: Rc<FilterPane>,
+}
+
+impl LayoutElement for FilterPaneElement {
+    fn min_size(&self) -> fltk_float::Size {
+        self.pane.grid.min_size()
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.pane.grid.layout(x, y, width, height)
     }
 }
 

@@ -7,6 +7,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
+use fltk_float::grid::{CellAlign, Grid, GridBuilder};
+use fltk_float::SimpleWrapper;
 use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
@@ -26,8 +28,7 @@ use self::list_pane::ListPane;
 use self::state::{Filter, SortOrder};
 
 use super::data::IterableTableSource;
-use super::prelude::*;
-use super::{alert_error, CleanupFn, Handler};
+use super::{alert_error, wrapper_factory, CleanupFn, Handler};
 
 mod actions_pane;
 mod connect_dialog;
@@ -106,35 +107,59 @@ impl ServerBrowser {
             SortOrder::new(config.sort_criteria, region_sort_order()),
         )));
 
-        let mut root = Group::default_fill();
+        let mut grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10);
+        grid.col().with_stretch(1).add();
 
+        grid.row().add();
         let filter_pane = FilterPane::new(maps);
+        grid.cell().unwrap().add(filter_pane.element());
 
-        let actions_pane = ActionsPane::new(config.scroll_lock);
+        let mut tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
+        tiles.col().with_stretch(1).add();
 
-        let tiles = Tile::default_fill()
-            .below_of(filter_pane.root(), 10)
-            .stretch_to_parent(0, actions_pane.root().height());
-
-        let upper_tile = Group::default_fill()
-            .inside_parent(0, 0)
-            .with_size_flex(0, tiles.height() * 3 / 4);
+        let upper_tile = Group::default_fill();
+        tiles.row().with_stretch(3).add();
+        tiles
+            .cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(upper_tile.clone(), Default::default()));
 
         let list_pane = ListPane::new(&state.borrow().order().criteria, config.scroll_lock);
 
         upper_tile.end();
 
-        let lower_tile = Group::default_fill()
-            .below_of(&upper_tile, 0)
-            .stretch_to_parent(0, 0);
+        let lower_tile = Group::default_fill();
+        tiles.row().with_stretch(1).add();
+        tiles
+            .cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(lower_tile.clone(), Default::default()));
 
         let details_pane = DetailsPane::new();
 
         lower_tile.end();
 
-        tiles.end();
+        let tiles = tiles.end();
+        tiles.layout_children(); // necessary for Tile
 
-        root.end();
+        grid.row().with_stretch(1).add();
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(tiles);
+
+        grid.row().add();
+        let actions_pane = ActionsPane::new(config.scroll_lock);
+        grid.cell().unwrap().add(actions_pane.element());
+
+        let grid = grid.end();
+        grid.layout_children();
+
+        let mut root = grid.group();
         root.hide();
 
         let browser = Rc::new(Self {

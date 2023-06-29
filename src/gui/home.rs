@@ -9,6 +9,9 @@ use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
+use fltk_float::button::ButtonElement;
+use fltk_float::grid::Grid;
+use fltk_float::{LayoutElement, LayoutWidgetWrapper};
 use slog::{error, FilterLevel, Logger};
 use tempfile::tempdir;
 
@@ -19,10 +22,8 @@ use crate::workers::TaskState;
 
 use super::prelude::*;
 use super::theme::Theme;
-use super::{
-    alert_error, button_auto_height, widget_auto_height, widget_col_width, CleanupFn, Handler,
-    ReadOnlyText,
-};
+use super::widgets::ReadOnlyText;
+use super::{alert_error, wrapper_factory, CleanupFn, Handler};
 
 pub enum HomeAction {
     Launch,
@@ -69,221 +70,184 @@ impl Home {
             Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
         };
 
-        let mut root = Group::default_fill();
+        let mut grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10);
 
-        let top_welcome_line = Frame::default_fill().with_label("Welcome to");
-        let top_welcome_height = widget_auto_height(&top_welcome_line);
-        let top_welcome_line = top_welcome_line
-            .with_size_flex(0, top_welcome_height)
-            .inside_parent(0, 0);
+        grid.col().add();
+        grid.col().with_stretch(1).add();
+        grid.col().add();
+        grid.col().with_stretch(1).add();
+        grid.col().add();
 
-        let mut mid_welcome_line = Frame::default_fill().with_label("BUGLE");
-        mid_welcome_line.set_label_font(install_crom_font());
-        mid_welcome_line.set_label_size(mid_welcome_line.label_size() * 3);
-        let mid_welcome_height = widget_auto_height(&mid_welcome_line);
-        let mid_welcome_line = mid_welcome_line
-            .with_size_flex(0, mid_welcome_height)
-            .below_of(&top_welcome_line, 0);
+        grid.row().add();
+        grid.span(1, 5)
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Welcome to");
 
-        let btm_welcome_line =
-            Frame::default_fill().with_label("Butt-Ugly Game Launcher for Exiles");
-        let btm_welcome_height = widget_auto_height(&btm_welcome_line);
-        let btm_welcome_line = btm_welcome_line
-            .with_size_flex(0, btm_welcome_height)
-            .below_of(&mid_welcome_line, 0);
+        grid.row().add();
+        let mut bugle_label = grid
+            .span(1, 5)
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("BUGLE");
+        bugle_label.set_label_font(install_crom_font());
+        bugle_label.set_label_size(bugle_label.label_size() * 3);
 
-        let info_pane = Group::default_fill();
-        let version_label = create_info_label("BUGLE Version:");
-        let version_text = info_text(ReadOnlyText::new(env!("CARGO_PKG_VERSION").to_string()));
-        let game_path_label = create_info_label("Conan Exiles Installation Path:");
-        let game_path_text = info_text(ReadOnlyText::new(
+        grid.row().add();
+        grid.span(1, 5)
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Butt-Ugly Game Launcher for Exiles");
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("BUGLE Version:"));
+        grid.span(1, 4)
+            .unwrap()
+            .wrap(ReadOnlyText::new(env!("CARGO_PKG_VERSION").to_string()));
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Conan Exiles Installation Path:"));
+        grid.span(1, 4).unwrap().wrap(ReadOnlyText::new(
             game.installation_path().to_string_lossy().into_owned(),
         ));
-        let revision_label = create_info_label("Conan Exiles Revision:");
-        let revision_text = info_text(ReadOnlyText::new({
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Conan Exiles Revision:"));
+        grid.cell().unwrap().wrap(ReadOnlyText::new({
             let (revision, snapshot) = game.version();
             format!("#{}/{} ({})", revision, snapshot, branch_name)
         }));
-        let build_id_label = create_info_label("Conan Exiles Build ID:");
-        let build_id_text = info_text(ReadOnlyText::new(format!("{}", game.build_id())));
-        let platform_user_id_label = create_info_label("Steam Account ID:");
-        let platform_user_id_text = info_text(ReadOnlyText::default());
-        let platform_user_name_label = create_info_label("Steam Account Name:");
-        let platform_user_name_text = info_text(ReadOnlyText::default());
-        let refresh_platform_button = Button::default().with_label("Refresh");
-        let fls_acct_id_label = create_info_label("FLS Account ID:");
-        let fls_acct_id_text = info_text(ReadOnlyText::default());
-        let fls_acct_name_label = create_info_label("FLS Account Name:");
-        let fls_acct_name_text = info_text(ReadOnlyText::default());
-        let refresh_fls_button = Button::default().with_label("Refresh");
-        let online_play_label = create_info_label("Can Play Online?");
-        let online_play_text = info_text(ReadOnlyText::default());
-        let sp_play_label = create_info_label("Can Play Singleplayer?");
-        let sp_play_text = info_text(ReadOnlyText::default());
-        let last_session_label = create_info_label("Last Session:");
-        let last_session_text = info_text(ReadOnlyText::new(last_session_text(&*game)));
-        let battleye_label = create_info_label("Enable BattlEye:");
-        let battleye_input = InputChoice::default_fill();
-        let log_level_label = create_info_label("BUGLE Logging Level:");
-        let log_level_input = InputChoice::default_fill();
-        let theme_label = create_info_label("Theme:");
-        let theme_input = InputChoice::default_fill();
-        let privacy_switch = LightButton::default().with_label("Hide Private Information");
-        info_pane.end();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Conan Exiles Build ID:"));
+        grid.span(1, 2)
+            .unwrap()
+            .wrap(ReadOnlyText::new(format!("{}", game.build_id())));
 
-        let left_width = widget_col_width(&[
-            &version_label,
-            &game_path_label,
-            &revision_label,
-            &platform_user_id_label,
-            &fls_acct_id_label,
-            &online_play_label,
-            &last_session_label,
-            &log_level_label,
-        ]);
-        let right_width = widget_col_width(&[
-            &build_id_label,
-            &platform_user_name_label,
-            &fls_acct_name_label,
-            &sp_play_label,
-            &battleye_label,
-            &theme_label,
-        ]);
-        let button_width = widget_col_width(&[&refresh_platform_button, &refresh_fls_button]);
-        let button_height = button_auto_height(&refresh_platform_button);
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Steam Account ID:"));
+        let platform_user_id_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Steam Account Name:"));
+        let platform_user_name_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
+        let mut refresh_platform_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Refresh");
 
-        let launch_button = Button::default().with_label("Launch");
-        let continue_button = Button::default().with_label("Continue");
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("FLS Account ID:"));
+        let fls_acct_id_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("FLS Account Name:"));
+        let fls_acct_name_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
+        let mut refresh_fls_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Refresh");
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Can Play Online?"));
+        let online_play_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Can Play Singleplayer?"));
+        let sp_play_text = grid.span(1, 2).unwrap().wrap(ReadOnlyText::default());
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Last Session:"));
+        let last_session_text = grid
+            .cell()
+            .unwrap()
+            .wrap(ReadOnlyText::new(last_session_text(&*game)));
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Enable BattlEye:"));
+        let mut battleye_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("BUGLE Logging Level:"));
+        let mut log_level_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        grid.cell().unwrap().wrap(create_info_label("Theme:"));
+        let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
+
+        grid.row().add();
+        grid.span(1, 3).unwrap().skip();
+        let mut privacy_switch = grid
+            .span(1, 2)
+            .unwrap()
+            .wrap(LightButton::default())
+            .with_label("Hide Private Information");
+
+        grid.row().with_stretch(1).add();
+        grid.span(1, 5).unwrap().skip();
+
+        let mut action_grid = Grid::builder().with_col_spacing(10).with_row_spacing(10);
+        action_grid.col().with_stretch(1).batch(4);
+        action_grid.row().with_stretch(1).add();
+        let cell = action_grid.cell().unwrap();
         let switch_branch_button = if can_switch_branch {
             let switch_label = format!("Switch to {}", other_branch_name);
-            Some(Button::default().with_label(&switch_label))
+            let button = Button::default().with_label(&switch_label);
+            action_grid
+                .cell()
+                .unwrap()
+                .add(BigButtonElement::wrap(button.clone()));
+            Some(button)
         } else {
+            cell.skip();
             None
         };
-        let action_width = root.w() / 4 - 5;
-        let action_height = 2 * button_height;
+        action_grid.cell().unwrap().skip();
+        let mut launch_button = Button::default().with_label("Launch");
+        action_grid
+            .cell()
+            .unwrap()
+            .add(BigButtonElement::wrap(launch_button.clone()));
+        let mut continue_button = Button::default().with_label("Continue");
+        action_grid
+            .cell()
+            .unwrap()
+            .add(BigButtonElement::wrap(continue_button.clone()));
+        let action_grid = action_grid.end();
 
-        let mut continue_button = continue_button
-            .with_size(action_width, action_height)
-            .inside_parent(-action_width, -action_height);
-        let mut launch_button = launch_button
-            .with_size(action_width, action_height)
-            .left_of(&continue_button, 10);
-        let switch_branch_button = switch_branch_button.map(|button| {
-            button
-                .with_size(action_width, action_height)
-                .inside_parent(0, -action_height)
-        });
+        grid.row().add();
+        grid.span(1, 5).unwrap().add(action_grid);
 
-        let info_pane = info_pane.below_of(&btm_welcome_line, 10);
-        let info_height = launch_button.y() - info_pane.y() - 10;
-        let info_pane = info_pane.with_size_flex(0, info_height);
-        let text_width = info_pane.w() - left_width - 10;
-        let narrow_width = (info_pane.w() - left_width - right_width - 30) / 2;
-        let text_height = widget_auto_height(&version_label);
-        let version_label = version_label
-            .with_size(left_width, text_height)
-            .inside_parent(0, 0);
-        let _ = version_text
-            .widget()
-            .clone()
-            .with_size(text_width, text_height)
-            .right_of(&version_label, 10);
-        let game_path_label = game_path_label
-            .with_size(left_width, text_height)
-            .below_of(&version_label, 10);
-        let _ = game_path_text
-            .widget()
-            .clone()
-            .with_size(text_width, text_height)
-            .right_of(&game_path_label, 10);
-        let revision_label = revision_label
-            .with_size(left_width, text_height)
-            .below_of(&game_path_label, 10);
-        let _ = revision_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&revision_label, 10);
-        let build_id_label = build_id_label
-            .with_size(right_width, text_height)
-            .right_of(revision_text.widget(), 10);
-        let _ = build_id_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&build_id_label, 10);
-        let platform_user_id_label = platform_user_id_label
-            .with_size(left_width, text_height)
-            .below_of(&revision_label, 10);
-        let _ = platform_user_id_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&platform_user_id_label, 10);
-        let platform_user_name_label = platform_user_name_label
-            .with_size(right_width, text_height)
-            .right_of(platform_user_id_text.widget(), 10);
-        let _ = platform_user_name_text
-            .widget()
-            .clone()
-            .with_size(narrow_width - button_width - 10, text_height)
-            .right_of(&platform_user_name_label, 10);
-        let mut refresh_platform_button = refresh_platform_button
-            .with_size(button_width, button_height)
-            .right_of(platform_user_name_text.widget(), 10);
+        let grid = grid.end();
+        grid.layout_children();
+
+        let mut root = grid.group();
+        root.hide();
+
+        // let action_width = root.w() / 4 - 5;
+        // let action_height = 2 * button_height;
+
         refresh_platform_button.deactivate();
-        let fls_acct_id_label = fls_acct_id_label
-            .with_size(left_width, text_height)
-            .below_of(&platform_user_id_label, 10);
-        let _ = fls_acct_id_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&fls_acct_id_label, 10);
-        let fls_acct_name_label = fls_acct_name_label
-            .with_size(right_width, text_height)
-            .right_of(fls_acct_id_text.widget(), 10);
-        let _ = fls_acct_name_text
-            .widget()
-            .clone()
-            .with_size(narrow_width - button_width - 10, text_height)
-            .right_of(&fls_acct_name_label, 10);
-        let mut refresh_fls_button = refresh_fls_button
-            .with_size(button_width, button_height)
-            .right_of(fls_acct_name_text.widget(), 10);
         refresh_fls_button.deactivate();
-        let online_play_label = online_play_label
-            .with_size(left_width, text_height)
-            .below_of(&fls_acct_id_label, 10);
-        let _ = online_play_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&online_play_label, 10);
-        let sp_play_label = sp_play_label
-            .with_size(right_width, text_height)
-            .right_of(online_play_text.widget(), 10);
-        let _ = sp_play_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&sp_play_label, 10);
-        let last_session_label = last_session_label
-            .with_size(left_width, text_height)
-            .below_of(&online_play_label, 10);
-        let _ = last_session_text
-            .widget()
-            .clone()
-            .with_size(narrow_width, text_height)
-            .right_of(&last_session_label, 10);
 
-        let battleye_label = battleye_label
-            .with_size(right_width, text_height)
-            .right_of(last_session_text.widget(), 10);
-        let mut battleye_input = battleye_input
-            .with_size(narrow_width, text_height)
-            .right_of(&battleye_label, 10);
         battleye_input.input().set_readonly(true);
         battleye_input.input().clear_visible_focus();
         battleye_input.add("Always");
@@ -308,12 +272,6 @@ impl Home {
             }
         });
 
-        let log_level_label = log_level_label
-            .with_size(left_width, text_height)
-            .below_of(&last_session_label, 10);
-        let mut log_level_input = log_level_input
-            .with_size(narrow_width, text_height)
-            .right_of(&log_level_label, 10);
         log_level_input.input().set_readonly(true);
         log_level_input.input().clear_visible_focus();
         log_level_input.add("Off");
@@ -333,12 +291,6 @@ impl Home {
         });
         log_level_input.set_activated(!log_level_overridden);
 
-        let theme_label = theme_label
-            .with_size(right_width, text_height)
-            .right_of(&log_level_input, 10);
-        let mut theme_input = theme_input
-            .with_size(narrow_width, text_height)
-            .right_of(&theme_label, 10);
         theme_input.input().set_readonly(true);
         theme_input.input().clear_visible_focus();
         theme_input.add("Light");
@@ -360,9 +312,6 @@ impl Home {
             }
         });
 
-        let mut privacy_switch = privacy_switch
-            .with_size(narrow_width, button_height)
-            .below_of(&theme_input, 10);
         privacy_switch.clear_visible_focus();
 
         refresh_platform_button.set_callback({
@@ -434,9 +383,6 @@ impl Home {
                 }
             });
         }
-
-        root.end();
-        root.hide();
 
         let _ = launch_button.take_focus();
 
@@ -519,6 +465,30 @@ impl Home {
     }
 }
 
+struct BigButtonElement {
+    inner: ButtonElement<Button>,
+}
+
+impl LayoutWidgetWrapper<Button> for BigButtonElement {
+    fn wrap(widget: Button) -> Self {
+        Self {
+            inner: ButtonElement::wrap(widget),
+        }
+    }
+}
+
+impl LayoutElement for BigButtonElement {
+    fn min_size(&self) -> fltk_float::Size {
+        let mut size = self.inner.min_size();
+        size.height *= 2;
+        size
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.inner.layout(x, y, width, height);
+    }
+}
+
 const ERR_LAUNCHING_GAME: &str = "Error while trying to launch the game.";
 const ERR_SWITCHING_TO_MAIN: &str = "Error while trying to switch to Live.";
 const ERR_SWITCHING_TO_PUBLIC_BETA: &str = "Error while trying to switch to TestLive.";
@@ -544,11 +514,6 @@ fn create_info_label(text: &str) -> Frame {
     Frame::default()
         .with_align(Align::Right | Align::Inside)
         .with_label(text)
-}
-
-fn info_text(mut widget: ReadOnlyText) -> ReadOnlyText {
-    widget.set_scrollbar_size(-1);
-    widget
 }
 
 fn last_session_text(game: &Game) -> String {

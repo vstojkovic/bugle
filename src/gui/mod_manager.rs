@@ -12,6 +12,8 @@ use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk::window::Window;
+use fltk_float::grid::{CellAlign, Grid, GridBuilder};
+use fltk_float::SimpleWrapper;
 use fltk_table::{SmartTable, TableOpts};
 use fltk_webview::Webview;
 use lazy_static::lazy_static;
@@ -20,10 +22,7 @@ use slog::{error, Logger};
 use crate::game::{ModInfo, ModRef, Mods};
 
 use super::prelude::*;
-use super::{
-    alert_error, button_row_height, is_table_nav_event, prompt_confirm, widget_col_width,
-    CleanupFn, Handler,
-};
+use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, CleanupFn, Handler};
 
 pub enum ModManagerAction {
     LoadModList,
@@ -85,7 +84,7 @@ impl ModListState {
 
 pub(super) struct ModManager {
     logger: Logger,
-    root: Group,
+    tiles: Tile,
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: SmartTable,
     active_list: SmartTable,
@@ -105,18 +104,14 @@ impl ModManager {
         mods: Arc<Mods>,
         on_action: impl Handler<ModManagerAction> + 'static,
     ) -> Rc<Self> {
-        let mut root = Group::default_fill();
-
-        let tiles = Tile::default_fill();
+        let mut grid = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
+        grid.row().with_stretch(1).add();
 
         let mut tile_limits = Group::default_fill();
         tile_limits.end();
         tile_limits.hide();
 
-        let left_tile = Group::default_fill()
-            .inside_parent(0, 0)
-            .with_size_flex(tiles.width() / 2, 0);
-
+        grid.col().with_stretch(1).add();
         let mut available_list = SmartTable::default_fill().with_opts(TableOpts {
             rows: 0,
             cols: 3,
@@ -131,126 +126,113 @@ impl ModManager {
         available_list.set_row_header(false);
         available_list.set_col_resize(true);
         available_list.set_col_header_value(0, "Available Mods");
-        available_list.set_col_width(0, 345);
         available_list.set_col_header_value(1, "Version");
         available_list.set_col_header_value(2, "Author");
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                available_list.as_base_widget(),
+                Default::default(),
+            ));
 
-        left_tile.end();
+        grid.col().add();
 
-        let mut mid_tile = Group::default_fill().right_of(&left_tile, 0);
-        mid_tile.set_frame(FrameType::FlatBox);
+        let mut button_grid = Grid::builder_with_factory(wrapper_factory())
+            .with_padding(10, 0, 10, 0)
+            .with_col_spacing(10)
+            .with_row_spacing(10);
+        button_grid.col().add();
 
-        let mut button_col = Group::default_fill();
-        button_col.make_resizable(false);
-        button_col.set_frame(FrameType::FlatBox);
+        button_grid.row().with_stretch(1).add();
+        button_grid.cell().unwrap().skip();
 
-        let mut button_group = Group::default();
-        button_group.make_resizable(true);
-        button_group.set_frame(FrameType::FlatBox);
-
-        let clear_button = Button::default()
+        button_grid.row().add();
+        let mut clear_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@filenew")
             .with_tooltip("Clear the mod list");
-        let import_button = Button::default()
+        button_grid.row().add();
+        let mut import_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@fileopen")
             .with_tooltip("Import the mod list from a file");
-        let export_button = Button::default()
+        button_grid.row().add();
+        let mut export_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@filesave")
             .with_tooltip("Export the mod list into a file");
-        let activate_button = Button::default()
+        button_grid.row().add();
+        let mut activate_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@>")
             .with_tooltip("Activate the selected mod");
-        let deactivate_button = Button::default()
+        button_grid.row().add();
+        let mut deactivate_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@<")
             .with_tooltip("Deactivate the selected mod");
-        let move_top_button = Button::default()
+        button_grid.row().add();
+        let mut move_top_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@#8>|")
             .with_tooltip("Move the selected mod to top");
-        let move_up_button = Button::default()
+        button_grid.row().add();
+        let mut move_up_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@#8>")
             .with_tooltip("Move the selected mod up");
-        let move_down_button = Button::default()
+        button_grid.row().add();
+        let mut move_down_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@#2>")
             .with_tooltip("Move the selected mod down");
-        let move_bottom_button = Button::default()
+        button_grid.row().add();
+        let mut move_bottom_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
             .with_label("@#2>|")
             .with_tooltip("Move the selected mod to the bottom");
-        let mut more_info_button = MenuButton::default()
+        button_grid.row().add();
+        let mut more_info_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(MenuButton::default())
             .with_label("\u{1f4dc}")
             .with_tooltip("Show information about the selected mod");
         more_info_button.deactivate();
 
-        let button_width = widget_col_width(&[
-            &clear_button,
-            &import_button,
-            &export_button,
-            &activate_button,
-            &deactivate_button,
-            &move_top_button,
-            &move_up_button,
-            &move_down_button,
-            &move_bottom_button,
-            &more_info_button,
-        ]);
-        let button_height = button_row_height(&[
-            &clear_button,
-            &import_button,
-            &export_button,
-            &activate_button,
-            &deactivate_button,
-            &move_top_button,
-            &move_up_button,
-            &move_down_button,
-            &move_bottom_button,
-        ]);
+        button_grid.row().with_stretch(1).add();
+        button_grid.cell().unwrap().skip();
 
-        let mut mid_tile = mid_tile.with_size_flex(button_width + 20, 0);
-        let button_col = button_col
-            .inside_parent(0, 0)
-            .with_size_flex(button_width + 20, 0)
-            .stretch_to_parent(0, 0);
-        let button_group = button_group.with_size(button_width, button_height * 13 + 60);
-        let button_group = button_group.center_of_parent();
-        let mut clear_button = clear_button
-            .inside_parent(0, 0)
-            .with_size(button_width, button_height);
-        let mut import_button = import_button
-            .with_size(button_width, button_height)
-            .below_of(&clear_button, 10);
-        let mut export_button = export_button
-            .with_size(button_width, button_height)
-            .below_of(&import_button, 10);
-        let mut activate_button = activate_button
-            .with_size(button_width, button_height)
-            .below_of(&export_button, button_height);
-        let mut deactivate_button = deactivate_button
-            .with_size(button_width, button_height)
-            .below_of(&activate_button, 10);
-        let mut move_top_button = move_top_button
-            .with_size(button_width, button_height)
-            .below_of(&deactivate_button, button_height);
-        let mut move_up_button = move_up_button
-            .with_size(button_width, button_height)
-            .below_of(&move_top_button, 10);
-        let mut move_down_button = move_down_button
-            .with_size(button_width, button_height)
-            .below_of(&move_up_button, 10);
-        let mut move_bottom_button = move_bottom_button
-            .with_size(button_width, button_height)
-            .below_of(&move_down_button, 10);
-        let mut more_info_button = more_info_button
-            .with_size(button_width, button_height)
-            .below_of(&move_bottom_button, button_height);
+        let button_grid = button_grid.end();
+        let mut button_col = button_grid.group();
+        button_col.set_frame(FrameType::FlatBox);
+        button_col.make_resizable(false);
 
-        button_group.end();
-        button_col.end();
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(button_grid);
 
-        mid_tile.end();
-
-        let right_tile = Group::default_fill()
-            .right_of(&mid_tile, 0)
-            .stretch_to_parent(0, 0);
-
+        grid.col().with_stretch(1).add();
         let mut active_list = SmartTable::default_fill().with_opts(TableOpts {
             rows: 0,
             cols: 3,
@@ -265,21 +247,35 @@ impl ModManager {
         active_list.set_row_header(false);
         active_list.set_col_resize(true);
         active_list.set_col_header_value(0, "Active Mods");
-        active_list.set_col_width(0, 300);
         active_list.set_col_header_value(1, "Version");
         active_list.set_col_header_value(2, "Author");
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                active_list.as_base_widget(),
+                Default::default(),
+            ));
 
-        right_tile.end();
+        let grid = grid.end();
+        grid.layout_children(); // necessary for Tile
 
-        let tile_limits = tile_limits
-            .inside_parent(button_col.width() + 20, 0)
-            .stretch_to_parent(button_col.width() + 20, 0);
+        adjust_col_widths(&mut available_list);
+        adjust_col_widths(&mut active_list);
+
+        let mut tiles = grid.group();
+        tile_limits.resize(
+            tiles.x() + button_col.width() * 2,
+            tiles.y(),
+            tiles.width() - button_col.width() * 4,
+            tiles.height(),
+        );
         tiles.resizable(&tile_limits);
+        tiles.hide();
 
-        tiles.end();
-
-        root.end();
-        root.hide();
+        let left_tile = available_list.as_base_widget();
+        let mut mid_tile = button_col;
+        let right_tile = active_list.as_base_widget();
 
         {
             let fixed_width = mid_tile.width();
@@ -307,7 +303,7 @@ impl ModManager {
 
         let manager = Rc::new(Self {
             logger,
-            root,
+            tiles,
             on_action: Box::new(on_action),
             available_list: available_list.clone(),
             active_list: active_list.clone(),
@@ -363,8 +359,8 @@ impl ModManager {
     }
 
     pub fn show(&self) -> CleanupFn {
-        let mut root = self.root.clone();
-        root.show();
+        let mut tiles = self.tiles.clone();
+        tiles.show();
 
         if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
             error!(self.logger, "Error loading mod list"; "error" => %err);
@@ -372,7 +368,7 @@ impl ModManager {
         }
 
         Box::new(move || {
-            root.hide();
+            tiles.hide();
         })
     }
 
@@ -689,6 +685,15 @@ lazy_static! {
 
         BBCode::from_matchers(matchers)
     };
+}
+
+fn adjust_col_widths(table: &mut SmartTable) {
+    let scrollbar_width = table.scrollbar_size();
+    let scrollbar_width =
+        if scrollbar_width > 0 { scrollbar_width } else { fltk::app::scrollbar_size() };
+
+    let width = table.width() - table.col_width(1) - table.col_width(2) - scrollbar_width - 2;
+    table.set_col_width(0, width);
 }
 
 fn populate_table(table: &mut SmartTable, mods: &Mods, refs: &Vec<ModRef>) {

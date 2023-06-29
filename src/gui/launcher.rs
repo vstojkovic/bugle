@@ -7,6 +7,8 @@ use fltk::enums::Event;
 use fltk::group::Group;
 use fltk::prelude::*;
 use fltk::window::Window;
+use fltk_float::grid::{CellAlign, GridBuilder};
+use fltk_float::SimpleWrapper;
 use slog::Logger;
 
 use crate::config::Config;
@@ -15,9 +17,9 @@ use crate::game::Game;
 use super::home::Home;
 use super::main_menu::MainMenu;
 use super::mod_manager::ModManager;
-use super::prelude::*;
 use super::server_browser::ServerBrowser;
 use super::single_player::SinglePlayer;
+use super::wrapper_factory;
 use super::{Action, CleanupFn, Handler, Update};
 
 pub struct LauncherWindow {
@@ -43,26 +45,37 @@ impl LauncherWindow {
                 panic!("Action handler not yet assigned");
             })));
 
-        let mut window = Window::default().with_size(1280, 760);
-        window.set_label("BUGLE");
-        window.set_callback(|_| {
-            if app::event() == Event::Close {
-                app::quit();
-            }
-        });
+        let window = GridBuilder::with_factory(
+            Window::default().with_size(1280, 760).with_label("BUGLE"),
+            wrapper_factory(),
+        );
+        let mut window = window
+            .with_col_spacing(10)
+            .with_row_spacing(10)
+            .with_padding(10, 10, 10, 10);
+        window
+            .row()
+            .with_stretch(1)
+            .with_default_align(CellAlign::Stretch)
+            .add();
 
-        let root = Group::default_fill();
+        window.col().with_min_size(200).add();
+        let (mut main_menu, main_menu_grid) = MainMenu::new();
+        window.cell().unwrap().add(main_menu_grid);
 
-        let main_menu_group = Group::default()
-            .inside_parent(10, 10)
-            .size_of_parent()
-            .with_size_flex(200, -20);
-        let mut main_menu = MainMenu::new();
-        main_menu_group.end();
+        window.col().with_stretch(1).add();
 
-        let content_group = Group::default_fill()
-            .right_of(&main_menu_group, 10)
-            .stretch_to_parent(10, 10);
+        let content_group = Group::default_fill();
+        content_group.end();
+        window.cell().unwrap().add(SimpleWrapper::new(
+            content_group.clone(),
+            Default::default(),
+        ));
+
+        let window = window.end();
+        window.layout_children();
+
+        Group::set_current(Some(&content_group));
 
         let home = {
             let on_action = Rc::clone(&on_action);
@@ -102,11 +115,12 @@ impl LauncherWindow {
             )
         };
 
-        content_group.end();
-
-        root.end();
-
-        window.end();
+        let mut window = window.group();
+        window.set_callback(|_| {
+            if app::event() == Event::Close {
+                app::quit();
+            }
+        });
 
         let cleanup_fn: Rc<RefCell<CleanupFn>> = Rc::new(RefCell::new(Box::new(|| ())));
 

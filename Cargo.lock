@@ -170,6 +170,7 @@ dependencies = [
  "dlopen",
  "flate2",
  "fltk",
+ "fltk-float",
  "fltk-table",
  "fltk-webview",
  "futures",
@@ -516,6 +517,15 @@ dependencies = [
  "fltk-sys",
  "paste",
  "ttf-parser",
+]
+
+[[package]]
+name = "fltk-float"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c76dc196a14084e1fb454bde40f66b87c6c48a68c2c263261c2f2e46af5e9ea"
+dependencies = [
+ "fltk",
 ]
 
 [[package]]

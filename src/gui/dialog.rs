@@ -3,12 +3,11 @@ use std::rc::Rc;
 
 use fltk::button::Button;
 use fltk::frame::Frame;
-use fltk::group::Group;
 use fltk::prelude::*;
 use fltk::window::Window;
+use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 
-use super::prelude::*;
-use super::{button_auto_height, widget_auto_width};
+use super::wrapper_factory;
 
 pub struct Dialog<T: Copy + 'static> {
     window: Window,
@@ -32,13 +31,38 @@ impl<T: Copy + 'static> Dialog<T> {
 
         let mut window = Window::default().with_size(width, height).with_label(title);
 
-        let button_row = Group::default_fill();
-        let button_group = Group::default_fill();
+        let mut grid = GridBuilder::with_factory(window.clone(), wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10)
+            .with_padding(10, 10, 10, 10);
+        grid.col().with_stretch(1).add();
+
+        grid.row()
+            .with_stretch(1)
+            .with_default_align(CellAlign::Stretch)
+            .add();
+        grid.cell()
+            .unwrap()
+            .wrap(Frame::default_fill())
+            .with_label(message);
+
+        grid.row().add();
+
+        let mut btn_grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10);
+        btn_grid.row().add();
+        let btn_group = btn_grid.col_group().add();
+        btn_grid.extend_group(btn_group).batch(choices.len());
 
         let result = Rc::new(Cell::new(None));
         let mut buttons = Vec::with_capacity(num_choices);
         for (label, choice) in choices {
-            let mut button = Button::default_fill().with_label(label);
+            let mut button = btn_grid
+                .cell()
+                .unwrap()
+                .wrap(Button::default_fill())
+                .with_label(label);
             button.set_callback({
                 let result = Rc::clone(&result);
                 let choice = *choice;
@@ -51,43 +75,14 @@ impl<T: Copy + 'static> Dialog<T> {
             buttons.push(button);
         }
 
-        button_group.end();
-        button_row.end();
+        let btn_grid = btn_grid.end();
+        grid.cell()
+            .unwrap()
+            .with_horz_align(CellAlign::Center)
+            .add(btn_grid);
 
-        let btn_width = buttons
-            .iter()
-            .map(|btn| widget_auto_width(btn))
-            .max()
-            .unwrap();
-        let btn_height = buttons
-            .iter()
-            .map(|btn| button_auto_height(btn))
-            .max()
-            .unwrap();
-        let grp_width = (btn_width + 10) * (num_choices as i32) - 10;
-        let grp_height = btn_height + 20;
+        grid.end().layout_children();
 
-        let button_row = button_row
-            .with_size_flex(0, grp_height)
-            .inside_parent(0, -grp_height);
-        let _button_group = button_group
-            .with_size(grp_width, grp_height)
-            .center_of_parent();
-        let mut prev_button = None;
-        for button in buttons {
-            let button = button.with_size(btn_width, btn_height);
-            prev_button = Some(if let Some(prev) = prev_button {
-                button.right_of(&prev, 10)
-            } else {
-                button.inside_parent(0, 0)
-            });
-        }
-
-        Frame::default_fill()
-            .with_label(message)
-            .with_size_flex(0, button_row.y());
-
-        window.end();
         window.set_pos(
             parent.x() + (parent.w() - window.w()) / 2,
             parent.y() + (parent.h() - window.h()) / 2,

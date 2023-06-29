@@ -10,9 +10,9 @@ use fltk::group::Group;
 use fltk::input::{Input, SecretInput};
 use fltk::prelude::*;
 use fltk::window::Window;
+use fltk_float::grid::{CellAlign, GridBuilder};
 
-use crate::gui::prelude::LayoutExt;
-use crate::gui::{alert_error, button_row_height, widget_auto_height, widget_col_width};
+use crate::gui::{alert_error, wrapper_factory};
 use crate::servers::Server;
 
 use super::ServerBrowserAction;
@@ -102,51 +102,60 @@ impl ConnectDialog {
         self.window.shown()
     }
 
-    fn create_gui<T: WidgetExt>(
+    fn create_gui<T: WidgetExt + Clone + 'static>(
         parent: &Group,
         title: &'static str,
         make_server_text_widget: impl FnOnce() -> T,
     ) -> (Window, T, SecretInput, ReturnButton) {
-        let mut window = Window::default().with_size(480, 135).with_label(title);
+        let mut window = GridBuilder::with_factory(
+            Window::default().with_size(480, 135).with_label(title),
+            wrapper_factory(),
+        )
+        .with_col_spacing(10)
+        .with_row_spacing(10)
+        .with_padding(10, 10, 10, 10);
+        window.col().with_default_align(CellAlign::End).add();
+        window.col().with_stretch(1).add();
+        let btn_group = window.col_group().add();
+        window.extend_group(btn_group).batch(2);
 
-        let label_align = Align::Right | Align::Inside;
-        let server_label = Frame::default()
-            .with_label("Connect to:")
-            .with_align(label_align);
-        let server_text = make_server_text_widget();
-        let password_label = Frame::default()
-            .with_label("Password:")
-            .with_align(label_align);
-        let password_text = SecretInput::default();
-        let ok_button = ReturnButton::default().with_label("OK");
-        let cancel_button = Button::default().with_label("Cancel");
+        window.row().add();
+        window
+            .cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Connect to:");
+        let server_text = window.span(1, 3).unwrap().wrap(make_server_text_widget());
 
-        let label_width = widget_col_width(&[&server_label, &password_label]);
-        let text_width = window.width() - label_width - 30;
-        let text_height = widget_auto_height(&server_label);
-        let button_width = widget_col_width(&[&ok_button, &cancel_button]);
-        let button_height = button_row_height(&[&ok_button, &cancel_button]);
+        window.row().add();
+        window
+            .cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Password:");
+        let password_text = window.span(1, 3).unwrap().wrap(SecretInput::default());
 
-        let server_label = server_label
-            .with_size(label_width, text_height)
-            .inside_parent(10, 10);
-        let server_text = server_text
-            .with_size(text_width, text_height)
-            .right_of(&server_label, 10);
-        let password_label = password_label
-            .with_size(label_width, text_height)
-            .below_of(&server_label, 10);
-        let password_text = password_text
-            .with_size(text_width, text_height)
-            .right_of(&password_label, 10);
-        let mut cancel_button = cancel_button
-            .with_size(button_width, button_height)
-            .inside_parent(-(button_width + 10), -(button_height + 10));
-        let ok_button = ok_button
-            .with_size(button_width, button_height)
-            .left_of(&cancel_button, 10);
+        window
+            .row()
+            .with_default_align(CellAlign::End)
+            .with_stretch(1)
+            .add();
+        window.span(1, 2).unwrap().skip();
+        let ok_button = window
+            .cell()
+            .unwrap()
+            .wrap(ReturnButton::default())
+            .with_label("OK");
+        let mut cancel_button = window
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Cancel");
 
-        window.end();
+        let window = window.end();
+        window.layout_children();
+
+        let mut window = window.group();
         window.set_pos(
             parent.x() + (parent.w() - window.w()) / 2,
             parent.y() + (parent.h() - window.h()) / 2,
