@@ -5,6 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use fltk::enums::Align;
+use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
@@ -90,6 +92,8 @@ pub(super) struct ServerBrowser {
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
     actions_pane: Rc<ActionsPane>,
+    total_players: Cell<usize>,
+    total_players_text: Frame,
     pending_update: Rc<Cell<Option<ServerBrowserUpdate>>>,
     state: Rc<RefCell<ServerBrowserState>>,
 }
@@ -115,6 +119,39 @@ impl ServerBrowser {
         grid.row().add();
         let filter_pane = FilterPane::new(maps);
         grid.cell().unwrap().add(filter_pane.element());
+
+        grid.row().add();
+        let mut stats_grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10)
+            .with_padding(2, 2, 2, 2);
+        stats_grid.row().add();
+        stats_grid
+            .col()
+            .with_default_align(CellAlign::End)
+            .with_stretch(1)
+            .add();
+        stats_grid
+            .cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("Total Players Online:");
+        stats_grid
+            .col()
+            .with_default_align(CellAlign::Stretch)
+            .with_stretch(1)
+            .add();
+        let total_players_text = stats_grid
+            .cell()
+            .unwrap()
+            .wrap(Frame::default())
+            .with_label("?")
+            .with_align(Align::Left | Align::Inside);
+        let stats_grid = stats_grid.end();
+        stats_grid
+            .group()
+            .set_frame(fltk::enums::FrameType::BorderBox);
+        grid.cell().unwrap().add(stats_grid);
 
         let mut tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
         tiles.col().with_stretch(1).add();
@@ -169,6 +206,8 @@ impl ServerBrowser {
             list_pane: Rc::clone(&list_pane),
             details_pane,
             actions_pane: Rc::clone(&actions_pane),
+            total_players: Cell::new(0),
+            total_players_text,
             pending_update: Rc::new(Cell::new(None)),
             state: Rc::clone(&state),
         });
@@ -403,6 +442,8 @@ impl ServerBrowser {
         let state = Rc::clone(&self.state);
         self.list_pane.populate(state);
 
+        self.set_total_player_count(0);
+
         if let Err(err) = (self.on_action)(ServerBrowserAction::PingServers(ping_requests)) {
             error!(self.logger, "Error pinging server list"; "error" => %err);
             alert_error(ERR_PINGING_SERVERS, &err);
@@ -410,6 +451,7 @@ impl ServerBrowser {
     }
 
     fn update_pinged_servers(&self, updates: &[PingResponse]) {
+        let mut total_players = self.total_players.get();
         self.update_servers(
             updates.len(),
             |all_servers, updated_indices, filter, sort_criteria| {
@@ -420,7 +462,7 @@ impl ServerBrowser {
                         None => continue,
                     };
                     updated_indices.push(update.server_idx);
-                    if Self::update_server(server, update, filter) {
+                    if Self::update_server(server, update, filter, &mut total_players) {
                         reindex = Reindex::Filter;
                     }
                 }
@@ -431,6 +473,7 @@ impl ServerBrowser {
                 )
             },
         );
+        self.set_total_player_count(total_players);
     }
 
     fn update_servers(
@@ -466,7 +509,13 @@ impl ServerBrowser {
         };
     }
 
-    fn update_server(server: &mut Server, update: &PingResponse, filter: &Filter) -> bool {
+    fn update_server(
+        server: &mut Server,
+        update: &PingResponse,
+        filter: &Filter,
+        total_players: &mut usize,
+    ) -> bool {
+        *total_players -= server.connected_players.unwrap_or_default();
         let matched_before = filter.matches(server);
         match update.result {
             PingResult::Pong {
@@ -477,6 +526,7 @@ impl ServerBrowser {
                 server.connected_players = Some(connected_players);
                 server.age = Some(age);
                 server.ping = Some(round_trip);
+                *total_players += connected_players;
             }
             PingResult::Timeout => {
                 server.connected_players = None;
@@ -486,6 +536,13 @@ impl ServerBrowser {
         };
         server.waiting_for_pong = false;
         filter.matches(server) != matched_before
+    }
+
+    fn set_total_player_count(&self, count: usize) {
+        self.total_players.set(count);
+        let mut total_players_text = self.total_players_text.clone();
+        total_players_text.set_label(&count.to_string());
+        total_players_text.redraw();
     }
 
     fn selected_server_index(&self) -> Option<usize> {
