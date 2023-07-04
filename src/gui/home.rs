@@ -343,6 +343,10 @@ impl Home {
             let mut platform_user_name_text = platform_user_name_text.clone();
             let mut fls_acct_id_text = fls_acct_id_text.clone();
             let mut fls_acct_name_text = fls_acct_name_text.clone();
+            let mut last_session_text = match &*game.last_session() {
+                Some(Session::Online(_)) => Some(last_session_text.clone()),
+                _ => None,
+            };
             move |btn| {
                 let color = if btn.value() { Color::Background2 } else { Color::Foreground };
                 platform_user_id_text.set_text_color(color);
@@ -353,6 +357,10 @@ impl Home {
                 platform_user_name_text.redraw();
                 fls_acct_id_text.redraw();
                 fls_acct_name_text.redraw();
+                if let Some(last_session_text) = last_session_text.as_mut() {
+                    last_session_text.set_text_color(color);
+                    last_session_text.redraw();
+                }
             }
         });
 
