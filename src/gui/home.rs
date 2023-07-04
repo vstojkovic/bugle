@@ -175,21 +175,15 @@ impl Home {
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Last Session:"));
-        let last_session_text = grid
-            .cell()
-            .unwrap()
-            .wrap(ReadOnlyText::new(last_session_text(&*game)));
-        grid.cell()
-            .unwrap()
             .wrap(create_info_label("Enable BattlEye:"));
-        let mut battleye_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
-
-        grid.row().add();
+        let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
         grid.cell()
             .unwrap()
             .wrap(create_info_label("BUGLE Logging Level:"));
-        let mut log_level_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        let mut log_level_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
+
+        grid.row().add();
+        grid.span(1, 2).unwrap().skip();
         grid.cell().unwrap().wrap(create_info_label("Theme:"));
         let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
 
@@ -206,6 +200,27 @@ impl Home {
 
         let mut action_grid = Grid::builder().with_col_spacing(10).with_row_spacing(10);
         action_grid.col().with_stretch(1).batch(4);
+
+        let mut last_session_grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10);
+        last_session_grid.col().add();
+        last_session_grid.col().with_stretch(1).add();
+        last_session_grid.row().add();
+        last_session_grid
+            .cell()
+            .unwrap()
+            .wrap(create_info_label("Last Session:"));
+        let last_session_text = last_session_grid
+            .cell()
+            .unwrap()
+            .wrap(ReadOnlyText::new(last_session_text(&*game)));
+        let last_session_grid = last_session_grid.end();
+
+        action_grid.row().add();
+        action_grid.span(1, 2).unwrap().skip();
+        action_grid.span(1, 2).unwrap().add(last_session_grid);
+
         action_grid.row().with_stretch(1).add();
         let cell = action_grid.cell().unwrap();
         let switch_branch_button = if can_switch_branch {
