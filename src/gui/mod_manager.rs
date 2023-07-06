@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bbscope::BBCode;
+use bbscope::{BBCode, BBCodeTagConfig};
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
@@ -639,7 +639,6 @@ impl ModManager {
 
     fn show_bbcode(&self, title: &str, content: &str) {
         let mut html = BBCODE.parse(content);
-        html = html.replace("\n", "<br>");
         html = format!(
             "<html><head><style>{}</style></head><body>{}</body></html",
             CSS_INFO_BODY, html
@@ -667,24 +666,7 @@ const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 const CSS_INFO_BODY: &str = include_str!("mod_info.css");
 
 lazy_static! {
-    static ref BBCODE: BBCode = {
-        use bbscope::MatchType;
-
-        let mut matchers = BBCode::basics().unwrap();
-        matchers.append(&mut BBCode::extras().unwrap());
-
-        for matcher in matchers.iter_mut() {
-            if matcher.id == "url" {
-                if let MatchType::Open(ref mut info) = matcher.match_type {
-                    if let Some(ref mut only) = Arc::get_mut(info).unwrap().only {
-                        only.push("img");
-                    }
-                }
-            }
-        }
-
-        BBCode::from_matchers(matchers)
-    };
+    static ref BBCODE: BBCode = BBCode::from_config(BBCodeTagConfig::extended(), None).unwrap();
 }
 
 fn adjust_col_widths(table: &mut SmartTable) {
