@@ -15,7 +15,6 @@ use fltk_float::frame::FrameElement;
 use fltk_float::input::InputElement;
 use fltk_float::misc::InputChoiceElement;
 use fltk_float::WrapperFactory;
-use fltk_table::SmartTable;
 
 mod data;
 mod dialog;
@@ -36,7 +35,7 @@ pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
-use self::widgets::{ReadOnlyText, ReadOnlyTextElement};
+use self::widgets::{DataTable, ReadOnlyText, ReadOnlyTextElement};
 
 pub enum Action {
     HomeAction(HomeAction),
@@ -116,7 +115,7 @@ fn is_table_nav_event() -> bool {
     }
 }
 
-fn make_readonly_cell_widget(table: &SmartTable) -> ReadOnlyText {
+fn make_readonly_cell_widget<T: 'static>(table: &DataTable<T>) -> ReadOnlyText {
     let mut cell = ReadOnlyText::new(String::new());
     cell.set_scrollbar_size(-1);
     cell.hide();
@@ -141,7 +140,7 @@ fn make_readonly_cell_widget(table: &SmartTable) -> ReadOnlyText {
                     let col = table.callback_col();
                     if let Some((x, y, w, h)) = table.find_cell(TableContext::Cell, row, col) {
                         cell.resize(x, y, w, h);
-                        let cell_value = table.cell_value(row, col);
+                        let cell_value = table.cell_text(row, col);
                         let cell_value_len = cell_value.len();
                         cell.set_value(cell_value);
                         cell.buffer().unwrap().select(0, cell_value_len as _);

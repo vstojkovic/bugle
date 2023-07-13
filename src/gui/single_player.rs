@@ -15,13 +15,13 @@ use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::SimpleWrapper;
-use fltk_table::{SmartTable, TableOpts};
 use slog::{error, Logger};
 
 use crate::game::{GameDB, Maps};
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
+use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
 use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory};
 use super::{CleanupFn, Handler};
 
@@ -80,8 +80,8 @@ pub struct SinglePlayer {
     logger: Logger,
     root: Group,
     on_action: Box<dyn Handler<SinglePlayerAction>>,
-    in_progress_table: SmartTable,
-    backups_table: SmartTable,
+    in_progress_table: DataTable<Vec<String>>,
+    backups_table: DataTable<Vec<String>>,
     continue_button: Button,
     load_button: Button,
     save_button: Button,
@@ -491,27 +491,31 @@ impl SinglePlayer {
 
         let selected_map_id = state.filter().map_id;
 
-        let mut in_progress_table = self.in_progress_table.clone();
-        if let Some(in_progress) = state.in_progress.get(&selected_map_id) {
-            let data_ref = in_progress_table.data_ref();
-            data_ref.lock().unwrap()[0] = make_row(in_progress);
-        } else {
-            in_progress_table.clear();
-        }
-        in_progress_table.redraw();
-
-        let mut backups_table = self.backups_table.clone();
-        let row_count = {
-            let data_ref = backups_table.data_ref();
-            let mut rows = data_ref.lock().unwrap();
-            rows.clear();
-            for saved_game in state.backups.iter() {
-                rows.push(make_row(saved_game));
+        {
+            let data = self.in_progress_table.data();
+            let mut data = data.borrow_mut();
+            if let Some(in_progress) = state.in_progress.get(&selected_map_id) {
+                let row = make_row(in_progress);
+                if data.is_empty() {
+                    data.push(row)
+                } else {
+                    data[0] = row;
+                }
+            } else {
+                data.clear();
             }
-            rows.len() as i32
+        }
+        self.in_progress_table.updated(DataTableUpdate::DATA);
+
+        {
+            let data = self.backups_table.data();
+            let mut data = data.borrow_mut();
+            data.clear();
+            for saved_game in state.backups.iter() {
+                data.push(make_row(saved_game));
+            }
         };
-        backups_table.set_rows(row_count);
-        backups_table.redraw();
+        self.backups_table.updated(DataTableUpdate::DATA);
 
         self.update_actions();
     }
@@ -548,10 +552,15 @@ const PROMPT_REPLACE_BACKUP: &str = "Are you sure you want to overwrite this bac
 const PROMPT_BACKUP_NAME: &str = "Backup name:";
 const PROMPT_DELETE_BACKUP: &str = "Are you sure you want to delete this backup?";
 
-fn make_db_list() -> SmartTable {
-    let mut db_list = SmartTable::default_fill().with_opts(TableOpts {
-        rows: 1,
-        cols: 5,
+fn make_db_list() -> DataTable<Vec<String>> {
+    let mut db_list = DataTable::default().with_properties(DataTableProperties {
+        columns: vec![
+            ("Filename", 310).into(),
+            ("Last Played", 200).into(),
+            ("Character", 160).into(),
+            ("Level", 50).into(),
+            ("Clan", 150).into(),
+        ],
         cell_selection_color: fltk::enums::Color::Free,
         header_font_color: fltk::enums::Color::Gray0,
         ..Default::default()
@@ -559,17 +568,8 @@ fn make_db_list() -> SmartTable {
 
     db_list.make_resizable(true);
     db_list.set_col_resize(true);
+    db_list.set_col_header(true);
     db_list.set_row_header(false);
-    db_list.set_col_header_value(0, "Filename");
-    db_list.set_col_width(0, 310);
-    db_list.set_col_header_value(1, "Last Played");
-    db_list.set_col_width(1, 200);
-    db_list.set_col_header_value(2, "Character");
-    db_list.set_col_width(2, 160);
-    db_list.set_col_header_value(3, "Level");
-    db_list.set_col_width(3, 50);
-    db_list.set_col_header_value(4, "Clan");
-    db_list.set_col_width(4, 150);
     db_list.end();
 
     db_list

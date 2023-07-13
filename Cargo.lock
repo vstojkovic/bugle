@@ -164,14 +164,13 @@ dependencies = [
  "bbscope",
  "binread",
  "bit-vec",
- "bitflags 1.3.2",
+ "bitflags 2.1.0",
  "chrono",
  "crc32fast",
  "dlopen",
  "flate2",
  "fltk",
  "fltk-float",
- "fltk-table",
  "fltk-webview",
  "futures",
  "governor",
@@ -535,15 +534,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91941fe955506c9a4582018c68ecec7aad685731611ef7aa901e00d7a29cddd5"
 dependencies = [
  "cmake",
-]
-
-[[package]]
-name = "fltk-table"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bef371756e95f36df13b16cfb20ddf2c097ef9d711b794939f508b1eceba63fd"
-dependencies = [
- "fltk",
 ]
 
 [[package]]

@@ -14,7 +14,6 @@ use fltk::table::TableContext;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 use fltk_float::SimpleWrapper;
-use fltk_table::{SmartTable, TableOpts};
 use fltk_webview::Webview;
 use lazy_static::lazy_static;
 use slog::{error, Logger};
@@ -22,6 +21,7 @@ use slog::{error, Logger};
 use crate::game::{ModInfo, ModRef, Mods};
 
 use super::prelude::*;
+use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
 use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, CleanupFn, Handler};
 
 pub enum ModManagerAction {
@@ -82,12 +82,14 @@ impl ModListState {
     }
 }
 
+type ModRow = [String; 3];
+
 pub(super) struct ModManager {
     logger: Logger,
     tiles: Tile,
     on_action: Box<dyn Handler<ModManagerAction>>,
-    available_list: SmartTable,
-    active_list: SmartTable,
+    available_list: DataTable<ModRow>,
+    active_list: DataTable<ModRow>,
     activate_button: Button,
     deactivate_button: Button,
     move_top_button: Button,
@@ -112,11 +114,12 @@ impl ModManager {
         tile_limits.hide();
 
         grid.col().with_stretch(1).add();
-        let mut available_list = SmartTable::default_fill().with_opts(TableOpts {
-            rows: 0,
-            cols: 3,
-            editable: false,
-            cell_align: Align::Left,
+        let mut available_list = DataTable::default().with_properties(DataTableProperties {
+            columns: vec![
+                ("Available Mods", Align::Left).into(),
+                ("Version", Align::Left).into(),
+                ("Author", Align::Left).into(),
+            ],
             cell_padding: 4,
             cell_selection_color: fltk::enums::Color::Free,
             header_font_color: fltk::enums::Color::Gray0,
@@ -124,10 +127,9 @@ impl ModManager {
         });
         available_list.make_resizable(true);
         available_list.set_row_header(false);
+        available_list.set_col_header(true);
         available_list.set_col_resize(true);
-        available_list.set_col_header_value(0, "Available Mods");
-        available_list.set_col_header_value(1, "Version");
-        available_list.set_col_header_value(2, "Author");
+        available_list.end();
         grid.cell()
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
@@ -233,11 +235,12 @@ impl ModManager {
             .add(button_grid);
 
         grid.col().with_stretch(1).add();
-        let mut active_list = SmartTable::default_fill().with_opts(TableOpts {
-            rows: 0,
-            cols: 3,
-            editable: false,
-            cell_align: Align::Left,
+        let mut active_list = DataTable::default().with_properties(DataTableProperties {
+            columns: vec![
+                ("Active Mods", Align::Left).into(),
+                ("Version", Align::Left).into(),
+                ("Author", Align::Left).into(),
+            ],
             cell_padding: 4,
             cell_selection_color: fltk::enums::Color::Free,
             header_font_color: fltk::enums::Color::Gray0,
@@ -245,10 +248,9 @@ impl ModManager {
         });
         active_list.make_resizable(true);
         active_list.set_row_header(false);
+        active_list.set_col_header(true);
         active_list.set_col_resize(true);
-        active_list.set_col_header_value(0, "Active Mods");
-        active_list.set_col_header_value(1, "Version");
-        active_list.set_col_header_value(2, "Author");
+        active_list.end();
         grid.cell()
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
@@ -669,7 +671,7 @@ lazy_static! {
     static ref BBCODE: BBCode = BBCode::from_config(BBCodeTagConfig::extended(), None).unwrap();
 }
 
-fn adjust_col_widths(table: &mut SmartTable) {
+fn adjust_col_widths(table: &mut DataTable<ModRow>) {
     let scrollbar_width = table.scrollbar_size();
     let scrollbar_width =
         if scrollbar_width > 0 { scrollbar_width } else { fltk::app::scrollbar_size() };
@@ -678,25 +680,28 @@ fn adjust_col_widths(table: &mut SmartTable) {
     table.set_col_width(0, width);
 }
 
-fn populate_table(table: &mut SmartTable, mods: &Mods, refs: &Vec<ModRef>) {
-    let mut rows = Vec::with_capacity(mods.len());
+fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {
+    let rows = table.data();
+    let mut rows = rows.borrow_mut();
+    rows.clear();
+
     for mod_ref in refs {
         rows.push(make_mod_row(&mods, mod_ref));
     }
-    *table.data_ref().lock().unwrap() = rows;
-    table.set_rows(refs.len() as _);
-    table.redraw();
+    drop(rows);
+
+    table.updated(DataTableUpdate::DATA);
 }
 
-fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> Vec<String> {
+fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
     if let Some(mod_info) = mods.get(mod_ref) {
-        vec![
+        [
             mod_info.name.clone(),
             mod_info.version.to_string(),
             mod_info.author.clone(),
         ]
     } else {
-        vec![
+        [
             match mod_ref {
                 ModRef::Installed(_) => unreachable!(),
                 ModRef::UnknownFolder(folder) => format!("??? ({})", folder),
@@ -708,11 +713,11 @@ fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> Vec<String> {
     }
 }
 
-fn mutate_table<R>(table: &mut SmartTable, mutator: impl FnOnce(&mut Vec<Vec<String>>) -> R) -> R {
-    let data_ref = table.data_ref();
-    let mut data = data_ref.lock().unwrap();
+fn mutate_table<R>(table: &DataTable<ModRow>, mutator: impl FnOnce(&mut Vec<ModRow>) -> R) -> R {
+    let data = table.data();
+    let mut data = data.borrow_mut();
     let result = mutator(&mut data);
-    table.set_rows(data.len() as _);
-    table.redraw();
+    drop(data);
+    table.updated(DataTableUpdate::DATA);
     result
 }

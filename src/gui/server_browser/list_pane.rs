@@ -1,6 +1,8 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 
 use fltk::enums::{Align, Event};
@@ -8,17 +10,19 @@ use fltk::frame::Frame;
 use fltk::misc::Tooltip;
 use fltk::prelude::*;
 use fltk::table::TableContext;
-use fltk_table::{SmartTable, TableOpts};
 use lazy_static::lazy_static;
 
 use crate::gui::data::{IterableTableSource, TableSource};
+use crate::gui::widgets::{DataColumn, DataTable, DataTableProperties, DataTableUpdate};
 use crate::gui::{glyph, is_table_nav_event};
 use crate::servers::{Server, SortCriteria, SortKey};
 
 use super::{mode_name, region_name};
 
+type ServerRow = [Cow<'static, str>; NUM_COLS];
+
 pub(super) struct ListPane {
-    table: SmartTable,
+    table: DataTable<ServerRow>,
     loading_label: Frame,
     sort_criteria: RefCell<SortCriteria>,
     server_list: RefCell<Rc<RefCell<dyn TableSource<Output = Server>>>>,
@@ -34,33 +38,33 @@ struct Selection {
 
 impl ListPane {
     pub fn new(initial_sort: &SortCriteria, scroll_lock: bool) -> Rc<Self> {
-        let mut table = SmartTable::default_fill().with_opts(TableOpts {
-            rows: 0,
-            cols: SERVER_LIST_COLS.len() as _,
-            editable: false,
+        let sorted_col = sort_key_to_column(initial_sort.key);
+        let columns = SERVER_LIST_COLS
+            .iter()
+            .enumerate()
+            .map(|(idx, col)| {
+                let ascending = if idx == sorted_col { Some(initial_sort.ascending) } else { None };
+                col.to_data_column(ascending)
+            })
+            .collect();
+        let mut table = DataTable::default().with_properties(DataTableProperties {
+            columns,
+            cell_padding: 4,
             cell_selection_color: fltk::enums::Color::Free,
             header_font_color: fltk::enums::Color::Gray0,
             ..Default::default()
         });
         table.make_resizable(true);
         table.set_row_header(false);
+        table.set_col_header(true);
         table.set_col_resize(true);
 
-        let sorted_col = sort_key_to_column(initial_sort.key);
-
-        for (idx, col) in SERVER_LIST_COLS.iter().enumerate() {
-            let idx = idx as _;
-            let ascending = if idx == sorted_col { Some(initial_sort.ascending) } else { None };
-            table.set_col_header_value(idx, &col.header(ascending));
-            table.set_col_width(idx, col.width);
-        }
+        table.end();
+        table.hide();
 
         let loading_label = Frame::default_fill()
             .with_label("Fetching server list...")
             .with_align(Align::Center);
-
-        table.end();
-        table.hide();
 
         let list_pane = Rc::new(Self {
             table: table.clone(),
@@ -116,17 +120,15 @@ impl ListPane {
     }
 
     pub fn update(&self, indices: impl IntoIterator<Item = usize>) {
-        let mut table = self.table.clone();
-
         let servers_ref = self.server_list.borrow();
         let servers = servers_ref.borrow();
 
         let selection = self.selection.borrow();
         let mut reselect = false;
 
-        let data_ref = table.data_ref();
         {
-            let mut data = data_ref.lock().unwrap();
+            let data = self.table.data();
+            let mut data = data.borrow_mut();
             for idx in indices.into_iter() {
                 data[idx] = make_server_row(&servers[idx]);
                 if Some(idx) == selection.index {
@@ -134,7 +136,7 @@ impl ListPane {
                 }
             }
         }
-        table.redraw();
+        self.table.updated(DataTableUpdate::DATA);
 
         if reselect {
             self.on_server_selected.borrow()(Some(&servers[selection.index.unwrap()]));
@@ -192,15 +194,12 @@ impl ListPane {
     }
 
     fn set_server_list(&self, server_list: Rc<RefCell<dyn TableSource<Output = Server>>>) {
-        let mut table = self.table.clone();
         {
             let servers = server_list.borrow();
             {
-                let data_ref = table.data_ref();
-                *data_ref.lock().unwrap() = servers.iter().map(make_server_row).collect();
+                *self.table.data().borrow_mut() = servers.iter().map(make_server_row).collect();
             }
-            table.set_rows(servers.len() as _);
-            table.redraw();
+            self.table.updated(DataTableUpdate::DATA);
         }
         *self.server_list.borrow_mut() = server_list;
     }
@@ -222,8 +221,7 @@ impl ListPane {
     }
 
     fn header_clicked(&self) {
-        let mut table = self.table.clone();
-        let col = table.callback_col();
+        let col = self.table.callback_col() as usize;
         let new_key = match column_to_sort_key(col) {
             Some(key) => key,
             None => return,
@@ -237,14 +235,16 @@ impl ListPane {
                 ascending: true,
             }
         };
-        if old_criteria.key != new_criteria.key {
-            let old_col = sort_key_to_column(old_criteria.key);
-            table.set_col_header_value(old_col, &SERVER_LIST_COLS[old_col as usize].header(None));
+        {
+            let props = self.table.properties();
+            let mut props = props.borrow_mut();
+            if old_criteria.key != new_criteria.key {
+                let old_col = sort_key_to_column(old_criteria.key);
+                props.columns[old_col].header = SERVER_LIST_COLS[old_col].header(None);
+            }
+            props.columns[col].header = SERVER_LIST_COLS[col].header(Some(new_criteria.ascending));
         }
-        table.set_col_header_value(
-            col,
-            &SERVER_LIST_COLS[col as usize].header(Some(new_criteria.ascending)),
-        );
+        self.table.updated(DataTableUpdate::PROPERTIES);
         *self.sort_criteria.borrow_mut() = new_criteria;
         self.on_sort_changed.borrow()(new_criteria);
     }
@@ -279,9 +279,9 @@ impl ListPane {
                 };
                 if *tooltip_pos != new_pos {
                     if let Some((TableContext::Cell, row, col)) = &new_pos {
-                        let data_ref = self.table.data_ref();
-                        let data_ref = data_ref.lock().unwrap();
-                        if data_ref[*row as usize][*col as usize].is_empty() {
+                        let data = self.table.data();
+                        let data = data.borrow();
+                        if data[*row as usize][*col as usize].is_empty() {
                             new_pos = None;
                         }
                     }
@@ -315,26 +315,29 @@ impl ListPane {
 struct Column {
     header: &'static str,
     width: i32,
+    align: Align,
     sort_key: Option<SortKey>,
-    value_fn: fn(&Server) -> String,
+    value_fn: fn(&Server) -> Cow<'static, str>,
 }
 
 impl Column {
     const fn new(
         header: &'static str,
         width: i32,
+        align: Align,
         sort_key: Option<SortKey>,
-        value_fn: fn(&Server) -> String,
+        value_fn: fn(&Server) -> Cow<'static, str>,
     ) -> Self {
         Self {
             header,
             width,
+            align,
             sort_key,
             value_fn,
         }
     }
 
-    fn value_for(&self, server: &Server) -> String {
+    fn value_for(&self, server: &Server) -> Cow<'static, str> {
         (self.value_fn)(server)
     }
 
@@ -353,36 +356,43 @@ impl Column {
             }
         )
     }
+
+    fn to_data_column(&self, ascending: Option<bool>) -> DataColumn {
+        DataColumn::default()
+            .with_header(self.header(ascending))
+            .with_align(self.align)
+            .with_width(self.width)
+    }
 }
 
 macro_rules! col {
-    ($header:expr, $width:expr, $sort_key:expr, $value_fn:expr) => {
-        Column::new($header, $width, $sort_key, $value_fn)
+    ($header:expr, $width:expr, $align:ident, $sort_key:expr, $value_fn:expr) => {
+        Column::new($header, $width, Align::$align, $sort_key, $value_fn)
     };
 }
 
 #[rustfmt::skip]
 const SERVER_LIST_COLS: &[Column] = &[
-    col!(glyph::WARNING, 20, None, |server| str_if(!server.is_valid(), glyph::WARNING)),
-    col!(glyph::LOCK, 20, None, |server| str_if(server.password_protected, glyph::LOCK)),
-    col!(glyph::TOOLS, 20, None, |server| str_if(server.is_modded(), glyph::TOOLS)),
-    col!(glyph::FLAG, 20, None, |server| str_if(server.is_official(), glyph::FLAG)),
-    col!(glyph::EYE, 20, None, |server| str_if(server.battleye_required, glyph::EYE)),
-    col!(glyph::HEART, 20, None, |server| str_if(server.favorite, glyph::HEART)),
-    col!("Server Name", 380, Some(SortKey::Name), |server| server.name.clone()),
-    col!("Map", 150, Some(SortKey::Map), |server| server.map.clone()),
-    col!("Mode", 80, Some(SortKey::Mode), |server| mode_name(server.mode()).to_string()),
-    col!("Region", 80, Some(SortKey::Region), |server| region_name(server.region).to_string()),
-    col!("Players", 70, Some(SortKey::Players), |server| players_col_value(server)),
-    col!("Age", 60, Some(SortKey::Age), |server| age_col_value(server)),
-    col!("Ping", 60, Some(SortKey::Ping), |server| ping_col_value(server)),
+    col!(glyph::WARNING, 20, Center, None, |server| str_if(!server.is_valid(), glyph::WARNING)),
+    col!(glyph::LOCK, 20, Center, None, |server| str_if(server.password_protected, glyph::LOCK)),
+    col!(glyph::TOOLS, 20, Center, None, |server| str_if(server.is_modded(), glyph::TOOLS)),
+    col!(glyph::FLAG, 20, Center, None, |server| str_if(server.is_official(), glyph::FLAG)),
+    col!(glyph::EYE, 20, Center, None, |server| str_if(server.battleye_required, glyph::EYE)),
+    col!(glyph::HEART, 20, Center, None, |server| str_if(server.favorite, glyph::HEART)),
+    col!("Server Name", 380, Left, Some(SortKey::Name), |server| server.name.clone().into()),
+    col!("Map", 150, Center, Some(SortKey::Map), |server| server.map.clone().into()),
+    col!("Mode", 80, Center, Some(SortKey::Mode), |server| mode_name(server.mode()).into()),
+    col!("Region", 80, Center, Some(SortKey::Region), |server| region_name(server.region).into()),
+    col!("Players", 70, Center, Some(SortKey::Players), |server| players_col_value(server).into()),
+    col!("Age", 60, Center, Some(SortKey::Age), |server| age_col_value(server).into()),
+    col!("Ping", 60, Center, Some(SortKey::Ping), |server| ping_col_value(server).into()),
 ];
+const NUM_COLS: usize = SERVER_LIST_COLS.len();
 
 lazy_static! {
-    static ref SORT_KEY_TO_COLUMN: HashMap<SortKey, i32> = {
+    static ref SORT_KEY_TO_COLUMN: HashMap<SortKey, usize> = {
         let mut map = HashMap::new();
         for col in 0..SERVER_LIST_COLS.len() {
-            let col = col as _;
             if let Some(sort_key) = column_to_sort_key(col) {
                 map.insert(sort_key, col);
             }
@@ -399,16 +409,16 @@ lazy_static! {
     ];
 }
 
-fn sort_key_to_column(sort_key: SortKey) -> i32 {
+fn sort_key_to_column(sort_key: SortKey) -> usize {
     *SORT_KEY_TO_COLUMN.get(&sort_key).unwrap()
 }
 
-fn column_to_sort_key(col: i32) -> Option<SortKey> {
-    SERVER_LIST_COLS[col as usize].sort_key
+fn column_to_sort_key(col: usize) -> Option<SortKey> {
+    SERVER_LIST_COLS[col].sort_key
 }
 
-fn str_if(condition: bool, str_true: &str) -> String {
-    (if condition { str_true } else { "" }).to_string()
+fn str_if(condition: bool, str_true: &'static str) -> Cow<'static, str> {
+    (if condition { str_true } else { "" }).into()
 }
 
 fn players_col_value(server: &Server) -> String {
@@ -440,9 +450,13 @@ fn pong_suffix(server: &Server) -> &str {
     }
 }
 
-fn make_server_row(server: &Server) -> Vec<String> {
-    SERVER_LIST_COLS
-        .iter()
-        .map(|col| col.value_for(server))
-        .collect()
+fn make_server_row(server: &Server) -> ServerRow {
+    let mut row: [MaybeUninit<Cow<'static, str>>; NUM_COLS] =
+        unsafe { MaybeUninit::uninit().assume_init() };
+
+    for (idx, col) in SERVER_LIST_COLS.iter().enumerate() {
+        row[idx].write(col.value_for(server));
+    }
+
+    unsafe { std::mem::transmute(row) }
 }

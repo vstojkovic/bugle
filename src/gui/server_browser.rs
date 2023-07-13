@@ -96,6 +96,7 @@ pub(super) struct ServerBrowser {
     total_players_text: Frame,
     pending_update: Rc<Cell<Option<ServerBrowserUpdate>>>,
     state: Rc<RefCell<ServerBrowserState>>,
+    refreshing: Cell<bool>,
 }
 
 impl ServerBrowser {
@@ -210,6 +211,7 @@ impl ServerBrowser {
             total_players_text,
             pending_update: Rc::new(Cell::new(None)),
             state: Rc::clone(&state),
+            refreshing: Cell::new(true),
         });
 
         filter_pane.set_filter_holder(Rc::clone(&browser));
@@ -329,12 +331,16 @@ impl ServerBrowser {
                             }
                         }
                         Action::Refresh => {
+                            browser.refreshing.set(true);
                             {
                                 let mut state = browser.state.borrow_mut();
                                 state.update_source(Vec::clear);
                             }
                             browser.list_pane.mark_refreshing();
                             browser.list_pane.set_selected_index(None, false);
+                            let mut total_players_text = browser.total_players_text.clone();
+                            total_players_text.set_label("?");
+                            total_players_text.redraw();
                             (browser.on_action)(ServerBrowserAction::LoadServers).unwrap();
                         }
                         Action::DirectConnect => {
@@ -389,6 +395,7 @@ impl ServerBrowser {
             }
             ServerBrowserUpdate::PopulateServers(payload) => {
                 if self.root.visible() {
+                    self.refreshing.set(false);
                     match payload {
                         Ok(all_servers) => self.populate_servers(all_servers),
                         Err(err) => {
@@ -451,6 +458,10 @@ impl ServerBrowser {
     }
 
     fn update_pinged_servers(&self, updates: &[PingResponse]) {
+        if self.refreshing.get() {
+            return;
+        }
+
         let mut total_players = self.total_players.get();
         self.update_servers(
             updates.len(),

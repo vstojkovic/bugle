@@ -261,7 +261,7 @@ pub enum Mode {
 }
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Validity: u8 {
         const VALID = 0;
         const INVALID_BUILD = 1;

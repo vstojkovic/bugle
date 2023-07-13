@@ -1,66 +1,73 @@
 use std::borrow::Cow;
 
 use fltk::prelude::*;
-use fltk_table::{SmartTable, TableOpts};
 use nom::character::complete::{char, digit1};
 use nom::sequence::separated_pair;
 use nom::IResult;
 
+use crate::gui::widgets::{DataTable, DataTableProperties, DataTableUpdate};
 use crate::gui::{make_readonly_cell_widget, ReadOnlyText};
 use crate::servers::{DropOnDeath, Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name};
 
 pub(super) struct DetailsPane {
-    table: SmartTable,
+    table: DataTable<[Cow<'static, str>; 2]>,
     cell: ReadOnlyText,
 }
 
 impl DetailsPane {
     pub fn new() -> Self {
-        let mut table = SmartTable::default_fill().with_opts(TableOpts {
-            rows: SERVER_DETAILS_ROWS.len() as _,
-            cols: 1,
-            editable: false,
+        let table_props = DataTableProperties {
+            columns: vec!["Server Details".into()],
             cell_selection_color: fltk::enums::Color::Free,
             header_font_color: fltk::enums::Color::Gray0,
             ..Default::default()
-        });
+        };
+        let width_padding = table_props.cell_padding * 2 + fltk::app::scrollbar_size();
+
+        let mut table = DataTable::<[Cow<'static, str>; 2]>::default().with_properties(table_props);
+        table.set_row_header(true);
+        table.set_col_header(true);
         table.set_col_resize(true);
 
         let mut header_width = 0i32;
         fltk::draw::set_font(table.label_font(), table.label_size());
-        for (idx, (header, _)) in SERVER_DETAILS_ROWS.iter().enumerate() {
-            let idx = idx as _;
-            table.set_row_header_value(idx, header);
+        for (header, _) in SERVER_DETAILS_ROWS.iter() {
             let (w, _) = fltk::draw::measure(header, true);
             header_width = std::cmp::max(header_width, w);
         }
-        header_width += 20;
+        header_width += width_padding;
         table.set_row_header_width(header_width);
 
         let w = table.w();
-        table.set_col_header_value(0, "Server Details");
-        table.set_col_width(0, w - header_width - 20);
+        table.set_col_width(0, w - header_width - width_padding);
 
         table.end();
 
         let cell = make_readonly_cell_widget(&table);
 
-        Self { table, cell }
+        let pane = Self { table, cell };
+        pane.populate(None);
+
+        pane
     }
 
     pub fn populate(&self, server: Option<&Server>) {
         self.cell.clone().hide();
-        let mut table = self.table.clone();
-        if let Some(server) = server {
-            for (idx, (_, cell_value)) in SERVER_DETAILS_ROWS.iter().enumerate() {
-                table.set_cell_value(idx as _, 0, cell_value(server).as_ref());
+        {
+            let data = self.table.data();
+            let mut data = data.borrow_mut();
+            data.clear();
+            for (header, cell_value) in SERVER_DETAILS_ROWS.iter() {
+                let value = match server {
+                    Some(server) => cell_value(server).into_owned(),
+                    None => String::new(),
+                };
+                data.push([(*header).into(), value.into()]);
             }
-        } else {
-            table.clear();
         }
-        table.redraw();
+        self.table.updated(DataTableUpdate::DATA);
     }
 }
 
