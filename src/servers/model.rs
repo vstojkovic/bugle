@@ -420,7 +420,7 @@ impl<'de> Deserialize<'de> for DropOnDeath {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum Weekday {
     Mon,
     Tue,

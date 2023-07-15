@@ -19,7 +19,7 @@ use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
     Community, FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server,
-    SortCriteria, SortKey, TypeFilter,
+    SortCriteria, SortKey, TypeFilter, Weekday,
 };
 
 use self::actions_pane::{Action, ActionsPane};
@@ -647,5 +647,17 @@ fn community_name(community: Community) -> &'static str {
         Community::Hardcore => "Hardcore",
         Community::RolePlaying => "Role Playing",
         Community::Experimental => "Experimental",
+    }
+}
+
+fn weekday_name(weekday: Weekday) -> &'static str {
+    match weekday {
+        Weekday::Mon => "Mon",
+        Weekday::Tue => "Tue",
+        Weekday::Wed => "Wed",
+        Weekday::Thu => "Thu",
+        Weekday::Fri => "Fri",
+        Weekday::Sat => "Sat",
+        Weekday::Sun => "Sun",
     }
 }
