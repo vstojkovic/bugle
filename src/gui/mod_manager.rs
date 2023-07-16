@@ -656,6 +656,7 @@ impl ModManager {
         let webview = Webview::create(false, &mut popup);
         webview.set_html(&html);
 
+        // TODO: Ensure main loop is run
         while popup.shown() {
             app::wait();
         }

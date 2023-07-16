@@ -252,6 +252,7 @@ impl ServerBrowser {
                                         let dialog =
                                             ConnectDialog::server_password(&browser.root, server);
                                         dialog.show();
+                                        // TODO: Ensure main loop is run
                                         while dialog.shown() {
                                             fltk::app::wait();
                                         }
@@ -346,6 +347,7 @@ impl ServerBrowser {
                         Action::DirectConnect => {
                             let dialog = ConnectDialog::direct_connect(&browser.root);
                             dialog.show();
+                            // TODO: Ensure main loop is run
                             while dialog.shown() {
                                 fltk::app::wait();
                             }
