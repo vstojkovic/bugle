@@ -8,8 +8,6 @@ use fltk::frame::Frame;
 use fltk::input::{Input, SecretInput};
 use fltk::menu::MenuButton;
 use fltk::misc::InputChoice;
-use fltk::prelude::*;
-use fltk::table::TableContext;
 use fltk_float::button::{ButtonElement, MenuButtonElement};
 use fltk_float::frame::FrameElement;
 use fltk_float::input::InputElement;
@@ -35,7 +33,6 @@ pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
-use self::widgets::{DataTable, ReadOnlyText, ReadOnlyTextElement};
 
 pub enum Action {
     HomeAction(HomeAction),
@@ -88,6 +85,7 @@ pub fn prompt_confirm(prompt: &str) -> bool {
 
 thread_local! {
     static WRAPPER_FACTORY: Rc<WrapperFactory> = {
+        use self::widgets::{ReadOnlyText, ReadOnlyTextElement};
         let mut factory = WrapperFactory::new();
         factory.set_wrapper::<Button, ButtonElement<Button>>();
         factory.set_wrapper::<CheckButton, ButtonElement<CheckButton>>();
@@ -113,45 +111,4 @@ fn is_table_nav_event() -> bool {
         Event::Released => app::event_is_click(),
         _ => false,
     }
-}
-
-fn make_readonly_cell_widget<T: 'static>(table: &DataTable<T>) -> ReadOnlyText {
-    let mut cell = ReadOnlyText::new(String::new());
-    cell.set_scrollbar_size(-1);
-    cell.hide();
-
-    cell.handle(move |cell, event| {
-        if let Event::Unfocus = event {
-            cell.hide();
-        }
-        false
-    });
-
-    {
-        let mut cell = cell.clone();
-        let table = table.clone();
-        table.clone().handle(move |_, event| {
-            if (event == Event::Push) || (event == Event::MouseWheel) {
-                cell.hide();
-            }
-            if is_table_nav_event() && app::event_clicks() {
-                if let TableContext::Cell = table.callback_context() {
-                    let row = table.callback_row();
-                    let col = table.callback_col();
-                    if let Some((x, y, w, h)) = table.find_cell(TableContext::Cell, row, col) {
-                        cell.resize(x, y, w, h);
-                        let cell_value = table.cell_text(row, col);
-                        let cell_value_len = cell_value.len();
-                        cell.set_value(cell_value);
-                        cell.buffer().unwrap().select(0, cell_value_len as _);
-                        cell.show();
-                        let _ = cell.take_focus();
-                    }
-                }
-            }
-            false
-        });
-    }
-
-    cell
 }

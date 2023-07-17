@@ -6,8 +6,9 @@ use nom::sequence::separated_pair;
 use nom::IResult;
 use strum::IntoEnumIterator;
 
-use crate::gui::widgets::{DataTable, DataTableProperties, DataTableUpdate};
-use crate::gui::{make_readonly_cell_widget, ReadOnlyText};
+use crate::gui::widgets::{
+    make_readonly_cell_widget, DataTable, DataTableProperties, DataTableUpdate, ReadOnlyText,
+};
 use crate::servers::{DropOnDeath, Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name, weekday_name};
