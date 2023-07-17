@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -14,14 +14,18 @@ use crate::game::{Branch, Game, ModInfo};
 pub struct Steam {
     logger: Logger,
     installation: SteamDir,
-    client: Option<Client>,
-    ticket: RefCell<Option<Rc<SteamTicket>>>,
 }
 
 pub struct SteamGameLocation {
     game_path: PathBuf,
     workshop_path: Option<PathBuf>,
     branch: Branch,
+}
+
+pub struct SteamClient {
+    branch: Branch,
+    client: RefCell<Option<Client>>,
+    ticket: RefCell<Option<Rc<SteamTicket>>>,
 }
 
 impl Steam {
@@ -32,8 +36,6 @@ impl Steam {
         Some(Self {
             logger: logger.new(o!("platform" => "steam")),
             installation,
-            client: None,
-            ticket: RefCell::new(None),
         })
     }
 
@@ -67,7 +69,7 @@ impl Steam {
         })
     }
 
-    pub fn init_game(&mut self, location: SteamGameLocation) -> Result<Game> {
+    pub fn init_game(&mut self, location: SteamGameLocation) -> Result<(Game, SteamClient)> {
         debug!(
             self.logger,
             "Enumerating installed mods";
@@ -79,35 +81,40 @@ impl Steam {
             Vec::new()
         };
 
-        self.client = init_client(location.branch);
-
-        Game::new(
+        let game = Game::new(
             self.logger.clone(),
             location.game_path,
             location.branch,
             installed_mods,
-        )
-    }
+        )?;
 
-    pub fn check_client(&mut self, branch: Branch) {
-        if self.client.is_none() {
-            self.client = init_client(branch);
+        Ok((game, SteamClient::new(location.branch)))
+    }
+}
+
+impl SteamClient {
+    fn new(branch: Branch) -> Self {
+        Self {
+            branch,
+            client: RefCell::new(init_client(branch)),
+            ticket: RefCell::new(None),
         }
     }
 
-    pub fn can_launch(&mut self) -> bool {
-        self.client.is_some()
+    pub fn can_launch(&self) -> bool {
+        let client = self.check_client();
+        client.is_some()
     }
 
     pub fn can_play_online(&self) -> bool {
-        match &self.client {
+        match &*self.check_client() {
             Some(client) => client.user().logged_on(),
             None => false,
         }
     }
 
     pub fn user(&self) -> Option<PlatformUser> {
-        self.client.as_ref().map(|client| PlatformUser {
+        self.check_client().as_ref().map(|client| PlatformUser {
             id: client.user().steam_id().raw().to_string(),
             display_name: client.friends().name(),
         })
@@ -116,7 +123,7 @@ impl Steam {
     pub fn auth_ticket(&self) -> Option<Rc<SteamTicket>> {
         let mut ticket = self.ticket.borrow_mut();
         if ticket.is_none() {
-            *ticket = self.client.as_ref().and_then(|client| {
+            *ticket = self.check_client().as_ref().and_then(|client| {
                 let user = client.user();
                 if user.logged_on() {
                     Some(Rc::new(SteamTicket::new(user)))
@@ -126,6 +133,14 @@ impl Steam {
             });
         }
         ticket.clone()
+    }
+
+    fn check_client(&self) -> RefMut<Option<Client>> {
+        let mut client = self.client.borrow_mut();
+        if client.is_none() {
+            *client = init_client(self.branch);
+        }
+        client
     }
 }
 

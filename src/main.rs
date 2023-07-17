@@ -13,6 +13,7 @@ use auth::{CachedUser, CachedUsers};
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
+use game::platform::steam::SteamClient;
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -51,7 +52,7 @@ struct Launcher {
     logger: Logger,
     log_level: Option<Arc<AtomicUsize>>,
     app: App,
-    steam: RefCell<Steam>,
+    steam: SteamClient,
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
@@ -73,7 +74,7 @@ impl Launcher {
         log_level: Option<Arc<AtomicUsize>>,
         can_switch_branch: bool,
         app: App,
-        steam: Steam,
+        steam: SteamClient,
         game: Game,
         config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
@@ -113,7 +114,7 @@ impl Launcher {
             logger,
             log_level,
             app,
-            steam: RefCell::new(steam),
+            steam,
             game,
             config: RefCell::new(config),
             config_persister,
@@ -228,13 +229,9 @@ impl Launcher {
                     }
                 }
 
-                let mut steam = self.steam.borrow_mut();
-                steam.check_client(self.game.branch());
-
-                let platform_user = steam.user().ok_or(anyhow!("Steam not running"));
+                let platform_user = self.steam.user().ok_or(anyhow!("Steam not running"));
                 let fls_account = TaskState::Ready(account);
-                let online_capability =
-                    self.online_capability(&*steam, &platform_user, &fls_account);
+                let online_capability = self.online_capability(&platform_user, &fls_account);
                 let sp_capability = self.sp_capability(&platform_user, &fls_account);
                 let auth_state = AuthState {
                     platform_user,
@@ -400,13 +397,13 @@ impl Launcher {
             return Ok(());
         }
 
-        let steam = self.steam.borrow();
-        if !steam.can_play_online() {
+        if !self.steam.can_play_online() {
             match &*self.game.last_session() {
                 Some(Session::Online(_)) => bail!(ERR_STEAM_NOT_ONLINE),
                 Some(Session::SinglePlayer(_)) => {
                     let cached_users = self.cached_users();
-                    let fls_account_id = steam
+                    let fls_account_id = self
+                        .steam
                         .user()
                         .and_then(|user| cached_users.by_platform_id(&user.id))
                         .map(|user| user.account.master_id.as_str());
@@ -418,7 +415,6 @@ impl Launcher {
                 _ => (),
             }
         }
-        drop(steam);
 
         let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
             enabled
@@ -440,7 +436,7 @@ impl Launcher {
         if !self.can_launch() {
             return Ok(());
         }
-        if !self.steam.borrow().can_play_online() {
+        if !self.steam.can_play_online() {
             bail!(ERR_STEAM_NOT_ONLINE);
         }
         let use_battleye = match self.config().use_battleye {
@@ -463,13 +459,13 @@ impl Launcher {
         if !self.can_launch() {
             return Ok(());
         }
-        let steam = self.steam.borrow();
         let cached_users = self.cached_users();
-        let fls_account_id = steam
+        let fls_account_id = self
+            .steam
             .user()
             .and_then(|user| cached_users.by_platform_id(&user.id))
             .map(|user| user.account.master_id.as_str());
-        if !steam.can_play_online() {
+        if !self.steam.can_play_online() {
             if fls_account_id.is_none() {
                 bail!(ERR_FLS_ACCOUNT_NOT_CACHED);
             }
@@ -484,10 +480,10 @@ impl Launcher {
         if !self.can_launch() {
             return Ok(());
         }
-        let steam = self.steam.borrow();
         let cached_users = self.cached_users();
-        if !steam.can_play_online() {
-            let cached_user = steam
+        if !self.steam.can_play_online() {
+            let cached_user = self
+                .steam
                 .user()
                 .and_then(|user| cached_users.by_platform_id(&user.id));
             if cached_user.is_none() {
@@ -499,16 +495,13 @@ impl Launcher {
     }
 
     fn check_auth_state(&self) -> AuthState {
-        let mut steam = self.steam.borrow_mut();
-        steam.check_client(self.game.branch());
-
-        let platform_user = steam.user().ok_or(anyhow!("Steam not running"));
+        let platform_user = self.steam.user().ok_or(anyhow!("Steam not running"));
         let fls_account = match &platform_user {
             Ok(user) => {
                 if let Some(cached) = self.cached_users().by_platform_id(&user.id).as_deref() {
                     TaskState::Ready(Ok(cached.account.clone()))
                 } else {
-                    if steam.can_play_online() {
+                    if self.steam.can_play_online() {
                         TaskState::Pending
                     } else {
                         TaskState::Ready(Err(anyhow!("Steam in offline mode")))
@@ -517,11 +510,11 @@ impl Launcher {
             }
             Err(err) => TaskState::Ready(Err(anyhow!(err.to_string()))),
         };
-        let online_capability = self.online_capability(&*steam, &platform_user, &fls_account);
+        let online_capability = self.online_capability(&platform_user, &fls_account);
         let sp_capability = self.sp_capability(&platform_user, &fls_account);
 
         if let TaskState::Pending = &fls_account {
-            Arc::clone(&self.fls_worker).login_with_steam(&*steam.auth_ticket().unwrap());
+            Arc::clone(&self.fls_worker).login_with_steam(&*self.steam.auth_ticket().unwrap());
         }
 
         AuthState {
@@ -534,14 +527,13 @@ impl Launcher {
 
     fn online_capability(
         &self,
-        steam: &Steam,
         platform_user: &Result<PlatformUser>,
         fls_account: &TaskState<Result<Account>>,
     ) -> TaskState<Capability> {
         match &platform_user {
             Err(err) => TaskState::Ready(Err(anyhow!(err.to_string()))),
             Ok(_) => {
-                if !steam.can_play_online() {
+                if !self.steam.can_play_online() {
                     TaskState::Ready(Err(anyhow!("Steam in offline mode")))
                 } else {
                     match &fls_account {
@@ -572,13 +564,7 @@ impl Launcher {
     }
 
     fn can_launch(&self) -> bool {
-        let branch = self.game.branch();
-        let can_launch = {
-            let mut steam = self.steam.borrow_mut();
-            steam.check_client(branch);
-            steam.can_launch()
-        };
-        if can_launch {
+        if self.steam.can_launch() {
             return true;
         }
 
@@ -604,12 +590,7 @@ impl Launcher {
         });
         loop {
             if should_poll.replace(false) {
-                let can_launch = {
-                    let mut steam = self.steam.borrow_mut();
-                    steam.check_client(branch);
-                    steam.can_launch()
-                };
-                if can_launch {
+                if self.steam.can_launch() {
                     return true;
                 }
             }
@@ -988,11 +969,11 @@ async fn main() {
             Branch::PublicBeta => Branch::Main,
         })
         .is_ok();
-    let game = steam
+    let game_and_client = steam
         .locate_game(config.branch)
         .and_then(|loc| steam.init_game(loc));
-    let game = match game {
-        Ok(game) => game,
+    let (game, steam) = match game_and_client {
+        Ok(game_and_client) => game_and_client,
         Err(err) => {
             if can_switch_branch {
                 let (this_name, other_name, other_branch) = match config.branch {
