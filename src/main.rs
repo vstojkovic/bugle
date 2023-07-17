@@ -988,10 +988,10 @@ async fn main() {
             Branch::PublicBeta => Branch::Main,
         })
         .is_ok();
-    let game = match steam
+    let game = steam
         .locate_game(config.branch)
-        .and_then(|loc| steam.init_game(loc))
-    {
+        .and_then(|loc| steam.init_game(loc));
+    let game = match game {
         Ok(game) => game,
         Err(err) => {
             if can_switch_branch {
