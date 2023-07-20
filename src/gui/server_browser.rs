@@ -15,6 +15,7 @@ use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
 use crate::config::ServerBrowserConfig;
+use crate::game::platform::steam::SteamModResolver;
 use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
@@ -59,6 +60,7 @@ pub enum ServerBrowserUpdate {
     PopulateServers(Result<Vec<Server>>),
     UpdateServer(PingResponse),
     BatchUpdateServers(Vec<PingResponse>),
+    RefreshDetails,
 }
 
 impl ServerBrowserUpdate {
@@ -104,6 +106,7 @@ impl ServerBrowser {
         logger: Logger,
         maps: Arc<Maps>,
         config: &ServerBrowserConfig,
+        mod_resolver: Rc<SteamModResolver>,
         on_action: impl Handler<ServerBrowserAction> + 'static,
     ) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
@@ -177,7 +180,7 @@ impl ServerBrowser {
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(lower_tile.clone(), Default::default()));
 
-        let details_pane = DetailsPane::new();
+        let details_pane = DetailsPane::new(mod_resolver);
 
         lower_tile.end();
 
@@ -415,6 +418,14 @@ impl ServerBrowser {
             }
             ServerBrowserUpdate::BatchUpdateServers(responses) => {
                 self.update_pinged_servers(&responses);
+            }
+            ServerBrowserUpdate::RefreshDetails => {
+                if self.root.visible() {
+                    if let Some(selected_idx) = self.list_pane.selected_index() {
+                        let server = &self.state.borrow()[selected_idx];
+                        self.details_pane.populate(Some(server));
+                    }
+                }
             }
         }
     }

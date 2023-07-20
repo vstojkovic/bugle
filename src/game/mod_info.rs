@@ -9,6 +9,7 @@ use binread::{BinReaderExt, BinResult};
 use serde::Deserialize;
 
 use super::engine::pak::Archive;
+use super::Branch;
 
 #[derive(Debug, Deserialize)]
 pub struct ModInfo {
@@ -101,6 +102,14 @@ impl ModInfo {
             ..serde_json::from_slice(&json_bytes)?
         })
     }
+
+    pub fn steam_file_id(&self, branch: Branch) -> Option<u64> {
+        let id_str = match branch {
+            Branch::Main => &self.live_steam_file_id,
+            Branch::PublicBeta => self.testlive_steam_file_id.as_ref()?,
+        };
+        id_str.parse().ok()
+    }
 }
 
 impl ToString for ModVersion {
@@ -179,6 +188,10 @@ impl Mods {
         } else {
             ModRef::UnknownFolder(folder.into_owned())
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ModInfo> {
+        self.mods.iter()
     }
 }
 

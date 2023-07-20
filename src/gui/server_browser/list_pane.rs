@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::mem::MaybeUninit;
 use std::rc::Rc;
 
 use fltk::enums::{Align, Event};
@@ -451,12 +450,5 @@ fn pong_suffix(server: &Server) -> &str {
 }
 
 fn make_server_row(server: &Server) -> ServerRow {
-    let mut row: [MaybeUninit<Cow<'static, str>>; NUM_COLS] =
-        unsafe { MaybeUninit::uninit().assume_init() };
-
-    for (idx, col) in SERVER_LIST_COLS.iter().enumerate() {
-        row[idx].write(col.value_for(server));
-    }
-
-    unsafe { std::mem::transmute(row) }
+    std::array::from_fn(|idx| SERVER_LIST_COLS[idx].value_for(server))
 }

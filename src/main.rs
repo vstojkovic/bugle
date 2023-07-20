@@ -13,7 +13,7 @@ use auth::{CachedUser, CachedUsers};
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
-use game::platform::steam::SteamClient;
+use game::platform::steam::{SteamClient, SteamModResolver};
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -52,7 +52,7 @@ struct Launcher {
     logger: Logger,
     log_level: Option<Arc<AtomicUsize>>,
     app: App,
-    steam: SteamClient,
+    steam: Rc<SteamClient>,
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
@@ -74,7 +74,7 @@ impl Launcher {
         log_level: Option<Arc<AtomicUsize>>,
         can_switch_branch: bool,
         app: App,
-        steam: SteamClient,
+        steam: Rc<SteamClient>,
         game: Game,
         config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
@@ -82,10 +82,18 @@ impl Launcher {
         let game = Arc::new(game);
         let (tx, rx) = app::channel();
 
+        let mod_resolver = SteamModResolver::new(
+            logger.clone(),
+            Rc::clone(&steam),
+            tx.clone(),
+            game.installed_mods(),
+        );
+
         let main_window = LauncherWindow::new(
             logger.clone(),
             Arc::clone(&game),
             &config,
+            mod_resolver,
             log_level.is_none(),
             can_switch_branch,
         );
@@ -167,6 +175,7 @@ impl Launcher {
     }
 
     fn run_loop_iteration(&self) -> bool {
+        self.steam.run_callbacks();
         let mut pending_ref = self.pending_update.borrow_mut();
         let pending_update = pending_ref.take();
         let next_update = self.rx.recv().and_then(|msg| self.process_message(msg));
@@ -975,6 +984,7 @@ async fn main() {
     let (game, steam) = match game_and_client {
         Ok(game_and_client) => game_and_client,
         Err(err) => {
+            error!(root_logger, "Error with Conan Exiles installation"; "error" => %err);
             if can_switch_branch {
                 let (this_name, other_name, other_branch) = match config.branch {
                     Branch::Main => ("Live", "TestLive", Branch::PublicBeta),

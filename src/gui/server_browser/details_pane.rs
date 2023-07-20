@@ -1,11 +1,14 @@
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use fltk::prelude::*;
 use nom::character::complete::{char, digit1};
-use nom::sequence::separated_pair;
+use nom::combinator::map_res;
+use nom::sequence::{separated_pair, terminated};
 use nom::IResult;
 use strum::IntoEnumIterator;
 
+use crate::game::platform::steam::SteamModResolver;
 use crate::gui::widgets::{
     make_readonly_cell_widget, DataTable, DataTableProperties, DataTableUpdate, ReadOnlyText,
 };
@@ -18,10 +21,11 @@ type DetailRow = [Cow<'static, str>; 2];
 pub(super) struct DetailsPane {
     table: DataTable<DetailRow>,
     cell: ReadOnlyText,
+    mod_resolver: Rc<SteamModResolver>,
 }
 
 impl DetailsPane {
-    pub fn new() -> Self {
+    pub fn new(mod_resolver: Rc<SteamModResolver>) -> Self {
         let table_props = DataTableProperties {
             columns: vec!["Server Details".into()],
             cell_selection_color: fltk::enums::Color::Free,
@@ -35,6 +39,18 @@ impl DetailsPane {
         table.set_col_header(true);
         table.set_col_resize(true);
 
+        table.end();
+
+        let cell = make_readonly_cell_widget(&table);
+
+        let pane = Self {
+            table,
+            cell,
+            mod_resolver,
+        };
+        pane.populate(None);
+
+        let mut table = pane.table.clone();
         let mut header_width = 0i32;
         fltk::draw::set_font(table.label_font(), table.label_size());
         let mut consumer = |row: DetailRow| {
@@ -42,20 +58,13 @@ impl DetailsPane {
             header_width = std::cmp::max(header_width, w);
         };
         for inspector in SERVER_DETAILS_ROWS.iter() {
-            inspector(None, &mut consumer, true);
+            inspector(&pane, None, &mut consumer, true);
         }
         header_width += width_padding;
         table.set_row_header_width(header_width);
 
         let w = table.w();
         table.set_col_width(0, w - header_width - width_padding);
-
-        table.end();
-
-        let cell = make_readonly_cell_widget(&table);
-
-        let pane = Self { table, cell };
-        pane.populate(None);
 
         pane
     }
@@ -68,18 +77,117 @@ impl DetailsPane {
             data.clear();
             let mut consumer = |row| data.push(row);
             for inspector in SERVER_DETAILS_ROWS.iter() {
-                inspector(server, &mut consumer, false);
+                inspector(self, server, &mut consumer, false);
             }
         }
         self.table.updated(DataTableUpdate::DATA);
     }
+
+    fn inspect_raid_hours(
+        &self,
+        server: Option<&Server>,
+        row_consumer: &mut dyn FnMut(DetailRow),
+        include_empty: bool,
+    ) {
+        let mut header = "Raid Hours";
+        let mut consumer_called = false;
+
+        if let Some(server) = server {
+            for weekday in Weekday::iter() {
+                if let Some((start, end)) = server.raid_hours.get(weekday) {
+                    row_consumer([
+                        header.into(),
+                        format!(
+                            "{}: {} - {}",
+                            weekday_name(weekday),
+                            start.to_string(),
+                            end.to_string(),
+                        )
+                        .into(),
+                    ]);
+                    header = "";
+                    consumer_called = true;
+                }
+            }
+        }
+
+        if !consumer_called && include_empty {
+            row_consumer([header.into(), "".into()]);
+        }
+    }
+
+    fn inspect_mods(
+        &self,
+        server: Option<&Server>,
+        row_consumer: &mut dyn FnMut(DetailRow),
+        include_empty: bool,
+    ) {
+        let mut header = "Mods";
+
+        let mods = match server.and_then(|server| server.mods.as_ref()) {
+            Some(mods) => mods,
+            None => {
+                if include_empty {
+                    row_consumer([header.into(), "".into()]);
+                }
+                return;
+            }
+        };
+
+        let (mut mod_ids, steam_mods, non_steam_mods) = match parse_mod_counts(mods) {
+            Ok((mod_ids, (steam_mods, non_steam_mods))) => (mod_ids, steam_mods, non_steam_mods),
+            Err(_) => {
+                row_consumer([header.into(), "????".into()]);
+                return;
+            }
+        };
+
+        let mut resolution: [(u64, Option<String>); 10] = std::array::from_fn(|_| (0u64, None));
+        let mut resolve_count = std::cmp::min(steam_mods, 10);
+        for idx in 0..resolve_count {
+            let (remaining, id) = match parse_mod_id(mod_ids) {
+                Ok((remaining, id)) => (remaining, id),
+                Err(_) => {
+                    resolve_count = idx;
+                    break;
+                }
+            };
+            mod_ids = remaining;
+            resolution[idx].0 = id;
+        }
+
+        self.mod_resolver.resolve(&mut resolution[0..resolve_count]);
+        for (id, name) in &resolution[0..resolve_count] {
+            match name {
+                Some(name) => row_consumer([header.into(), name.clone().into()]),
+                None => row_consumer([header.into(), format!("???? ({})", id).into()]),
+            };
+            header = "";
+        }
+        if steam_mods > resolve_count {
+            row_consumer([
+                header.into(),
+                format!("+{} more Steam mods", steam_mods - resolve_count).into(),
+            ]);
+            header = "";
+        }
+        if non_steam_mods > 0 {
+            row_consumer([
+                header.into(),
+                format!("+{} non-Steam mods", non_steam_mods).into(),
+            ]);
+        }
+    }
 }
 
-type Inspector = fn(Option<&Server>, &mut dyn FnMut(DetailRow), bool);
+type Inspector = fn(&DetailsPane, Option<&Server>, &mut dyn FnMut(DetailRow), bool);
 
 macro_rules! inspect_attr {
     ($header:literal, $lambda:expr) => {
-        |server: Option<&Server>, row_consumer: &mut dyn FnMut(DetailRow), _include_empty: bool| {
+        |_: &DetailsPane,
+         server: Option<&Server>,
+         row_consumer: &mut dyn FnMut(DetailRow),
+         _include_empty: bool| {
             row_consumer([$header.into(), server.map($lambda).unwrap_or_default()]);
         }
     };
@@ -87,7 +195,10 @@ macro_rules! inspect_attr {
 
 macro_rules! inspect_opt_attr {
     ($header:literal, $lambda:expr) => {
-        |server: Option<&Server>, row_consumer: &mut dyn FnMut(DetailRow), include_empty: bool| {
+        |_: &DetailsPane,
+         server: Option<&Server>,
+         row_consumer: &mut dyn FnMut(DetailRow),
+         include_empty: bool| {
             let detail = server.and_then($lambda);
             if detail.is_some() || include_empty {
                 row_consumer([$header.into(), detail.unwrap_or_default()]);
@@ -146,7 +257,7 @@ const SERVER_DETAILS_ROWS: &[Inspector] = &[
     inspect_attr!("Thrall Crafting Time Multiplier", |server| {
         server.crafting.thrall_crafting_time_mult.to_string().into()
     }),
-    raid_hours_inspector,
+    DetailsPane::inspect_raid_hours,
     inspect_attr!("Stamina Cost Multiplier", |server| {
         server.survival.stamina_cost_mult.to_string().into()
     }),
@@ -193,53 +304,23 @@ const SERVER_DETAILS_ROWS: &[Inspector] = &[
             .unwrap_or_default()
             .into()
     }),
-    inspect_opt_attr!("Mods", mods_cell_value),
+    DetailsPane::inspect_mods,
     inspect_opt_attr!("Problems", problems_cell_value),
 ];
 
-fn raid_hours_inspector(
-    server: Option<&Server>,
-    row_consumer: &mut dyn FnMut(DetailRow),
-    include_empty: bool,
-) {
-    let mut header = "Raid Hours";
-    let mut consumer_called = false;
-
-    if let Some(server) = server {
-        for weekday in Weekday::iter() {
-            if let Some((start, end)) = server.raid_hours.get(weekday) {
-                row_consumer([
-                    header.into(),
-                    format!(
-                        "{}: {} - {}",
-                        weekday_name(weekday),
-                        start.to_string(),
-                        end.to_string(),
-                    )
-                    .into(),
-                ]);
-                header = "";
-                consumer_called = true;
-            }
-        }
-    }
-
-    if !consumer_called && include_empty {
-        row_consumer([header.into(), "".into()]);
-    }
+fn parse_mod_counts(input: &str) -> IResult<&str, (usize, usize), ()> {
+    terminated(
+        separated_pair(
+            map_res(digit1, |count: &str| count.parse()),
+            char(':'),
+            map_res(digit1, |count: &str| count.parse()),
+        ),
+        char('\n'),
+    )(input)
 }
 
-fn mods_cell_value(server: &Server) -> Option<Cow<'static, str>> {
-    let mods = server.mods.as_ref()?;
-    if let Ok((_, (steam_mods, non_steam_mods))) = parse_mod_counts(mods) {
-        Some(format!("Steam: {}, Non-Steam: {}", steam_mods, non_steam_mods).into())
-    } else {
-        Some("????".into())
-    }
-}
-
-fn parse_mod_counts(input: &str) -> IResult<&str, (&str, &str), ()> {
-    separated_pair(digit1, char(':'), digit1)(input)
+fn parse_mod_id(input: &str) -> IResult<&str, u64, ()> {
+    terminated(map_res(digit1, |id: &str| id.parse()), char('\n'))(input)
 }
 
 fn problems_cell_value(server: &Server) -> Option<Cow<'static, str>> {

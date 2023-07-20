@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -23,6 +23,32 @@ pub fn create_root_logger(log_level: &Arc<AtomicUsize>) -> Logger {
         try_create_portable_mode_logger(log_level)
             .or_else(|_| try_create_appdata_logger(log_level))
             .unwrap_or_else(|_| create_discard_logger(log_level))
+    }
+}
+
+pub struct IteratorFormatter<I>(pub I)
+where
+    I: Iterator + Clone,
+    I::Item: Display;
+
+impl<I> Display for IteratorFormatter<I>
+where
+    I: Iterator + Clone,
+    I::Item: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        write!(f, "[")?;
+        for id in self.0.clone() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", id)?;
+        }
+        write!(f, "]")?;
+        Ok(())
     }
 }
 
