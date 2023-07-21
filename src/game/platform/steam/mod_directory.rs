@@ -5,6 +5,7 @@ use std::rc::Rc;
 use fltk::app;
 use slog::{debug, Logger};
 
+use crate::game::platform::ModDirectory;
 use crate::game::Mods;
 use crate::gui::ServerBrowserUpdate;
 use crate::logger::IteratorFormatter;
@@ -42,8 +43,10 @@ impl SteamModDirectory {
             tx,
         })
     }
+}
 
-    pub fn resolve(self: &Rc<Self>, mods: &mut [(u64, Option<String>)]) {
+impl ModDirectory for SteamModDirectory {
+    fn resolve(self: Rc<Self>, mods: &mut [(u64, Option<String>)]) {
         debug!(
             self.logger,
             "Resolving mod names";
@@ -64,7 +67,7 @@ impl SteamModDirectory {
             let mod_ids = mods
                 .iter()
                 .filter_map(|(id, name)| if name.is_none() { Some(*id) } else { None });
-            let this = Rc::clone(self);
+            let this = Rc::clone(&self);
             let tx = self.tx.clone();
             self.client.query_mods(mod_ids, move |results| {
                 let mut map = this.map.borrow_mut();

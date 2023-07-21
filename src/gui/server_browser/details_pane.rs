@@ -8,7 +8,7 @@ use nom::sequence::{separated_pair, terminated};
 use nom::IResult;
 use strum::IntoEnumIterator;
 
-use crate::game::platform::steam::SteamModDirectory;
+use crate::game::platform::ModDirectory;
 use crate::gui::widgets::{
     make_readonly_cell_widget, DataTable, DataTableProperties, DataTableUpdate, ReadOnlyText,
 };
@@ -21,11 +21,11 @@ type DetailRow = [Cow<'static, str>; 2];
 pub(super) struct DetailsPane {
     table: DataTable<DetailRow>,
     cell: ReadOnlyText,
-    mod_resolver: Rc<SteamModDirectory>,
+    mod_resolver: Rc<dyn ModDirectory>,
 }
 
 impl DetailsPane {
-    pub fn new(mod_resolver: Rc<SteamModDirectory>) -> Self {
+    pub fn new(mod_resolver: Rc<dyn ModDirectory>) -> Self {
         let table_props = DataTableProperties {
             columns: vec!["Server Details".into()],
             cell_selection_color: fltk::enums::Color::Free,
@@ -156,7 +156,7 @@ impl DetailsPane {
             resolution[idx].0 = id;
         }
 
-        self.mod_resolver.resolve(&mut resolution[0..resolve_count]);
+        Rc::clone(&self.mod_resolver).resolve(&mut resolution[0..resolve_count]);
         for (id, name) in &resolution[0..resolve_count] {
             match name {
                 Some(name) => row_consumer([header.into(), name.clone().into()]),
