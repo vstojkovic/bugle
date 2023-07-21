@@ -12,14 +12,14 @@ use crate::Message;
 
 use super::SteamClient;
 
-pub struct SteamModResolver {
+pub struct SteamModDirectory {
     logger: Logger,
     map: RefCell<HashMap<u64, String>>,
     client: Rc<SteamClient>,
     tx: app::Sender<Message>,
 }
 
-impl SteamModResolver {
+impl SteamModDirectory {
     pub fn new(
         logger: Logger,
         client: Rc<SteamClient>,
@@ -61,9 +61,9 @@ impl SteamModResolver {
         }
 
         if should_query {
-            let mod_ids =
-                mods.iter()
-                    .filter_map(|(id, name)| if name.is_none() { Some(*id) } else { None });
+            let mod_ids = mods
+                .iter()
+                .filter_map(|(id, name)| if name.is_none() { Some(*id) } else { None });
             let this = Rc::clone(self);
             let tx = self.tx.clone();
             self.client.query_mods(mod_ids, move |results| {

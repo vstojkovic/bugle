@@ -7,10 +7,10 @@ use slog::{debug, o, Logger};
 use steamlocate::SteamDir;
 
 mod client;
-mod mod_resolver;
+mod mod_directory;
 
 pub use self::client::{SteamClient, SteamTicket};
-pub use self::mod_resolver::SteamModResolver;
+pub use self::mod_directory::SteamModDirectory;
 use crate::game::{Branch, Game, ModInfo};
 
 pub struct Steam {

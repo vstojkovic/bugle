@@ -15,7 +15,7 @@ use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
 use crate::config::ServerBrowserConfig;
-use crate::game::platform::steam::SteamModResolver;
+use crate::game::platform::steam::SteamModDirectory;
 use crate::game::Maps;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
@@ -106,7 +106,7 @@ impl ServerBrowser {
         logger: Logger,
         maps: Arc<Maps>,
         config: &ServerBrowserConfig,
-        mod_resolver: Rc<SteamModResolver>,
+        mod_resolver: Rc<SteamModDirectory>,
         on_action: impl Handler<ServerBrowserAction> + 'static,
     ) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(

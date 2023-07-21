@@ -8,7 +8,7 @@ use nom::sequence::{separated_pair, terminated};
 use nom::IResult;
 use strum::IntoEnumIterator;
 
-use crate::game::platform::steam::SteamModResolver;
+use crate::game::platform::steam::SteamModDirectory;
 use crate::gui::widgets::{
     make_readonly_cell_widget, DataTable, DataTableProperties, DataTableUpdate, ReadOnlyText,
 };
@@ -21,11 +21,11 @@ type DetailRow = [Cow<'static, str>; 2];
 pub(super) struct DetailsPane {
     table: DataTable<DetailRow>,
     cell: ReadOnlyText,
-    mod_resolver: Rc<SteamModResolver>,
+    mod_resolver: Rc<SteamModDirectory>,
 }
 
 impl DetailsPane {
-    pub fn new(mod_resolver: Rc<SteamModResolver>) -> Self {
+    pub fn new(mod_resolver: Rc<SteamModDirectory>) -> Self {
         let table_props = DataTableProperties {
             columns: vec!["Server Details".into()],
             cell_selection_color: fltk::enums::Color::Free,

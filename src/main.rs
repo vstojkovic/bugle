@@ -13,7 +13,7 @@ use auth::{CachedUser, CachedUsers};
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
-use game::platform::steam::{SteamClient, SteamModResolver};
+use game::platform::steam::{SteamClient, SteamModDirectory};
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -82,7 +82,7 @@ impl Launcher {
         let game = Arc::new(game);
         let (tx, rx) = app::channel();
 
-        let mod_resolver = SteamModResolver::new(
+        let mod_directory = SteamModDirectory::new(
             logger.clone(),
             Rc::clone(&steam),
             tx.clone(),
@@ -93,7 +93,7 @@ impl Launcher {
             logger.clone(),
             Arc::clone(&game),
             &config,
-            mod_resolver,
+            mod_directory,
             log_level.is_none(),
             can_switch_branch,
         );

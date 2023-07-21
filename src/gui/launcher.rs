@@ -12,7 +12,7 @@ use fltk_float::SimpleWrapper;
 use slog::Logger;
 
 use crate::config::Config;
-use crate::game::platform::steam::SteamModResolver;
+use crate::game::platform::steam::SteamModDirectory;
 use crate::game::Game;
 
 use super::home::Home;
@@ -38,7 +38,7 @@ impl LauncherWindow {
         logger: Logger,
         game: Arc<Game>,
         config: &Config,
-        mod_resolver: Rc<SteamModResolver>,
+        mod_resolver: Rc<SteamModDirectory>,
         log_level_overridden: bool,
         can_switch_branch: bool,
     ) -> Self {
