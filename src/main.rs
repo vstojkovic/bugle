@@ -14,6 +14,7 @@ use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, Transie
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::platform::steam::{SteamClient, SteamModDirectory};
+use game::platform::ModDirectory;
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -44,6 +45,7 @@ pub enum Message {
     Update(Update),
     ServerList(Result<Vec<Server>>),
     Account(Result<Account>),
+    PlatformReady,
 }
 
 type CachedUsersPersister = fn(&Game, &CachedUsers) -> Result<()>;
@@ -58,6 +60,7 @@ struct Launcher {
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     tx: app::Sender<Message>,
     rx: app::Receiver<Message>,
+    mod_directory: Rc<dyn ModDirectory>,
     main_window: LauncherWindow,
     pending_update: RefCell<Option<Update>>,
     cached_users: RefCell<CachedUsers>,
@@ -74,15 +77,16 @@ impl Launcher {
         log_level: Option<Arc<AtomicUsize>>,
         can_switch_branch: bool,
         app: App,
-        steam: Rc<SteamClient>,
+        steam: Steam,
         game: Game,
         config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
     ) -> Rc<Self> {
         let game = Arc::new(game);
         let (tx, rx) = app::channel();
+        let steam = steam.init_client(&*game, tx.clone());
 
-        let mod_directory = SteamModDirectory::new(
+        let mod_directory: Rc<dyn ModDirectory> = SteamModDirectory::new(
             logger.clone(),
             Rc::clone(&steam),
             tx.clone(),
@@ -93,7 +97,7 @@ impl Launcher {
             logger.clone(),
             Arc::clone(&game),
             &config,
-            mod_directory,
+            Rc::clone(&mod_directory),
             log_level.is_none(),
             can_switch_branch,
         );
@@ -128,6 +132,7 @@ impl Launcher {
             config_persister,
             tx,
             rx,
+            mod_directory,
             main_window,
             pending_update: RefCell::new(None),
             cached_users: RefCell::new(cached_users),
@@ -161,6 +166,8 @@ impl Launcher {
         } else {
             self.server_loader_worker.load_servers();
         }
+
+        self.check_mod_updates();
 
         self.main_window
             .handle_update(Update::HomeUpdate(HomeUpdate::AuthState(
@@ -250,6 +257,10 @@ impl Launcher {
                 };
 
                 Some(Update::HomeUpdate(HomeUpdate::AuthState(auth_state)))
+            }
+            Message::PlatformReady => {
+                self.check_mod_updates();
+                None
             }
         }
     }
@@ -851,6 +862,25 @@ impl Launcher {
         (self.cached_users_persister)(&self.game, &*cached_users)
     }
 
+    fn check_mod_updates(&self) {
+        if !self.steam.can_launch() {
+            return;
+        }
+
+        for mod_info in self.game.installed_mods().iter() {
+            match Rc::clone(&self.mod_directory).needs_update(mod_info) {
+                Ok(needs_update) => mod_info.set_needs_update(needs_update),
+                Err(err) => warn!(
+                    self.logger,
+                    "Error checking whether mod needs update";
+                    "mod_name" => &mod_info.name,
+                    "pak_path" => ?mod_info.pak_path,
+                    "error" => %err,
+                ),
+            }
+        }
+    }
+
     fn task_monitor(&self, title: &str, message: &str, button: &str) -> Dialog<()> {
         Dialog::new(
             self.main_window.window(),
@@ -978,11 +1008,11 @@ async fn main() {
             Branch::PublicBeta => Branch::Main,
         })
         .is_ok();
-    let game_and_client = steam
+    let game = steam
         .locate_game(config.branch)
         .and_then(|loc| steam.init_game(loc));
-    let (game, steam) = match game_and_client {
-        Ok(game_and_client) => game_and_client,
+    let game = match game {
+        Ok(game) => game,
         Err(err) => {
             error!(root_logger, "Error with Conan Exiles installation"; "error" => %err);
             if can_switch_branch {

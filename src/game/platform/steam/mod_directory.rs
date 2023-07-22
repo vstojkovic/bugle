@@ -2,11 +2,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use anyhow::{anyhow, Result};
 use fltk::app;
 use slog::{debug, Logger};
 
 use crate::game::platform::ModDirectory;
-use crate::game::Mods;
+use crate::game::{ModInfo, Mods};
 use crate::gui::ServerBrowserUpdate;
 use crate::logger::IteratorFormatter;
 use crate::Message;
@@ -77,5 +78,14 @@ impl ModDirectory for SteamModDirectory {
                 tx.send(Message::Update(ServerBrowserUpdate::RefreshDetails.into()));
             });
         }
+    }
+
+    fn needs_update(self: Rc<Self>, mod_ref: &ModInfo) -> Result<bool> {
+        let mod_id = mod_ref
+            .steam_file_id(self.client.branch())
+            .ok_or(anyhow!("Mod does not have a Steam file ID"))?;
+        self.client
+            .mod_needs_update(mod_id)
+            .ok_or(anyhow!("Steam not running"))
     }
 }

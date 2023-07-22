@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
+use fltk::app;
 use keyvalues_parser::Vdf;
 use slog::{debug, o, Logger};
 use steamlocate::SteamDir;
@@ -12,6 +13,7 @@ mod mod_directory;
 pub use self::client::{SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
 use crate::game::{Branch, Game, ModInfo};
+use crate::Message;
 
 pub struct Steam {
     logger: Logger,
@@ -65,7 +67,7 @@ impl Steam {
         })
     }
 
-    pub fn init_game(&mut self, location: SteamGameLocation) -> Result<(Game, Rc<SteamClient>)> {
+    pub fn init_game(&mut self, location: SteamGameLocation) -> Result<Game> {
         debug!(
             self.logger,
             "Enumerating installed mods";
@@ -84,7 +86,11 @@ impl Steam {
             installed_mods,
         )?;
 
-        Ok((game, SteamClient::new(self.logger.clone(), location.branch)))
+        Ok(game)
+    }
+
+    pub fn init_client(&self, game: &Game, tx: app::Sender<Message>) -> Rc<SteamClient> {
+        SteamClient::new(self.logger.clone(), game.branch(), tx)
     }
 }
 

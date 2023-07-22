@@ -4,11 +4,14 @@ use std::rc::Rc;
 
 use fltk::app::{self, TimeoutHandle};
 use slog::{debug, o, trace, warn, Logger};
-use steamworks::{AuthTicket, Client, ClientManager, PublishedFileId, SingleClient, User};
+use steamworks::{
+    AuthTicket, Client, ClientManager, ItemState, PublishedFileId, SingleClient, User,
+};
 
 use crate::auth::PlatformUser;
 use crate::game::Branch;
 use crate::logger::IteratorFormatter;
+use crate::Message;
 
 use super::app_id;
 
@@ -16,6 +19,7 @@ pub struct SteamClient {
     logger: Logger,
     branch: Branch,
     api: RefCell<Option<SteamAPI>>,
+    tx: app::Sender<Message>,
     ticket: RefCell<Option<Rc<SteamTicket>>>,
     callback_timer: Rc<RefCell<CallbackTimer>>,
     // explicitly make sure SteamClient is neither Send nor Sync, see CallbackWrapper below
@@ -28,13 +32,14 @@ struct SteamAPI {
 }
 
 impl SteamClient {
-    pub(super) fn new(logger: Logger, branch: Branch) -> Rc<Self> {
+    pub(super) fn new(logger: Logger, branch: Branch, tx: app::Sender<Message>) -> Rc<Self> {
         let logger = logger.new(o!("branch" => format!("{:?}", branch)));
         let callback_timer = Rc::new(RefCell::new(CallbackTimer::new(logger.clone())));
         Rc::new(Self {
             logger,
             branch,
             api: RefCell::new(init_client(branch)),
+            tx,
             ticket: RefCell::new(None),
             callback_timer,
             _marker: PhantomData,
@@ -137,6 +142,15 @@ impl SteamClient {
         self.callback_timer.borrow_mut().callback_pending();
     }
 
+    pub fn mod_needs_update(&self, mod_id: u64) -> Option<bool> {
+        self.check_client().map(|client| {
+            client
+                .ugc()
+                .item_state(PublishedFileId(mod_id))
+                .contains(ItemState::NEEDS_UPDATE)
+        })
+    }
+
     pub fn run_callbacks(&self) {
         if let Some(api) = &*self.api.borrow() {
             api.cb_runner.run_callbacks();
@@ -147,6 +161,9 @@ impl SteamClient {
         let mut api = self.api.borrow_mut();
         if api.is_none() {
             *api = init_client(self.branch);
+            if api.is_some() {
+                self.tx.send(Message::PlatformReady);
+            }
         }
         RefMut::filter_map(api, |opt| opt.as_mut().map(|api| &mut api.client)).ok()
     }

@@ -696,11 +696,10 @@ fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {
 
 fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
     if let Some(mod_info) = mods.get(mod_ref) {
-        [
-            mod_info.name.clone(),
-            mod_info.version.to_string(),
-            mod_info.author.clone(),
-        ]
+        let version = mod_info.version.to_string();
+        let version =
+            if mod_info.needs_update() { format!("@reload {}", version) } else { version };
+        [mod_info.name.clone(), version, mod_info.author.clone()]
     } else {
         [
             match mod_ref {

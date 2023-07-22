@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::ops::Index;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 use anyhow::{anyhow, bail, Result};
 use binread::{BinReaderExt, BinResult};
@@ -47,6 +48,9 @@ pub struct ModInfo {
 
     #[serde(skip)]
     pub pak_path: PathBuf,
+
+    #[serde(skip)]
+    needs_update: AtomicBool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,6 +113,15 @@ impl ModInfo {
             Branch::PublicBeta => self.testlive_steam_file_id.as_ref()?,
         };
         id_str.parse().ok()
+    }
+
+    pub fn needs_update(&self) -> bool {
+        self.needs_update.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_needs_update(&self, value: bool) {
+        self.needs_update
+            .store(value, std::sync::atomic::Ordering::Relaxed)
     }
 }
 
