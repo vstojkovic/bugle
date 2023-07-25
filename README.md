@@ -12,7 +12,7 @@ that isn't there, feel free to open a GitHub issue about it, or contact me on Fu
 
 ## Installation
 
-Go to the v1.0.1 release and download the `bugle-v1.0.1-x86_64-pc-windows-msvc.zip` file. Unpack it
+Go to the v1.1.0 release and download the `bugle-v1.1.0-x86_64-pc-windows-msvc.zip` file. Unpack it
 into a directory where you're allowed to write files. It's a good idea to put it in its own
 directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
@@ -47,6 +47,9 @@ are any mods missing in your list when you decide to continue your single-player
 detect if mods are in the correct order, but at least it can warn you about missing mods. It also
 warns you when you have mods in your list that you haven't previously used with your single-player
 game.
+* **Update outdated mods.** You can see which of the installed mods require an update. If there are
+outdated mods in your active mod list, the launcher will offer to download the updated version when
+you start the game.
 * **Flexible BattlEye usage.** Just like with Funcom launcher, you can configure BUGLE to enable or
 disable BattlEye. However, you can also tell BUGLE to use it "only when required". In this mode,
 BattlEye will be enabled only if you join a server that requires it.
