@@ -21,6 +21,7 @@ mod home;
 mod launcher;
 mod main_menu;
 mod mod_manager;
+mod mod_update;
 mod prelude;
 mod server_browser;
 mod single_player;
@@ -31,6 +32,7 @@ pub use self::dialog::Dialog;
 pub use self::home::{HomeAction, HomeUpdate};
 pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
+pub use self::mod_update::{ModUpdateProgressDialog, ModUpdateSelectionDialog};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
 

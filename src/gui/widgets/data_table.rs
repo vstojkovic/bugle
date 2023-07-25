@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::ops::{Deref, DerefMut, Index};
 use std::rc::Rc;
 
@@ -88,55 +88,14 @@ impl<R: AsRef<str> + 'static, T: Index<usize, Output = R> + 'static> DataTable<T
 
 impl<T: 'static> DataTable<T> {
     pub fn new(renderer: impl 'static + Fn(&T, usize) -> &str) -> Self {
-        let mut result = Self {
+        let result = Self {
             inner: TableRow::default_fill(),
             renderer: Rc::new(renderer),
             props: Rc::new(RefCell::new(Default::default())),
             data: Rc::new(RefCell::new(Vec::new())),
         };
 
-        let renderer = Rc::clone(&result.renderer);
-        let props = Rc::clone(&result.props);
-        let data = Rc::clone(&result.data);
-        result
-            .inner
-            .draw_cell(move |table, ctx, row, col, x, y, w, h| {
-                let col_offset = if table.row_header() { 1 } else { 0 };
-                let props = props.borrow();
-                match ctx {
-                    TableContext::ColHeader => Self::draw_header(
-                        &props.columns[col as usize].header,
-                        x,
-                        y,
-                        w,
-                        h,
-                        props.columns[col as usize].align,
-                        &props,
-                    ),
-                    TableContext::RowHeader => {
-                        let data = data.borrow();
-                        let text = renderer(&data[row as usize], 0);
-                        Self::draw_header(text, x, y, w, h, props.row_header_align, &props);
-                    }
-                    TableContext::Cell => {
-                        let data = data.borrow();
-                        let text = renderer(&data[row as usize], col as usize + col_offset);
-                        Self::draw_cell(
-                            text,
-                            x,
-                            y,
-                            w,
-                            h,
-                            props.columns[col as usize].align,
-                            table.is_selected(row, col),
-                            &props,
-                        );
-                    }
-                    _ => (),
-                }
-            });
-
-        result
+        result.with_draw_fn(Self::default_draw_cell)
     }
 
     pub fn properties(&self) -> Rc<RefCell<DataTableProperties>> {
@@ -153,10 +112,49 @@ impl<T: 'static> DataTable<T> {
         self
     }
 
-    pub fn cell_text(&self, row: i32, col: i32) -> String {
+    pub fn with_draw_fn(
+        mut self,
+        mut draw_fn: impl 'static + FnMut(&DataTable<T>, i32, i32, i32, i32, i32, i32),
+    ) -> Self {
+        let renderer = Rc::clone(&self.renderer);
+        let props = Rc::clone(&self.props);
+        let data = Rc::clone(&self.data);
+        let this = self.clone();
+        self.inner.draw_cell(move |_, ctx, row, col, x, y, w, h| {
+            let props = props.borrow();
+            match ctx {
+                TableContext::ColHeader => Self::draw_header(
+                    &props.columns[col as usize].header,
+                    x,
+                    y,
+                    w,
+                    h,
+                    props.columns[col as usize].align,
+                    &props,
+                ),
+                TableContext::RowHeader => {
+                    let data = data.borrow();
+                    let text = renderer(&data[row as usize], 0);
+                    Self::draw_header(text, x, y, w, h, props.row_header_align, &props);
+                }
+                TableContext::Cell => {
+                    fltk::draw::push_clip(x, y, w, h);
+                    draw_fn(&this, row, col, x, y, w, h);
+                    fltk::draw::pop_clip();
+                }
+                _ => (),
+            }
+        });
+
+        self
+    }
+
+    pub fn cell_text(&self, row: i32, col: i32) -> Ref<str> {
         let col_offset = if self.inner.row_header() { 1 } else { 0 };
         let data = self.data.borrow();
-        (self.renderer)(&data[row as usize], col as usize + col_offset).to_string()
+        Ref::map(data, |data| {
+            (self.renderer)(&data[row as usize], col as usize + col_offset)
+        })
     }
 
     pub fn updated(&self, update: DataTableUpdate) {
@@ -181,36 +179,28 @@ impl<T: 'static> DataTable<T> {
         inner.redraw();
     }
 
-    fn draw_cell(
-        text: &str,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-        align: Align,
-        selected: bool,
-        props: &DataTableProperties,
-    ) {
-        fltk::draw::push_clip(x, y, w, h);
-        if selected {
-            fltk::draw::set_draw_color(props.cell_selection_color);
+    pub fn default_draw_cell(&self, row: i32, col: i32, x: i32, y: i32, w: i32, h: i32) {
+        let text = self.cell_text(row, col);
+        let props = self.props.borrow();
+        let fill_color = if self.is_selected(row as i32, col as i32) {
+            props.cell_selection_color
         } else {
-            fltk::draw::set_draw_color(props.cell_color);
-        }
-        fltk::draw::draw_rectf(x, y, w, h);
-        fltk::draw::set_draw_color(props.cell_font_color);
-        fltk::draw::set_font(props.cell_font, props.cell_font_size);
-        fltk::draw::draw_text2(
-            text,
-            x + props.cell_padding,
+            props.cell_color
+        };
+        draw_table_cell(
+            &*text,
+            x,
             y,
-            w - props.cell_padding * 2,
+            w,
             h,
-            align,
-        );
-        fltk::draw::set_draw_color(props.cell_border_color);
-        fltk::draw::draw_rect(x, y, w, h);
-        fltk::draw::pop_clip();
+            props.columns[col as usize].align,
+            props.cell_border_color,
+            fill_color,
+            props.cell_font_color,
+            props.cell_font,
+            props.cell_font_size,
+            props.cell_padding,
+        )
     }
 
     fn draw_header(
@@ -329,4 +319,27 @@ impl DataColumn {
         self.width = width.into();
         self
     }
+}
+
+pub fn draw_table_cell(
+    text: &str,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    align: Align,
+    border_color: Color,
+    fill_color: Color,
+    text_color: Color,
+    text_font: Font,
+    text_size: i32,
+    padding: i32,
+) {
+    fltk::draw::set_draw_color(fill_color);
+    fltk::draw::draw_rectf(x, y, w, h);
+    fltk::draw::set_draw_color(text_color);
+    fltk::draw::set_font(text_font, text_size);
+    fltk::draw::draw_text2(text, x + padding, y, w - padding * 2, h, align);
+    fltk::draw::set_draw_color(border_color);
+    fltk::draw::draw_rect(x, y, w, h);
 }

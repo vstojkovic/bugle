@@ -2,14 +2,17 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use fltk::app;
 use slog::{debug, Logger};
+use steamworks::SteamError;
 
-use crate::game::platform::ModDirectory;
+use crate::game::platform::steam::client::DownloadCallback;
+use crate::game::platform::{ModDirectory, ModUpdate};
 use crate::game::{ModInfo, Mods};
 use crate::gui::ServerBrowserUpdate;
 use crate::logger::IteratorFormatter;
+use crate::workers::TaskState;
 use crate::Message;
 
 use super::SteamClient;
@@ -83,9 +86,58 @@ impl ModDirectory for SteamModDirectory {
     fn needs_update(self: Rc<Self>, mod_ref: &ModInfo) -> Result<bool> {
         let mod_id = mod_ref
             .steam_file_id(self.client.branch())
-            .ok_or(anyhow!("Mod does not have a Steam file ID"))?;
+            .ok_or_else(|| anyhow!("Mod does not have a Steam file ID"))?;
         self.client
             .mod_needs_update(mod_id)
-            .ok_or(anyhow!("Steam not running"))
+            .ok_or_else(|| anyhow!("Steam not running"))
+    }
+
+    fn can_update(self: Rc<Self>) -> bool {
+        self.client.can_play_online()
+    }
+
+    fn start_update(self: Rc<Self>, mod_ref: &ModInfo) -> Result<Rc<dyn ModUpdate>> {
+        let mod_id = mod_ref
+            .steam_file_id(self.client.branch())
+            .ok_or(anyhow!("Mod does not have a Steam file ID"))?;
+        let update = Rc::new(SteamModUpdate {
+            client: Rc::clone(&self.client),
+            mod_id,
+            result: RefCell::new(TaskState::Pending),
+        });
+        let success = self.client.start_mod_update(mod_id, {
+            let update = Rc::downgrade(&update);
+            let callback: DownloadCallback = Rc::new(move |result| {
+                if let Some(update) = update.upgrade() {
+                    *update.result.borrow_mut() = TaskState::Ready(result);
+                }
+            });
+            callback
+        });
+        if success.ok_or_else(|| anyhow!("Steam not running"))? {
+            Ok(update)
+        } else {
+            bail!("Error starting the mod update download");
+        }
+    }
+}
+
+struct SteamModUpdate {
+    client: Rc<SteamClient>,
+    mod_id: u64,
+    result: RefCell<TaskState<Option<SteamError>>>,
+}
+
+impl ModUpdate for SteamModUpdate {
+    fn progress(&self) -> Option<(u64, u64)> {
+        self.client.download_progress(self.mod_id)
+    }
+
+    fn state(&self) -> TaskState<Result<()>> {
+        match &*self.result.borrow() {
+            TaskState::Pending => TaskState::Pending,
+            TaskState::Ready(Some(err)) => TaskState::Ready(Err(err.clone().into())),
+            TaskState::Ready(None) => TaskState::Ready(Ok(())),
+        }
     }
 }

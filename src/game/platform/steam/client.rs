@@ -1,11 +1,13 @@
 use std::cell::{RefCell, RefMut};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
 use fltk::app::{self, TimeoutHandle};
 use slog::{debug, o, trace, warn, Logger};
 use steamworks::{
-    AuthTicket, Client, ClientManager, ItemState, PublishedFileId, SingleClient, User,
+    AuthTicket, CallbackHandle, Client, ClientManager, DownloadItemResult, ItemState,
+    PublishedFileId, SingleClient, SteamError, User,
 };
 
 use crate::auth::PlatformUser;
@@ -21,14 +23,23 @@ pub struct SteamClient {
     api: RefCell<Option<SteamAPI>>,
     tx: app::Sender<Message>,
     ticket: RefCell<Option<Rc<SteamTicket>>>,
+    downloads: RefCell<Downloads>,
     callback_timer: Rc<RefCell<CallbackTimer>>,
     // explicitly make sure SteamClient is neither Send nor Sync, see CallbackWrapper below
     _marker: PhantomData<*const ()>,
 }
 
+pub type DownloadCallback = Rc<dyn Fn(Option<SteamError>)>;
+
 struct SteamAPI {
     client: Client,
     cb_runner: SingleClient,
+}
+
+#[derive(Default)]
+struct Downloads {
+    api_callback_handle: Option<CallbackHandle>,
+    dispatch_map: HashMap<PublishedFileId, DownloadCallback>,
 }
 
 impl SteamClient {
@@ -41,6 +52,7 @@ impl SteamClient {
             api: RefCell::new(init_client(branch)),
             tx,
             ticket: RefCell::new(None),
+            downloads: RefCell::new(Default::default()),
             callback_timer,
             _marker: PhantomData,
         })
@@ -151,6 +163,40 @@ impl SteamClient {
         })
     }
 
+    pub fn start_mod_update(
+        self: &Rc<Self>,
+        mod_id: u64,
+        callback: DownloadCallback,
+    ) -> Option<bool> {
+        let client = self.check_client()?;
+        let mod_id = PublishedFileId(mod_id);
+        let success = client.ugc().download_item(mod_id, false);
+        if success {
+            let mut downloads = self.downloads.borrow_mut();
+            downloads.dispatch_map.insert(mod_id, callback);
+            if downloads.api_callback_handle.is_none() {
+                let mut api_callback = CallbackWrapper({
+                    let this = Rc::downgrade(self);
+                    move |result| {
+                        if let Some(this) = this.upgrade() {
+                            this.handle_download_result(result)
+                        }
+                    }
+                });
+                downloads.api_callback_handle =
+                    Some(client.register_callback(move |result| api_callback.call_mut(result)));
+                self.callback_timer.borrow_mut().callback_pending();
+            }
+        }
+        Some(success)
+    }
+
+    pub fn download_progress(&self, mod_id: u64) -> Option<(u64, u64)> {
+        let file_id = PublishedFileId(mod_id);
+        self.check_client()
+            .and_then(|client| client.ugc().item_download_info(file_id))
+    }
+
     pub fn run_callbacks(&self) {
         if let Some(api) = &*self.api.borrow() {
             api.cb_runner.run_callbacks();
@@ -166,6 +212,17 @@ impl SteamClient {
             }
         }
         RefMut::filter_map(api, |opt| opt.as_mut().map(|api| &mut api.client)).ok()
+    }
+
+    fn handle_download_result(&self, result: DownloadItemResult) {
+        let mut downloads = self.downloads.borrow_mut();
+        if let Some(callback) = downloads.dispatch_map.remove(&result.published_file_id) {
+            callback(result.error);
+        }
+        if downloads.dispatch_map.is_empty() {
+            downloads.api_callback_handle = None;
+            self.callback_timer.borrow_mut().callback_completed();
+        }
     }
 }
 
@@ -257,7 +314,6 @@ impl<T> CallbackWrapper<T> {
         (self.0)(arg)
     }
 
-    #[allow(dead_code)]
     fn call_mut<A>(&mut self, arg: A)
     where
         T: FnMut(A),

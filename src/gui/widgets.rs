@@ -6,7 +6,9 @@ use fltk::table::TableContext;
 mod data_table;
 mod read_only_text;
 
-pub use self::data_table::{DataColumn, DataTable, DataTableProperties, DataTableUpdate};
+pub use self::data_table::{
+    draw_table_cell, DataColumn, DataTable, DataTableProperties, DataTableUpdate,
+};
 pub use self::read_only_text::{ReadOnlyText, ReadOnlyTextElement};
 
 use super::is_table_nav_event;
@@ -38,7 +40,7 @@ pub fn make_readonly_cell_widget<T: 'static>(table: &DataTable<T>) -> ReadOnlyTe
                         cell.resize(x, y, w, h);
                         let cell_value = table.cell_text(row, col);
                         let cell_value_len = cell_value.len();
-                        cell.set_value(cell_value);
+                        cell.set_value(cell_value.to_string());
                         cell.buffer().unwrap().select(0, cell_value_len as _);
                         cell.show();
                         let _ = cell.take_focus();

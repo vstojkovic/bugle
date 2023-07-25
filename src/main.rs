@@ -15,6 +15,7 @@ use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::platform::steam::{SteamClient, SteamModDirectory};
 use game::platform::ModDirectory;
+use game::MapRef;
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -35,7 +36,8 @@ use self::game::{list_mod_controllers, Branch, Game, Launch, ModRef, Mods, Serve
 use self::gui::theme::Theme;
 use self::gui::{
     prompt_confirm, Action, Dialog, HomeAction, HomeUpdate, LauncherWindow, ModManagerAction,
-    ModManagerUpdate, ServerBrowserAction, ServerBrowserUpdate, SinglePlayerAction, Update,
+    ModManagerUpdate, ModUpdateProgressDialog, ModUpdateSelectionDialog, ServerBrowserAction,
+    ServerBrowserUpdate, SinglePlayerAction, Update,
 };
 use self::logger::create_root_logger;
 use self::servers::Server;
@@ -436,6 +438,19 @@ impl Launcher {
             }
         }
 
+        let mod_list = self.game.load_mod_list()?;
+        let outdated_mods = self.outdated_active_mods(&mod_list);
+
+        if let Some(Session::SinglePlayer(MapRef::Known { map_id })) = &*self.game.last_session() {
+            if !self.validate_single_player_mods(mod_list, *map_id)? {
+                return Ok(());
+            }
+        }
+
+        if !self.update_mods(outdated_mods) {
+            return Ok(());
+        }
+
         let use_battleye = if let Some(enabled) = self.determine_session_battleye() {
             enabled
         } else {
@@ -459,6 +474,13 @@ impl Launcher {
         if !self.steam.can_play_online() {
             bail!(ERR_STEAM_NOT_ONLINE);
         }
+
+        let mod_list = self.game.load_mod_list()?;
+        let outdated_mods = self.outdated_active_mods(&mod_list);
+        if !self.update_mods(outdated_mods) {
+            return Ok(());
+        }
+
         let use_battleye = match self.config().use_battleye {
             BattlEyeUsage::Always(enabled) => enabled,
             BattlEyeUsage::Auto => {
@@ -749,6 +771,26 @@ impl Launcher {
     }
 
     fn launch_single_player(&self, map_id: usize, skip_mod_checks: bool) -> Result<()> {
+        let mod_list = self.game.load_mod_list()?;
+        let outdated_mods = self.outdated_active_mods(&mod_list);
+
+        if !skip_mod_checks && !self.validate_single_player_mods(mod_list, map_id)? {
+            return Ok(());
+        }
+
+        if !self.update_mods(outdated_mods) {
+            return Ok(());
+        }
+
+        let use_battleye =
+            if let BattlEyeUsage::Always(true) = self.config().use_battleye { true } else { false };
+        if self.monitor_launch(self.game.launch_single_player(map_id, use_battleye)?)? {
+            app::quit();
+        }
+        Ok(())
+    }
+
+    fn validate_single_player_mods(&self, mod_list: Vec<ModRef>, map_id: usize) -> Result<bool> {
         fn join_mod_names(heading: &str, mods: &Mods, refs: HashSet<ModRef>) -> String {
             let mut result = String::new();
             if refs.is_empty() {
@@ -770,31 +812,26 @@ impl Launcher {
             result
         }
 
-        if !skip_mod_checks {
-            if let Some(mismatch) = self.validate_single_player_mods(map_id)? {
-                let installed_mods = self.game.installed_mods();
-                let prompt = format!(
-                    "{}{}{}",
-                    PROMPT_SP_MOD_MISMATCH,
-                    join_mod_names(TXT_MISSING_MODS, installed_mods, mismatch.missing_mods),
-                    join_mod_names(TXT_ADDED_MODS, installed_mods, mismatch.added_mods),
-                );
-                if !prompt_confirm(&prompt) {
-                    return Ok(());
-                }
-            }
+        if let Some(mismatch) = self.detect_single_player_mod_mismatch(mod_list, map_id)? {
+            let installed_mods = self.game.installed_mods();
+            let prompt = format!(
+                "{}{}{}",
+                PROMPT_SP_MOD_MISMATCH,
+                join_mod_names(TXT_MISSING_MODS, installed_mods, mismatch.missing_mods),
+                join_mod_names(TXT_ADDED_MODS, installed_mods, mismatch.added_mods),
+            );
+            Ok(prompt_confirm(&prompt))
+        } else {
+            Ok(true)
         }
-        let use_battleye =
-            if let BattlEyeUsage::Always(true) = self.config().use_battleye { true } else { false };
-        if self.monitor_launch(self.game.launch_single_player(map_id, use_battleye)?)? {
-            app::quit();
-        }
-        Ok(())
     }
 
-    fn validate_single_player_mods(&self, map_id: usize) -> Result<Option<ModMismatch>> {
+    fn detect_single_player_mod_mismatch(
+        &self,
+        mod_list: Vec<ModRef>,
+        map_id: usize,
+    ) -> Result<Option<ModMismatch>> {
         let installed_mods = self.game.installed_mods();
-        let mod_list = self.game.load_mod_list()?;
         let mut active_mods: HashSet<ModRef> = mod_list.into_iter().collect();
 
         let db_path = self.game.in_progress_game_path(map_id);
@@ -837,6 +874,62 @@ impl Launcher {
                 added_mods,
             }))
         }
+    }
+
+    fn outdated_active_mods(&self, mod_list: &Vec<ModRef>) -> Vec<ModRef> {
+        self.check_mod_updates();
+
+        let installed_mods = self.game.installed_mods();
+        let mut outdated_mods = Vec::new();
+        for mod_ref in mod_list {
+            if let Some(mod_info) = installed_mods.get(mod_ref) {
+                if mod_info.needs_update() {
+                    outdated_mods.push(mod_ref.clone());
+                }
+            }
+        }
+
+        outdated_mods
+    }
+
+    fn update_mods(&self, outdated_mods: Vec<ModRef>) -> bool {
+        if outdated_mods.is_empty() || !Rc::clone(&self.mod_directory).can_update() {
+            return true;
+        }
+
+        let installed_mods = self.game.installed_mods();
+
+        let dialog =
+            ModUpdateSelectionDialog::new(self.main_window.window(), installed_mods, outdated_mods);
+        dialog.show();
+        while dialog.shown() {
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return false;
+            }
+        }
+        let mods_to_update = dialog.result();
+        if mods_to_update.is_empty() {
+            return true;
+        }
+
+        let dialog = ModUpdateProgressDialog::new(
+            self.main_window.window(),
+            installed_mods,
+            mods_to_update,
+            Rc::clone(&self.mod_directory),
+        );
+        dialog.show();
+        while dialog.shown() {
+            if self.run_loop_iteration() {
+                app::check();
+            } else if !self.app.wait() {
+                return false;
+            }
+        }
+
+        true
     }
 
     fn config(&self) -> Ref<Config> {
