@@ -345,6 +345,7 @@ impl Launcher {
                 Ok(())
             }
             Action::ModManager(ModManagerAction::LoadModList) => {
+                self.check_mod_updates();
                 let active_mods = self.game.load_mod_list()?;
                 self.tx.send(Message::Update(Update::ModManager(
                     ModManagerUpdate::PopulateModList(active_mods),
