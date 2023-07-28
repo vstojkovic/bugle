@@ -392,6 +392,20 @@ impl Launcher {
                 self.game
                     .save_mod_list_to(&mod_list_path, active_mods.iter())
             }
+            Action::ModManager(ModManagerAction::UpdateMods) => {
+                let outdated_mods = self
+                    .game
+                    .installed_mods()
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, mod_info)| mod_info.needs_update())
+                    .map(|(idx, _)| ModRef::Installed(idx))
+                    .collect();
+                if self.update_mods(outdated_mods) {
+                    self.check_mod_updates();
+                }
+                Ok(())
+            }
         }
     }
 

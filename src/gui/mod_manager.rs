@@ -29,6 +29,7 @@ pub enum ModManagerAction {
     SaveModList(Vec<ModRef>),
     ImportModList,
     ExportModList(Vec<ModRef>),
+    UpdateMods,
 }
 
 pub enum ModManagerUpdate {
@@ -97,6 +98,7 @@ pub(super) struct ModManager {
     move_down_button: Button,
     move_bottom_button: Button,
     more_info_button: MenuButton,
+    update_mods_button: Button,
     state: RefCell<ModListState>,
 }
 
@@ -171,6 +173,8 @@ impl ModManager {
             .with_label("@filesave")
             .with_tooltip("Export the mod list into a file");
         button_grid.row().add();
+        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid.row().add();
         let mut activate_button = button_grid
             .cell()
             .unwrap()
@@ -184,6 +188,8 @@ impl ModManager {
             .wrap(Button::default())
             .with_label("@<")
             .with_tooltip("Deactivate the selected mod");
+        button_grid.row().add();
+        button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
         let mut move_top_button = button_grid
             .cell()
@@ -213,6 +219,8 @@ impl ModManager {
             .with_label("@#2>|")
             .with_tooltip("Move the selected mod to the bottom");
         button_grid.row().add();
+        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid.row().add();
         let mut more_info_button = button_grid
             .cell()
             .unwrap()
@@ -220,6 +228,16 @@ impl ModManager {
             .with_label("\u{1f4dc}")
             .with_tooltip("Show information about the selected mod");
         more_info_button.deactivate();
+        button_grid.row().add();
+        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid.row().add();
+        let mut update_mods_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("@reload")
+            .with_tooltip("Update outdated mods");
+        update_mods_button.deactivate();
 
         button_grid.row().with_stretch(1).add();
         button_grid.cell().unwrap().skip();
@@ -316,6 +334,7 @@ impl ModManager {
             move_down_button: move_down_button.clone(),
             move_bottom_button: move_bottom_button.clone(),
             more_info_button: more_info_button.clone(),
+            update_mods_button: update_mods_button.clone(),
             state: RefCell::new(ModListState::new(mods)),
         });
 
@@ -351,6 +370,7 @@ impl ModManager {
         move_up_button.set_callback(manager.weak_cb(Self::move_up_clicked));
         move_down_button.set_callback(manager.weak_cb(Self::move_down_clicked));
         move_bottom_button.set_callback(manager.weak_cb(Self::move_bottom_clicked));
+        update_mods_button.set_callback(manager.weak_cb(Self::update_mods_clicked));
 
         more_info_button.add(
             "Description",
@@ -418,6 +438,12 @@ impl ModManager {
 
     fn populate_tables(&self) {
         let state = self.state.borrow();
+        self.update_mods_button.clone().set_activated(
+            state
+                .installed
+                .iter()
+                .any(|mod_info| mod_info.needs_update()),
+        );
 
         populate_table(
             &mut self.available_list.clone(),
@@ -611,6 +637,11 @@ impl ModManager {
 
         self.set_selection(Some(Selection::Active(last_idx)));
         self.save_current_mod_list();
+    }
+
+    fn update_mods_clicked(&self) {
+        (self.on_action)(ModManagerAction::UpdateMods).unwrap();
+        self.populate_tables();
     }
 
     fn save_current_mod_list(&self) {
