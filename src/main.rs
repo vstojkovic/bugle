@@ -399,6 +399,13 @@ impl Launcher {
         if !self.can_launch() {
             return Ok(());
         }
+
+        let mod_list = self.game.load_mod_list()?;
+        let outdated_mods = self.outdated_active_mods(&mod_list);
+        if !self.update_mods(outdated_mods) {
+            return Ok(());
+        }
+
         let use_battleye = match self.config().use_battleye {
             BattlEyeUsage::Always(enabled) => enabled,
             BattlEyeUsage::Auto => {
