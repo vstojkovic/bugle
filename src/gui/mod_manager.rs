@@ -324,13 +324,21 @@ impl ModManager {
         available_list.set_callback(manager.weak_cb(|this| {
             if is_table_nav_event() && this.available_list.callback_context() == TableContext::Cell
             {
-                this.available_clicked();
+                if app::event_clicks() {
+                    this.activate_clicked();
+                } else {
+                    this.available_clicked();
+                }
             }
         }));
 
         active_list.set_callback(manager.weak_cb(|this| {
             if is_table_nav_event() && this.active_list.callback_context() == TableContext::Cell {
-                this.active_clicked();
+                if app::event_clicks() {
+                    this.deactivate_clicked();
+                } else {
+                    this.active_clicked();
+                }
             }
         }));
 
