@@ -26,7 +26,6 @@ pub struct AuthState {
 #[derive(Debug, Clone)]
 pub struct Account {
     pub master_id: String,
-    #[allow(dead_code)]
     pub title_id: String,
     pub display_name: String,
     pub platform_id: String,
@@ -41,7 +40,6 @@ pub struct PlatformUser {
 #[derive(Debug, Clone)]
 pub struct CachedUser {
     pub account: Account,
-    #[allow(dead_code)]
     pub user_token: String,
 }
 
