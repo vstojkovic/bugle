@@ -26,6 +26,20 @@ pub fn create_root_logger(log_level: &Arc<AtomicUsize>) -> (Logger, AsyncGuard) 
     }
 }
 
+macro_rules! warn_or_crit {
+    ($l:expr, $strict:expr, $($args:tt)+) => {
+        if $strict {
+            slog::crit!($l, $($args)+);
+            $crate::QUIT_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
+            fltk::app::quit();
+        } else
+        {
+            slog::warn!($l, $($args)+);
+        }
+    };
+}
+pub(crate) use warn_or_crit;
+
 pub struct IteratorFormatter<I>(pub I)
 where
     I: Iterator + Clone,

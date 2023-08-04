@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
+use unic_langid::LanguageIdentifier;
 
 use crate::env::current_exe_dir;
 use crate::game::Branch;
@@ -10,6 +11,7 @@ use crate::servers::{Mode, Region, SortCriteria, SortKey, TypeFilter};
 #[derive(Debug, Default)]
 pub struct Config {
     pub log_level: LogLevel,
+    pub locale: Option<LanguageIdentifier>,
     pub branch: Branch,
     pub use_battleye: BattlEyeUsage,
     pub theme: ThemeChoice,
@@ -112,6 +114,9 @@ impl ConfigPersister for IniConfigPersister {
             .and_then(|value| slog::FilterLevel::from_str(value.trim()).ok())
             .map(|level| LogLevel(level))
             .unwrap_or_default();
+        let locale = section
+            .and_then(|section| section.get(KEY_LOCALE))
+            .and_then(|value| value.parse().ok());
         let branch = section
             .and_then(|section| section.get(KEY_BRANCH))
             .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
@@ -140,6 +145,7 @@ impl ConfigPersister for IniConfigPersister {
 
         Ok(Config {
             log_level,
+            locale,
             branch,
             use_battleye,
             theme,
@@ -149,11 +155,16 @@ impl ConfigPersister for IniConfigPersister {
 
     fn save(&self, config: &Config) -> Result<()> {
         let mut ini = Ini::new();
-        ini.with_general_section()
-            .set(
-                KEY_LOG_LEVEL,
-                config.log_level.0.as_str().to_ascii_lowercase(),
-            )
+        let mut setter = ini.with_general_section();
+        let setter = setter.set(
+            KEY_LOG_LEVEL,
+            config.log_level.0.as_str().to_ascii_lowercase(),
+        );
+        let setter = match &config.locale {
+            Some(locale) => setter.set(KEY_LOCALE, locale.to_string()),
+            None => setter,
+        };
+        setter
             .set(
                 KEY_BRANCH,
                 match config.branch {
@@ -311,6 +322,7 @@ const KEY_LOG_LEVEL: &str = "LogLevel";
 const KEY_BRANCH: &str = "Branch";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
 const KEY_THEME: &str = "Theme";
+const KEY_LOCALE: &str = "Locale";
 const KEY_TYPE_FILTER: &str = "Type";
 const KEY_MODE: &str = "Mode";
 const KEY_REGION: &str = "Region";

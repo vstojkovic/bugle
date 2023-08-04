@@ -19,6 +19,7 @@ use lazy_static::lazy_static;
 use slog::{error, Logger};
 
 use crate::game::{ModInfo, ModRef, Mods};
+use crate::l10n::{localization, use_l10n, Localizer};
 
 use super::prelude::*;
 use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
@@ -87,6 +88,7 @@ type ModRow = [String; 3];
 
 pub(super) struct ModManager {
     logger: Logger,
+    localizer: Rc<Localizer>,
     tiles: Tile,
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: DataTable<ModRow>,
@@ -108,6 +110,9 @@ impl ModManager {
         mods: Arc<Mods>,
         on_action: impl Handler<ModManagerAction> + 'static,
     ) -> Rc<Self> {
+        let localizer = localization().localizer("mod_manager");
+        use_l10n!(localizer);
+
         let mut grid = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
         grid.row().with_stretch(1).add();
 
@@ -118,9 +123,9 @@ impl ModManager {
         grid.col().with_stretch(1).add();
         let mut available_list = DataTable::default().with_properties(DataTableProperties {
             columns: vec![
-                ("Available Mods", Align::Left).into(),
-                ("Version", Align::Left).into(),
-                ("Author", Align::Left).into(),
+                (l10n!(&col_available_mods), Align::Left).into(),
+                (l10n!(&col_version), Align::Left).into(),
+                (l10n!(&col_author), Align::Left).into(),
             ],
             cell_padding: 4,
             cell_selection_color: fltk::enums::Color::Free,
@@ -157,21 +162,21 @@ impl ModManager {
             .unwrap()
             .wrap(Button::default())
             .with_label("@filenew")
-            .with_tooltip("Clear the mod list");
+            .with_tooltip(l10n!(&clear.tooltip));
         button_grid.row().add();
         let mut import_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("@fileopen")
-            .with_tooltip("Import the mod list from a file");
+            .with_tooltip(l10n!(&import.tooltip));
         button_grid.row().add();
         let mut export_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("@filesave")
-            .with_tooltip("Export the mod list into a file");
+            .with_tooltip(l10n!(&export.tooltip));
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
@@ -180,14 +185,14 @@ impl ModManager {
             .unwrap()
             .wrap(Button::default())
             .with_label("@>")
-            .with_tooltip("Activate the selected mod");
+            .with_tooltip(l10n!(&activate.tooltip));
         button_grid.row().add();
         let mut deactivate_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("@<")
-            .with_tooltip("Deactivate the selected mod");
+            .with_tooltip(l10n!(&deactivate.tooltip));
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
@@ -196,28 +201,28 @@ impl ModManager {
             .unwrap()
             .wrap(Button::default())
             .with_label("@#8>|")
-            .with_tooltip("Move the selected mod to top");
+            .with_tooltip(l10n!(&move_top.tooltip));
         button_grid.row().add();
         let mut move_up_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("@#8>")
-            .with_tooltip("Move the selected mod up");
+            .with_tooltip(l10n!(&move_up.tooltip));
         button_grid.row().add();
         let mut move_down_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("@#2>")
-            .with_tooltip("Move the selected mod down");
+            .with_tooltip(l10n!(&move_down.tooltip));
         button_grid.row().add();
         let mut move_bottom_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("@#2>|")
-            .with_tooltip("Move the selected mod to the bottom");
+            .with_tooltip(l10n!(&move_bottom.tooltip));
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
@@ -226,7 +231,7 @@ impl ModManager {
             .unwrap()
             .wrap(MenuButton::default())
             .with_label("\u{1f4dc}")
-            .with_tooltip("Show information about the selected mod");
+            .with_tooltip(l10n!(&more_info.tooltip));
         more_info_button.deactivate();
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
@@ -236,7 +241,7 @@ impl ModManager {
             .unwrap()
             .wrap(Button::default())
             .with_label("@reload")
-            .with_tooltip("Update outdated mods");
+            .with_tooltip(l10n!(&update_mods.tooltip));
         update_mods_button.deactivate();
 
         button_grid.row().with_stretch(1).add();
@@ -255,9 +260,9 @@ impl ModManager {
         grid.col().with_stretch(1).add();
         let mut active_list = DataTable::default().with_properties(DataTableProperties {
             columns: vec![
-                ("Active Mods", Align::Left).into(),
-                ("Version", Align::Left).into(),
-                ("Author", Align::Left).into(),
+                (l10n!(&col_active_mods), Align::Left).into(),
+                (l10n!(&col_version), Align::Left).into(),
+                (l10n!(&col_author), Align::Left).into(),
             ],
             cell_padding: 4,
             cell_selection_color: fltk::enums::Color::Free,
@@ -323,6 +328,7 @@ impl ModManager {
 
         let manager = Rc::new(Self {
             logger,
+            localizer: Rc::clone(&localizer),
             tiles,
             on_action: Box::new(on_action),
             available_list: available_list.clone(),
@@ -373,13 +379,13 @@ impl ModManager {
         update_mods_button.set_callback(manager.weak_cb(Self::update_mods_clicked));
 
         more_info_button.add(
-            "Description",
+            l10n!(&more_info.item_description),
             Shortcut::None,
             MenuFlag::Normal,
             manager.weak_cb(Self::show_description),
         );
         more_info_button.add(
-            "Change Notes",
+            l10n!(&more_info.item_change_notes),
             Shortcut::None,
             MenuFlag::Normal,
             manager.weak_cb(Self::show_change_notes),
@@ -389,12 +395,13 @@ impl ModManager {
     }
 
     pub fn show(&self) -> CleanupFn {
+        use_l10n!(self.localizer);
         let mut tiles = self.tiles.clone();
         tiles.show();
 
         if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
             error!(self.logger, "Error loading mod list"; "error" => %err);
-            alert_error(ERR_LOADING_MOD_LIST, &err);
+            alert_error(l10n!(&err_loading_mod_list), &err);
         }
 
         Box::new(move || {
@@ -507,7 +514,8 @@ impl ModManager {
     }
 
     fn clear_clicked(&self) {
-        if self.state.borrow().active.is_empty() || !prompt_confirm(PROMPT_CLEAR_MODS) {
+        use_l10n!(self.localizer);
+        if self.state.borrow().active.is_empty() || !prompt_confirm(l10n!(&prompt_clear_mods)) {
             return;
         }
         if self.save_mod_list(Vec::new()) {
@@ -516,17 +524,19 @@ impl ModManager {
     }
 
     fn import_clicked(&self) {
+        use_l10n!(self.localizer);
         if let Err(err) = (self.on_action)(ModManagerAction::ImportModList) {
             error!(self.logger, "Error importing mod list"; "error" => %err);
-            alert_error(ERR_LOADING_MOD_LIST, &err);
+            alert_error(l10n!(&err_loading_mod_list), &err);
         }
     }
 
     fn export_clicked(&self) {
+        use_l10n!(self.localizer);
         let state = self.state.borrow();
         if let Err(err) = (self.on_action)(ModManagerAction::ExportModList(state.active.clone())) {
             error!(self.logger, "Error exporting mod list"; "error" => %err);
-            alert_error(ERR_SAVING_MOD_LIST, &err);
+            alert_error(l10n!(&err_saving_mod_list), &err);
         }
     }
 
@@ -650,30 +660,33 @@ impl ModManager {
     }
 
     fn save_mod_list(&self, mod_list: Vec<ModRef>) -> bool {
+        use_l10n!(self.localizer);
         match (self.on_action)(ModManagerAction::SaveModList(mod_list)) {
             Ok(()) => true,
             Err(err) => {
                 error!(self.logger, "Error saving mod list"; "error" => %err);
-                alert_error(ERR_SAVING_MOD_LIST, &err);
+                alert_error(l10n!(&err_saving_mod_list), &err);
                 false
             }
         }
     }
 
     fn show_description(&self) {
+        use_l10n!(self.localizer);
         let state = self.state.borrow();
         let mod_info = state.selected_mod_info().unwrap();
         self.show_bbcode(
-            &format!("Description: {}", &mod_info.name),
+            &l10n!(title_description, mod_name => mod_info.name.as_str()),
             &mod_info.description,
         );
     }
 
     fn show_change_notes(&self) {
+        use_l10n!(self.localizer);
         let state = self.state.borrow();
         let mod_info = state.selected_mod_info().unwrap();
         self.show_bbcode(
-            &format!("Change Notes: {}", &mod_info.name),
+            &l10n!(title_change_notes, mod_name => mod_info.name.as_str()),
             &mod_info.change_notes,
         );
     }
@@ -702,9 +715,6 @@ impl ModManager {
     }
 }
 
-const PROMPT_CLEAR_MODS: &str = "Are you sure you want to clear the mod list?";
-const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
-const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 const CSS_INFO_BODY: &str = include_str!("mod_info.css");
 
 lazy_static! {

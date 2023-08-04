@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
@@ -14,10 +15,12 @@ use fltk_float::grid::Grid;
 use fltk_float::{LayoutElement, LayoutWidgetWrapper};
 use slog::{error, FilterLevel, Logger};
 use tempfile::tempdir;
+use unic_langid::LanguageIdentifier;
 
 use crate::auth::AuthState;
 use crate::config::{BattlEyeUsage, Config, LogLevel, ThemeChoice};
 use crate::game::{Branch, Game, MapRef, Maps, ServerRef, Session};
+use crate::l10n::{localization, use_l10n, Localizer};
 use crate::workers::TaskState;
 
 use super::prelude::*;
@@ -31,6 +34,7 @@ pub enum HomeAction {
     SwitchBranch(Branch),
     ConfigureLogLevel(LogLevel),
     ConfigureBattlEye(BattlEyeUsage),
+    ConfigureLocale(Option<LanguageIdentifier>),
     ConfigureTheme(ThemeChoice),
     RefreshAuthState,
 }
@@ -42,6 +46,7 @@ pub enum HomeUpdate {
 
 pub struct Home {
     root: Group,
+    localizer: Rc<Localizer>,
     game: Arc<Game>,
     platform_user_id_text: ReadOnlyText,
     platform_user_name_text: ReadOnlyText,
@@ -59,15 +64,24 @@ impl Home {
         logger: Logger,
         game: Arc<Game>,
         config: &Config,
+        available_locales: HashMap<LanguageIdentifier, String>,
+        default_locale: LanguageIdentifier,
         log_level_overridden: bool,
         can_switch_branch: bool,
         on_action: impl Handler<HomeAction> + 'static,
     ) -> Rc<Self> {
         let on_action = Rc::new(on_action);
 
+        let localizer = localization().localizer("home");
+        use_l10n!(localizer);
+
         let (branch_name, other_branch_name, other_branch) = match game.branch() {
-            Branch::Main => ("Live", "TestLive", Branch::PublicBeta),
-            Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
+            Branch::Main => (
+                l10n!(branch_live),
+                l10n!(branch_testlive),
+                Branch::PublicBeta,
+            ),
+            Branch::PublicBeta => (l10n!(branch_testlive), l10n!(branch_live), Branch::Main),
         };
 
         let mut grid = Grid::builder_with_factory(wrapper_factory())
@@ -84,7 +98,7 @@ impl Home {
         grid.span(1, 5)
             .unwrap()
             .wrap(Frame::default())
-            .with_label("Welcome to");
+            .with_label(l10n!(&top_welcome));
 
         grid.row().add();
         let mut bugle_label = grid
@@ -99,12 +113,12 @@ impl Home {
         grid.span(1, 5)
             .unwrap()
             .wrap(Frame::default())
-            .with_label("Butt-Ugly Game Launcher for Exiles");
+            .with_label(l10n!(&bottom_welcome));
 
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("BUGLE Version:"));
+            .wrap(create_info_label(l10n!(&bugle_version)));
         grid.span(1, 4)
             .unwrap()
             .wrap(ReadOnlyText::new(env!("CARGO_PKG_VERSION").to_string()));
@@ -112,7 +126,7 @@ impl Home {
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Conan Exiles Installation Path:"));
+            .wrap(create_info_label(l10n!(&game_path)));
         grid.span(1, 4).unwrap().wrap(ReadOnlyText::new(
             game.installation_path().to_string_lossy().into_owned(),
         ));
@@ -120,14 +134,14 @@ impl Home {
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Conan Exiles Revision:"));
+            .wrap(create_info_label(l10n!(&game_revision)));
         grid.cell().unwrap().wrap(ReadOnlyText::new({
             let (revision, snapshot) = game.version();
             format!("#{}/{} ({})", revision, snapshot, branch_name)
         }));
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Conan Exiles Build ID:"));
+            .wrap(create_info_label(l10n!(&game_build_id)));
         grid.span(1, 2)
             .unwrap()
             .wrap(ReadOnlyText::new(format!("{}", game.build_id())));
@@ -135,56 +149,59 @@ impl Home {
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Steam Account ID:"));
+            .wrap(create_info_label(l10n!(&steam_acct_id)));
         let platform_user_id_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Steam Account Name:"));
+            .wrap(create_info_label(l10n!(&steam_acct_name)));
         let platform_user_name_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
         let mut refresh_platform_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Refresh");
+            .with_label(l10n!(&refresh));
 
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("FLS Account ID:"));
+            .wrap(create_info_label(l10n!(&fls_acct_id)));
         let fls_acct_id_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("FLS Account Name:"));
+            .wrap(create_info_label(l10n!(&fls_acct_name)));
         let fls_acct_name_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
         let mut refresh_fls_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Refresh");
+            .with_label(l10n!(&refresh));
 
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Can Play Online?"));
+            .wrap(create_info_label(l10n!(&online_capability)));
         let online_play_text = grid.cell().unwrap().wrap(ReadOnlyText::default());
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Can Play Singleplayer?"));
+            .wrap(create_info_label(l10n!(&singleplayer_capability)));
         let sp_play_text = grid.span(1, 2).unwrap().wrap(ReadOnlyText::default());
 
         grid.row().add();
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("Enable BattlEye:"));
+            .wrap(create_info_label(l10n!(&battleye)));
         let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
         grid.cell()
             .unwrap()
-            .wrap(create_info_label("BUGLE Logging Level:"));
+            .wrap(create_info_label(l10n!(&log_level)));
         let mut log_level_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
 
         grid.row().add();
-        grid.span(1, 2).unwrap().skip();
-        grid.cell().unwrap().wrap(create_info_label("Theme:"));
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label(l10n!(&language)));
+        let mut language_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        grid.cell().unwrap().wrap(create_info_label(l10n!(&theme)));
         let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
 
         grid.row().add();
@@ -193,7 +210,7 @@ impl Home {
             .span(1, 2)
             .unwrap()
             .wrap(LightButton::default())
-            .with_label("Hide Private Information");
+            .with_label(l10n!(&privacy_switch));
 
         grid.row().with_stretch(1).add();
         grid.span(1, 5).unwrap().skip();
@@ -210,11 +227,11 @@ impl Home {
         last_session_grid
             .cell()
             .unwrap()
-            .wrap(create_info_label("Last Session:"));
+            .wrap(create_info_label(l10n!(&last_session)));
         let last_session_text = last_session_grid
             .cell()
             .unwrap()
-            .wrap(ReadOnlyText::new(last_session_text(&*game)));
+            .wrap(ReadOnlyText::new(last_session_text(&localizer, &*game)));
         let last_session_grid = last_session_grid.end();
 
         action_grid.row().add();
@@ -224,8 +241,8 @@ impl Home {
         action_grid.row().with_stretch(1).add();
         let cell = action_grid.cell().unwrap();
         let switch_branch_button = if can_switch_branch {
-            let switch_label = format!("Switch to {}", other_branch_name);
-            let button = Button::default().with_label(&switch_label);
+            let button = Button::default()
+                .with_label(&l10n!(switch_branch, branch => other_branch_name.as_str()));
             action_grid
                 .cell()
                 .unwrap()
@@ -236,12 +253,12 @@ impl Home {
             None
         };
         action_grid.cell().unwrap().skip();
-        let mut launch_button = Button::default().with_label("Launch");
+        let mut launch_button = Button::default().with_label(l10n!(&launch));
         action_grid
             .cell()
             .unwrap()
             .add(BigButtonElement::wrap(launch_button.clone()));
-        let mut continue_button = Button::default().with_label("Continue");
+        let mut continue_button = Button::default().with_label(l10n!(&continue));
         action_grid
             .cell()
             .unwrap()
@@ -257,17 +274,14 @@ impl Home {
         let mut root = grid.group();
         root.hide();
 
-        // let action_width = root.w() / 4 - 5;
-        // let action_height = 2 * button_height;
-
         refresh_platform_button.deactivate();
         refresh_fls_button.deactivate();
 
         battleye_input.input().set_readonly(true);
         battleye_input.input().clear_visible_focus();
-        battleye_input.add("Always");
-        battleye_input.add("Never");
-        battleye_input.add("Only when required");
+        battleye_input.add(l10n!(&battleye.always));
+        battleye_input.add(l10n!(&battleye.never));
+        battleye_input.add(l10n!(&battleye.auto));
         battleye_input.set_value_index(match config.use_battleye {
             BattlEyeUsage::Always(true) => 0,
             BattlEyeUsage::Always(false) => 1,
@@ -289,13 +303,13 @@ impl Home {
 
         log_level_input.input().set_readonly(true);
         log_level_input.input().clear_visible_focus();
-        log_level_input.add("Off");
-        log_level_input.add("Trace");
-        log_level_input.add("Debug");
-        log_level_input.add("Info");
-        log_level_input.add("Warning");
-        log_level_input.add("Error");
-        log_level_input.add("Critical");
+        log_level_input.add(l10n!(&log_level.off));
+        log_level_input.add(l10n!(&log_level.trace));
+        log_level_input.add(l10n!(&log_level.debug));
+        log_level_input.add(l10n!(&log_level.info));
+        log_level_input.add(l10n!(&log_level.warn));
+        log_level_input.add(l10n!(&log_level.error));
+        log_level_input.add(l10n!(&log_level.crit));
         log_level_input.set_value_index(log_level_to_index(&config.log_level));
         log_level_input.set_callback({
             let on_action = Rc::clone(&on_action);
@@ -306,10 +320,34 @@ impl Home {
         });
         log_level_input.set_activated(!log_level_overridden);
 
+        let mut sorted_locales: Vec<_> = available_locales.keys().cloned().collect();
+        sorted_locales.sort_by(|lhs, rhs| available_locales[lhs].cmp(&available_locales[rhs]));
+        language_input.input().set_readonly(true);
+        language_input.input().clear_visible_focus();
+        language_input
+            .add(&l10n!(language.default, locale => available_locales[&default_locale].as_str()));
+        language_input.set_value_index(0);
+        for (idx, locale) in sorted_locales.iter().enumerate() {
+            language_input.add(&available_locales[locale]);
+            if config.locale.as_ref() == Some(locale) {
+                language_input.set_value_index((idx + 1) as _);
+            }
+        }
+        language_input.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                let locale = match input.menu_button().value() {
+                    0 => None,
+                    idx @ _ => Some(sorted_locales[(idx - 1) as usize].clone()),
+                };
+                on_action(HomeAction::ConfigureLocale(locale)).unwrap();
+            }
+        });
+
         theme_input.input().set_readonly(true);
         theme_input.input().clear_visible_focus();
-        theme_input.add("Light");
-        theme_input.add("Dark");
+        theme_input.add(l10n!(&theme.light));
+        theme_input.add(l10n!(&theme.dark));
         theme_input.set_value_index(match config.theme {
             ThemeChoice::Light => 0,
             ThemeChoice::Dark => 1,
@@ -366,30 +404,35 @@ impl Home {
 
         launch_button.set_callback({
             let on_action = Rc::clone(&on_action);
+            let localizer = Rc::clone(&localizer);
             let logger = logger.clone();
             move |_| {
+                use_l10n!(localizer => inner_l10n);
                 if let Err(err) = on_action(HomeAction::Launch) {
                     error!(logger, "Error launching game"; "error" => %err);
-                    alert_error(ERR_LAUNCHING_GAME, &err);
+                    alert_error(inner_l10n!(&err_launching_game), &err);
                 }
             }
         });
         continue_button.set_callback({
             let on_action = Rc::clone(&on_action);
+            let localizer = Rc::clone(&localizer);
             let logger = logger.clone();
             move |_| {
+                use_l10n!(localizer => inner_l10n);
                 if let Err(err) = on_action(HomeAction::Continue) {
                     error!(logger, "Error launching game"; "error" => %err);
-                    alert_error(ERR_LAUNCHING_GAME, &err);
+                    alert_error(inner_l10n!(&err_launching_game), &err);
                 }
             }
         });
         if let Some(mut button) = switch_branch_button {
             button.set_callback({
                 let on_action = Rc::clone(&on_action);
+                let localizer = Rc::clone(&localizer);
                 let logger = logger.clone();
-                let branch = game.branch();
                 move |_| {
+                    use_l10n!(localizer => inner_l10n);
                     if let Err(err) = on_action(HomeAction::SwitchBranch(other_branch)) {
                         error!(
                             logger,
@@ -397,11 +440,13 @@ impl Home {
                             "branch" => ?other_branch,
                             "error" => %err,
                         );
-                        let err_msg = match branch {
-                            Branch::Main => ERR_SWITCHING_TO_MAIN,
-                            Branch::PublicBeta => ERR_SWITCHING_TO_PUBLIC_BETA,
-                        };
-                        alert_error(err_msg, &err);
+                        alert_error(
+                            &inner_l10n!(
+                                err_switching_branch,
+                                branch => other_branch_name.as_str()
+                            ),
+                            &err,
+                        );
                     }
                 }
             });
@@ -411,6 +456,7 @@ impl Home {
 
         Rc::new(Self {
             root,
+            localizer,
             game,
             platform_user_id_text,
             platform_user_name_text,
@@ -437,12 +483,13 @@ impl Home {
         match update {
             HomeUpdate::LastSession => self
                 .last_session_text
-                .set_value(last_session_text(&self.game)),
+                .set_value(last_session_text(&self.localizer, &self.game)),
             HomeUpdate::AuthState(state) => self.update_auth_state(state),
         }
     }
 
     fn update_auth_state(&self, state: AuthState) {
+        use_l10n!(self.localizer);
         let (id, name, can_refresh) = match state.platform_user {
             Ok(user) => (user.id, user.display_name, false),
             Err(err) => {
@@ -457,11 +504,7 @@ impl Home {
             .set_activated(can_refresh);
 
         let (id, name, can_refresh) = match state.fls_account {
-            TaskState::Pending => (
-                "<Fetching...>".to_string(),
-                "<Fetching...>".to_string(),
-                false,
-            ),
+            TaskState::Pending => (l10n!(fls_fetching), l10n!(fls_fetching), false),
             TaskState::Ready(Ok(acct)) => (acct.master_id, acct.display_name, false),
             TaskState::Ready(Err(err)) => {
                 let err_str = format!("<{}>", err);
@@ -473,16 +516,16 @@ impl Home {
         self.refresh_fls_button.clone().set_activated(can_refresh);
 
         let online_play_str = match state.online_capability {
-            TaskState::Pending => "<Checking...>".to_string(),
-            TaskState::Ready(Ok(())) => "Yes".to_string(),
-            TaskState::Ready(Err(err)) => format!("No, {}", err),
+            TaskState::Pending => l10n!(capability_checking),
+            TaskState::Ready(Ok(())) => l10n!(capability_yes),
+            TaskState::Ready(Err(err)) => l10n!(capability_no, reason => err.to_string()),
         };
         self.online_play_text.set_value(online_play_str);
 
         let sp_play_str = match state.sp_capability {
-            TaskState::Pending => "<Checking...>".to_string(),
-            TaskState::Ready(Ok(())) => "Yes".to_string(),
-            TaskState::Ready(Err(err)) => format!("No, {}", err),
+            TaskState::Pending => l10n!(capability_checking),
+            TaskState::Ready(Ok(())) => l10n!(capability_yes),
+            TaskState::Ready(Err(err)) => l10n!(capability_no, reason => err.to_string()),
         };
         self.sp_play_text.set_value(sp_play_str);
     }
@@ -512,10 +555,6 @@ impl LayoutElement for BigButtonElement {
     }
 }
 
-const ERR_LAUNCHING_GAME: &str = "Error while trying to launch the game.";
-const ERR_SWITCHING_TO_MAIN: &str = "Error while trying to switch to Live.";
-const ERR_SWITCHING_TO_PUBLIC_BETA: &str = "Error while trying to switch to TestLive.";
-
 fn install_crom_font() -> Font {
     try_install_crom_font().unwrap_or(Font::TimesBold)
 }
@@ -539,21 +578,29 @@ fn create_info_label(text: &str) -> Frame {
         .with_label(text)
 }
 
-fn last_session_text(game: &Game) -> String {
+fn last_session_text(localizer: &Localizer, game: &Game) -> String {
+    use_l10n!(localizer);
     match &*game.last_session() {
-        None => "<none>".to_string(),
+        None => l10n!(last_session.none),
         Some(Session::SinglePlayer(map_ref)) => {
-            format!("Singleplayer: {}", map_ref_text(game.maps(), map_ref))
+            l10n!(last_session.singleplayer, map => map_ref_text(localizer, game.maps(), map_ref))
         }
-        Some(Session::CoOp(map_ref)) => format!("Co-op: {}", map_ref_text(game.maps(), map_ref)),
-        Some(Session::Online(server_ref)) => format!("Online: {}", server_ref_text(server_ref)),
+        Some(Session::CoOp(map_ref)) => {
+            l10n!(last_session.coop, map => map_ref_text(localizer, game.maps(), map_ref))
+        }
+        Some(Session::Online(server_ref)) => {
+            l10n!(last_session.online, server => server_ref_text(server_ref))
+        }
     }
 }
 
-fn map_ref_text(maps: &Maps, map_ref: &MapRef) -> String {
+fn map_ref_text(localizer: &Localizer, maps: &Maps, map_ref: &MapRef) -> String {
+    use_l10n!(localizer);
     match map_ref {
         MapRef::Known { map_id } => maps[*map_id].display_name.clone(),
-        MapRef::Unknown { asset_path } => format!("<unknown map: {}>", asset_path),
+        MapRef::Unknown { asset_path } => {
+            l10n!(last_session.unknown_map, asset_path => asset_path.as_str())
+        }
     }
 }
 

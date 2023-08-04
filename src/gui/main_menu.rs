@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::rc::Rc;
 
 use fltk::app;
 use fltk::button::{Button, RadioButton};
@@ -7,6 +8,8 @@ use fltk::enums::FrameType;
 use fltk::prelude::*;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 use fltk_float::WrapperFactory;
+
+use crate::l10n::{localization, use_l10n, Localizer};
 
 use super::wrapper_factory;
 
@@ -19,23 +22,26 @@ pub(super) struct MainMenu {
 
 impl MainMenu {
     pub fn new() -> (Self, Grid) {
+        let localizer = localization().localizer("main_menu");
+        use_l10n!(localizer);
+
         let mut grid = Grid::builder_with_factory(wrapper_factory())
             .with_col_spacing(10)
             .with_row_spacing(10);
         grid.col().with_stretch(1).add();
 
-        let mut home_btn = make_button(&mut grid, RadioButton::default, "Launcher");
-        let online_btn = make_button(&mut grid, RadioButton::default, "Online");
-        let single_player_btn = make_button(&mut grid, RadioButton::default, "Singleplayer");
-        let mut coop_btn = make_button(&mut grid, Button::default, "Co-op");
-        let mods_btn = make_button(&mut grid, RadioButton::default, "Mods");
-        let mut exit_btn = make_button(&mut grid, Button::default, "Exit");
+        let mut home_btn = make_button(&mut grid, RadioButton::default, l10n!(&home));
+        let online_btn = make_button(&mut grid, RadioButton::default, l10n!(&online));
+        let single_player_btn = make_button(&mut grid, RadioButton::default, l10n!(&sp));
+        let mut coop_btn = make_button(&mut grid, Button::default, l10n!(&coop));
+        let mods_btn = make_button(&mut grid, RadioButton::default, l10n!(&mods));
+        let mut exit_btn = make_button(&mut grid, Button::default, l10n!(&exit));
 
         home_btn.toggle(true);
 
         let grid = grid.end();
 
-        coop_btn.set_callback(not_implemented_callback);
+        coop_btn.set_callback(not_implemented_callback(&localizer));
         exit_btn.set_callback(|_| app::quit());
 
         let menu = Self {
@@ -86,6 +92,10 @@ where
     button
 }
 
-fn not_implemented_callback(_: &mut impl WidgetExt) {
-    dialog::alert_default("This feature is not yet implemented in the current release.");
+fn not_implemented_callback<W: WidgetExt>(localizer: &Rc<Localizer>) -> impl Fn(&mut W) {
+    let localizer = Rc::clone(localizer);
+    move |_| {
+        use_l10n!(localizer);
+        dialog::alert_default(l10n!(&not_implemented));
+    }
 }

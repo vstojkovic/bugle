@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use fltk::window::Window;
 use fltk_float::grid::{CellAlign, GridBuilder};
 use fltk_float::SimpleWrapper;
 use slog::Logger;
+use unic_langid::LanguageIdentifier;
 
 use crate::config::Config;
 use crate::game::platform::ModDirectory;
@@ -39,6 +41,8 @@ impl LauncherWindow {
         game: Arc<Game>,
         config: &Config,
         mod_resolver: Rc<dyn ModDirectory>,
+        available_locales: HashMap<LanguageIdentifier, String>,
+        default_locale: LanguageIdentifier,
         log_level_overridden: bool,
         can_switch_branch: bool,
     ) -> Self {
@@ -85,6 +89,8 @@ impl LauncherWindow {
                 logger.clone(),
                 Arc::clone(&game),
                 config,
+                available_locales,
+                default_locale,
                 log_level_overridden,
                 can_switch_branch,
                 move |home_action| on_action.borrow()(Action::HomeAction(home_action)),

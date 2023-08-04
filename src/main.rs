@@ -2,10 +2,14 @@
 
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::{HashMap, HashSet};
+use std::convert::Infallible;
+use std::ffi::OsStr;
+use std::io::Cursor;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
@@ -18,12 +22,14 @@ use game::platform::ModDirectory;
 use game::MapRef;
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
+use unic_langid::{langid, LanguageIdentifier};
 
 mod auth;
 mod config;
 mod env;
 mod game;
 mod gui;
+mod l10n;
 mod logger;
 mod net;
 mod parser_utils;
@@ -39,9 +45,14 @@ use self::gui::{
     ModManagerUpdate, ModUpdateProgressDialog, ModUpdateSelectionDialog, ServerBrowserAction,
     ServerBrowserUpdate, SinglePlayerAction, Update,
 };
+use self::l10n::{
+    enum_locales, err, init_localization, select_locale, DirectoryLoader, Localization, ZipLoader,
+};
 use self::logger::create_root_logger;
 use self::servers::Server;
 use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
+
+static QUIT_FLAG: AtomicBool = AtomicBool::new(false);
 
 pub enum Message {
     Update(Update),
@@ -77,6 +88,8 @@ impl Launcher {
     fn new(
         logger: Logger,
         log_level: Option<Arc<AtomicUsize>>,
+        available_locales: HashMap<LanguageIdentifier, String>,
+        default_locale: LanguageIdentifier,
         can_switch_branch: bool,
         app: App,
         steam: Steam,
@@ -100,6 +113,8 @@ impl Launcher {
             Arc::clone(&game),
             &config,
             Rc::clone(&mod_directory),
+            available_locales,
+            default_locale,
             log_level.is_none(),
             can_switch_branch,
         );
@@ -160,6 +175,10 @@ impl Launcher {
     }
 
     fn run(&self, disable_prefetch: bool) {
+        if QUIT_FLAG.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+
         self.main_window.show();
 
         if disable_prefetch {
@@ -272,28 +291,36 @@ impl Launcher {
             Action::HomeAction(HomeAction::Launch) => self.launch_game(),
             Action::HomeAction(HomeAction::Continue) => self.continue_last_session(),
             Action::HomeAction(HomeAction::SwitchBranch(branch)) => {
-                self.update_config(|config| config.branch = branch)?;
+                self.update_config(|config| config.branch = branch);
                 env::restart_process()?;
                 app::quit();
                 Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureLogLevel(new_log_level)) => {
-                let update_result = self.update_config(|config| config.log_level = new_log_level);
-                if update_result.is_ok() {
-                    if let Some(log_level) = &self.log_level {
-                        log_level.store(
-                            new_log_level.0.as_usize(),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
-                    }
+                self.update_config(|config| config.log_level = new_log_level);
+                if let Some(log_level) = &self.log_level {
+                    log_level.store(
+                        new_log_level.0.as_usize(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                 }
-                update_result
+                Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureBattlEye(use_battleye)) => {
-                self.update_config(|config| config.use_battleye = use_battleye)
+                self.update_config(|config| config.use_battleye = use_battleye);
+                Ok(())
+            }
+            Action::HomeAction(HomeAction::ConfigureLocale(locale)) => {
+                self.update_config(|config| config.locale = locale);
+                if prompt_confirm(PROMPT_RESTART) {
+                    env::restart_process()?;
+                    app::quit();
+                }
+                Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureTheme(theme)) => {
-                self.update_config(|config| config.theme = theme)
+                self.update_config(|config| config.theme = theme);
+                Ok(())
             }
             Action::HomeAction(HomeAction::RefreshAuthState) => {
                 self.main_window
@@ -321,7 +348,8 @@ impl Launcher {
                 self.game.save_favorites(favorites)
             }
             Action::ServerBrowser(ServerBrowserAction::UpdateConfig(sb_cfg)) => {
-                self.update_config(|config| config.server_browser = sb_cfg)
+                self.update_config(|config| config.server_browser = sb_cfg);
+                Ok(())
             }
             Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
                 Arc::clone(&self.saved_games_worker).list_games()
@@ -559,7 +587,7 @@ impl Launcher {
     }
 
     fn check_auth_state(&self) -> AuthState {
-        let platform_user = self.steam.user().ok_or(anyhow!("Steam not running"));
+        let platform_user = self.steam.user().ok_or(anyhow!(err!(steam_not_running)));
         let fls_account = match &platform_user {
             Ok(user) => {
                 if let Some(cached) = self.cached_users().by_platform_id(&user.id).as_deref() {
@@ -568,7 +596,7 @@ impl Launcher {
                     if self.steam.can_play_online() {
                         TaskState::Pending
                     } else {
-                        TaskState::Ready(Err(anyhow!("Steam in offline mode")))
+                        TaskState::Ready(Err(anyhow!(err!(steam_offline))))
                     }
                 }
             }
@@ -598,12 +626,12 @@ impl Launcher {
             Err(err) => TaskState::Ready(Err(anyhow!(err.to_string()))),
             Ok(_) => {
                 if !self.steam.can_play_online() {
-                    TaskState::Ready(Err(anyhow!("Steam in offline mode")))
+                    TaskState::Ready(Err(anyhow!(err!(steam_offline))))
                 } else {
                     match &fls_account {
                         TaskState::Pending => TaskState::Pending,
                         TaskState::Ready(Ok(_)) => TaskState::Ready(Ok(())),
-                        TaskState::Ready(Err(_)) => TaskState::Ready(Err(anyhow!("FLS error"))),
+                        TaskState::Ready(Err(_)) => TaskState::Ready(Err(anyhow!(err!(fls_error)))),
                     }
                 }
             }
@@ -621,7 +649,7 @@ impl Launcher {
                 TaskState::Pending => TaskState::Pending,
                 TaskState::Ready(Ok(_)) => TaskState::Ready(Ok(())),
                 TaskState::Ready(Err(_)) => {
-                    TaskState::Ready(Err(anyhow!("FLS account not cached")))
+                    TaskState::Ready(Err(anyhow!(err!(fls_acct_not_cached))))
                 }
             },
         }
@@ -958,13 +986,12 @@ impl Launcher {
         self.config.borrow()
     }
 
-    fn update_config(&self, mutator: impl FnOnce(&mut Config)) -> Result<()> {
+    fn update_config(&self, mutator: impl FnOnce(&mut Config)) {
         let mut config = self.config.borrow_mut();
         mutator(&mut config);
         if let Err(err) = self.config_persister.save(&config) {
             warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
         }
-        Ok(())
     }
 
     fn cached_users(&self) -> Ref<CachedUsers> {
@@ -1052,6 +1079,7 @@ struct ModMismatch {
     added_mods: HashSet<ModRef>,
 }
 
+const PROMPT_RESTART: &str = "This change requires restarting BUGLE. Restart now?";
 const PROMPT_SP_MOD_MISMATCH: &str =
     "It looks like your mod list doesn't match this game. Launch anyway?";
 const TXT_MISSING_MODS: &str = "Missing mods:";
@@ -1062,10 +1090,20 @@ const ERR_FLS_ACCOUNT_NOT_CACHED: &str =
     "Steam is offline and the game has not stored your FLS account info. You need to start the \
     game in online mode at least once before you can play offline.";
 
+const EMBEDDED_L10N: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/l10n.zip"));
+
+fn pathbuf_from_arg(arg: &OsStr) -> std::result::Result<PathBuf, Infallible> {
+    Ok(PathBuf::from(arg))
+}
+
 #[tokio::main]
 async fn main() {
     let mut args = pico_args::Arguments::from_env();
-    let disable_prefetch = args.contains("--no-prefetch");
+    let disable_prefetch = args.contains(["-np", "--no-prefetch"]);
+    let strict_l10n = args.contains(["-Ls", "--l10n-strict"]);
+    let l10n_dir = args
+        .opt_value_from_os_str(["-Ld", "--l10n-dir"], pathbuf_from_arg)
+        .unwrap();
     let log_level_override = args
         .opt_value_from_fn(["-l", "--log-level"], |s| {
             FilterLevel::from_str(s).map_err(|_| "")
@@ -1103,6 +1141,38 @@ async fn main() {
             std::sync::atomic::Ordering::Relaxed,
         );
     }
+
+    let l10n_dir =
+        l10n_dir.unwrap_or_else(|| env::current_exe_dir().unwrap_or_default().join("l10n"));
+    trace!(root_logger, "Localization directory selected"; "path" => ?&l10n_dir);
+    let mut l10n_loader = (
+        DirectoryLoader::new(l10n_dir),
+        ZipLoader::new(Cursor::new(EMBEDDED_L10N)).unwrap(),
+    );
+    let locales = enum_locales(&root_logger, &mut l10n_loader, strict_l10n);
+    let default_locale = select_locale(
+        &root_logger,
+        &locales,
+        whoami::lang()
+            .into_iter()
+            .filter_map(|locale_str| locale_str.parse().ok()),
+    )
+    .unwrap_or_else(|| langid!("en"));
+    let locale = match &config.locale {
+        None => default_locale.clone(),
+        Some(config_locale) => select_locale(
+            &root_logger,
+            &locales,
+            [config_locale.clone(), default_locale.clone()].into_iter(),
+        )
+        .unwrap(),
+    };
+    init_localization(Localization::new(
+        &root_logger,
+        locale,
+        l10n_loader,
+        strict_l10n,
+    ));
 
     let app = App::default();
     Theme::from_config(config.theme).apply();
@@ -1172,6 +1242,8 @@ async fn main() {
     let launcher = Launcher::new(
         root_logger.clone(),
         if log_level_override.is_none() { Some(log_level) } else { None },
+        locales,
+        default_locale,
         can_switch_branch,
         app,
         steam,

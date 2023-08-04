@@ -18,6 +18,7 @@ use fltk_float::SimpleWrapper;
 use slog::{error, Logger};
 
 use crate::game::{GameDB, Maps};
+use crate::l10n::{err, localization, use_l10n, Localizer};
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
@@ -78,6 +79,7 @@ impl SinglePlayerState {
 
 pub struct SinglePlayer {
     logger: Logger,
+    localizer: Rc<Localizer>,
     root: Group,
     on_action: Box<dyn Handler<SinglePlayerAction>>,
     in_progress_table: DataTable<Vec<String>>,
@@ -97,6 +99,9 @@ impl SinglePlayer {
         maps: Arc<Maps>,
         on_action: impl Handler<SinglePlayerAction> + 'static,
     ) -> Rc<Self> {
+        let localizer = localization().localizer("single_player");
+        use_l10n!(localizer);
+
         let mut grid = Grid::builder_with_factory(wrapper_factory())
             .with_col_spacing(10)
             .with_row_spacing(10);
@@ -109,7 +114,7 @@ impl SinglePlayer {
         grid.cell()
             .unwrap()
             .wrap(Frame::default())
-            .with_label("Map:");
+            .with_label(l10n!(&map));
         let mut map_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
         for map in maps.iter() {
             map_input.add(&map.display_name);
@@ -122,46 +127,46 @@ impl SinglePlayer {
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("New")
-            .with_tooltip("Start a new singleplayer game from scratch");
+            .with_label(l10n!(&new))
+            .with_tooltip(l10n!(&new.tooltip));
         let mut continue_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Continue")
-            .with_tooltip("Continue the current singleplayer game");
+            .with_label(l10n!(&continue))
+            .with_tooltip(l10n!(&continue.tooltip));
         let mut load_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Load")
-            .with_tooltip("Replace the current singleplayer game with the selected backup");
+            .with_label(l10n!(&load))
+            .with_tooltip(l10n!(&load.tooltip));
         let mut save_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Save")
-            .with_tooltip("Replace the selected backup with the current singleplayer game");
+            .with_label(l10n!(&save))
+            .with_tooltip(l10n!(&save.tooltip));
         let mut save_as_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Save As...")
-            .with_tooltip("Create a new backup of the current singleplayer game");
+            .with_label(l10n!(&save_as))
+            .with_tooltip(l10n!(&save_as.tooltip));
         let mut delete_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("Delete")
-            .with_tooltip("Delete the selected backup");
+            .with_label(l10n!(&delete))
+            .with_tooltip(l10n!(&delete.tooltip));
 
         grid.row().with_stretch(1).add();
         grid.cell()
             .unwrap()
             .with_vert_align(CellAlign::Start)
             .wrap(Frame::default())
-            .with_label("In Progress:");
-        let in_progress_table = make_db_list();
+            .with_label(l10n!(&in_progress));
+        let in_progress_table = make_db_list(&localizer);
         grid.span(1, 7)
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
@@ -175,8 +180,8 @@ impl SinglePlayer {
             .unwrap()
             .with_vert_align(CellAlign::Start)
             .wrap(Frame::default())
-            .with_label("Backups:");
-        let mut backups_table = make_db_list();
+            .with_label(l10n!(&backups));
+        let mut backups_table = make_db_list(&localizer);
         grid.span(1, 7)
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
@@ -193,6 +198,7 @@ impl SinglePlayer {
 
         let single_player = Rc::new(Self {
             logger,
+            localizer,
             root,
             on_action: Box::new(on_action),
             in_progress_table,
@@ -249,12 +255,13 @@ impl SinglePlayer {
     }
 
     pub fn handle_update(&self, update: SinglePlayerUpdate) {
+        use_l10n!(self.localizer);
         match update {
             SinglePlayerUpdate::PopulateList(result) => match result {
                 Ok(games) => self.set_games(games),
                 Err(err) => {
                     error!(self.logger, "Error listing saved games"; "error" => %err);
-                    super::alert_error(ERR_LISTING_SAVED_GAMES, &err);
+                    super::alert_error(l10n!(&err_listing_saved_games), &err);
                 }
             },
         }
@@ -308,16 +315,19 @@ impl SinglePlayer {
     }
 
     fn new_clicked(&self) {
+        use_l10n!(self.localizer);
         let state = self.state.borrow();
         let map_id = state.filter().map_id;
-        if state.in_progress.contains_key(&map_id) && !prompt_confirm(PROMPT_REPLACE_IN_PROGRESS) {
+        if state.in_progress.contains_key(&map_id)
+            && !prompt_confirm(l10n!(&prompt_replace_in_progress))
+        {
             return;
         }
         drop(state);
 
         if let Err(err) = (self.on_action)(SinglePlayerAction::NewSavedGame { map_id }) {
             error!(self.logger, "Error launching singleplayer game"; "error" => %err);
-            alert_error(ERR_LAUNCHING_SP, &err);
+            alert_error(l10n!(&err_launching_sp), &err);
             return;
         }
 
@@ -329,18 +339,22 @@ impl SinglePlayer {
     }
 
     fn continue_clicked(&self) {
+        use_l10n!(self.localizer);
         let map_id = self.state.borrow().filter().map_id;
         if let Err(err) = (self.on_action)(SinglePlayerAction::ContinueSavedGame { map_id }) {
             error!(self.logger, "Error launching singleplayer game"; "error" => %err);
-            alert_error(ERR_LAUNCHING_SP, &err);
+            alert_error(l10n!(&err_launching_sp), &err);
         }
     }
 
     fn load_clicked(&self) {
+        use_l10n!(self.localizer);
         let state = self.state.borrow();
         let backup_idx = state.selected_backup_idx.unwrap();
         let map_id = state.filter().map_id;
-        if state.in_progress.contains_key(&map_id) && !prompt_confirm(PROMPT_REPLACE_IN_PROGRESS) {
+        if state.in_progress.contains_key(&map_id)
+            && !prompt_confirm(l10n!(&prompt_replace_in_progress))
+        {
             return;
         }
         let backup_name = state.backups[backup_idx].file_name.clone();
@@ -352,7 +366,7 @@ impl SinglePlayer {
 
         if let Err(err) = (self.on_action)(action) {
             error!(self.logger, "Error loading singleplayer backup"; "error" => %err);
-            alert_error(ERR_LOADING_GAME, &err);
+            alert_error(l10n!(&err_loading_game), &err);
             return;
         }
 
@@ -366,7 +380,8 @@ impl SinglePlayer {
     }
 
     fn save_clicked(&self) {
-        if !prompt_confirm(PROMPT_REPLACE_BACKUP) {
+        use_l10n!(self.localizer);
+        if !prompt_confirm(l10n!(&prompt_replace_backup)) {
             return;
         }
 
@@ -382,7 +397,7 @@ impl SinglePlayer {
 
         if let Err(err) = (self.on_action)(action) {
             error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
-            alert_error(ERR_SAVING_GAME, &err);
+            alert_error(l10n!(&err_saving_game), &err);
             return;
         }
 
@@ -400,7 +415,9 @@ impl SinglePlayer {
     }
 
     fn save_as_clicked(&self) {
-        let backup_name = if let Some(name) = dialog::input_default(PROMPT_BACKUP_NAME, "") {
+        use_l10n!(self.localizer);
+        let backup_name = if let Some(name) = dialog::input_default(l10n!(&prompt_backup_name), "")
+        {
             db_name_from(name)
         } else {
             return;
@@ -408,7 +425,7 @@ impl SinglePlayer {
         let backup_name = match backup_name {
             Ok(name) => name,
             Err(err) => {
-                alert_error(ERR_INVALID_BACKUP_NAME, &err);
+                alert_error(l10n!(&err_invalid_backup_name), &err);
                 return;
             }
         };
@@ -423,7 +440,7 @@ impl SinglePlayer {
             .find(|(_, game)| game.file_name == backup_name)
             .map(|(idx, _)| idx);
 
-        if existing_idx.is_some() && !prompt_confirm(PROMPT_REPLACE_BACKUP) {
+        if existing_idx.is_some() && !prompt_confirm(l10n!(&prompt_replace_backup)) {
             return;
         }
 
@@ -435,7 +452,7 @@ impl SinglePlayer {
 
         if let Err(err) = (self.on_action)(action) {
             error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
-            alert_error(ERR_SAVING_GAME, &err);
+            alert_error(l10n!(&err_saving_game), &err);
             return;
         }
 
@@ -456,7 +473,8 @@ impl SinglePlayer {
     }
 
     fn delete_clicked(&self) {
-        if !prompt_confirm(PROMPT_DELETE_BACKUP) {
+        use_l10n!(self.localizer);
+        if !prompt_confirm(l10n!(&prompt_delete_backup)) {
             return;
         }
 
@@ -468,7 +486,7 @@ impl SinglePlayer {
 
         if let Err(err) = (self.on_action)(action) {
             error!(self.logger, "Error deleting singleplayer backup"; "error" => %err);
-            alert_error(ERR_DELETING_GAME, &err);
+            alert_error(l10n!(&err_deleting_game), &err);
             return;
         }
 
@@ -539,27 +557,15 @@ impl SinglePlayer {
     }
 }
 
-const ERR_LISTING_SAVED_GAMES: &str = "Error while enumerating saves games.";
-const ERR_LAUNCHING_SP: &str = "Error while trying to launch the single-player game.";
-const ERR_LOADING_GAME: &str = "Error while loading a saved game.";
-const ERR_SAVING_GAME: &str = "Error while saving the in-progress game.";
-const ERR_DELETING_GAME: &str = "Error while deleting a saved game.";
-const ERR_INVALID_BACKUP_NAME: &str =
-    "Invalid backup name. Please use a non-empty filename without a path.";
-const ERR_PREFIX_INVALID_NAME: &str = "Invalid filename";
-const PROMPT_REPLACE_IN_PROGRESS: &str = "Are you sure you want to overwrite the in-progress game?";
-const PROMPT_REPLACE_BACKUP: &str = "Are you sure you want to overwrite this backup?";
-const PROMPT_BACKUP_NAME: &str = "Backup name:";
-const PROMPT_DELETE_BACKUP: &str = "Are you sure you want to delete this backup?";
-
-fn make_db_list() -> DataTable<Vec<String>> {
+fn make_db_list(localizer: &Localizer) -> DataTable<Vec<String>> {
+    use_l10n!(localizer);
     let mut db_list = DataTable::default().with_properties(DataTableProperties {
         columns: vec![
-            ("Filename", 310).into(),
-            ("Last Played", 200).into(),
-            ("Character", 160).into(),
-            ("Level", 50).into(),
-            ("Clan", 150).into(),
+            (l10n!(&col_filename), 310).into(),
+            (l10n!(&col_last_played), 200).into(),
+            (l10n!(&col_character), 160).into(),
+            (l10n!(&col_level), 50).into(),
+            (l10n!(&col_clan), 150).into(),
         ],
         cell_selection_color: fltk::enums::Color::Free,
         header_font_color: fltk::enums::Color::Gray0,
@@ -592,12 +598,12 @@ fn make_row(game_db: &GameDB) -> Vec<String> {
 fn db_name_from(s: String) -> Result<PathBuf> {
     let s = s.trim();
     if s.is_empty() {
-        bail!("Filename was empty.");
+        bail!(err!(sp_db_name_empty));
     }
 
     let mut db_name = PathBuf::from(s.trim());
     if db_name.parent() != Some("".as_ref()) {
-        bail!("{}: {}", ERR_PREFIX_INVALID_NAME, s);
+        bail!(err!(sp_db_name_invalid, filename => s.to_string()));
     }
     if let Some(Component::Normal(_)) = db_name.components().next() {
         match db_name.extension() {
@@ -614,6 +620,6 @@ fn db_name_from(s: String) -> Result<PathBuf> {
         }
         Ok(db_name)
     } else {
-        bail!("{}: {}", ERR_PREFIX_INVALID_NAME, s);
+        bail!(err!(sp_db_name_invalid, filename => s.to_string()));
     }
 }
