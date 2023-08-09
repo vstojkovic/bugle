@@ -1077,7 +1077,7 @@ async fn main() {
             .unwrap_or(logger::DEFAULT_LOG_LEVEL)
             .as_usize(),
     ));
-    let root_logger = create_root_logger(&log_level);
+    let (root_logger, log_guard) = create_root_logger(&log_level);
 
     let config_persister: Box<dyn ConfigPersister + Send + Sync> =
         match IniConfigPersister::for_current_exe() {
@@ -1182,4 +1182,5 @@ async fn main() {
     launcher.run(disable_prefetch);
 
     info!(root_logger, "Shutting down launcher");
+    drop(log_guard);
 }
