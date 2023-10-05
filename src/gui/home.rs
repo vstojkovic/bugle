@@ -257,9 +257,6 @@ impl Home {
         let mut root = grid.group();
         root.hide();
 
-        // let action_width = root.w() / 4 - 5;
-        // let action_height = 2 * button_height;
-
         refresh_platform_button.deactivate();
         refresh_fls_button.deactivate();
 
