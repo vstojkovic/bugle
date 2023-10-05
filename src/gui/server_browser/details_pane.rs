@@ -34,7 +34,7 @@ impl DetailsPane {
         };
         let width_padding = table_props.cell_padding * 2 + fltk::app::scrollbar_size();
 
-        let mut table = DataTable::<[Cow<'static, str>; 2]>::default().with_properties(table_props);
+        let mut table = DataTable::<DetailRow>::default().with_properties(table_props);
         table.set_row_header(true);
         table.set_col_header(true);
         table.set_col_resize(true);
