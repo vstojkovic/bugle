@@ -327,15 +327,16 @@ fn problems_cell_value(server: &Server) -> Option<Cow<'static, str>> {
     if server.is_valid() {
         return None;
     }
-    let mut problems = Vec::new();
+    let mut problems = String::new();
     if server.validity.contains(Validity::INVALID_BUILD) {
-        problems.push("version mismatch");
+        problems.push_str("version mismatch, ");
     }
     if server.validity.contains(Validity::INVALID_ADDR) {
-        problems.push("invalid IP address");
+        problems.push_str("invalid IP address, ");
     }
     if server.validity.contains(Validity::INVALID_PORT) {
-        problems.push("version port");
+        problems.push_str("invalid port, ");
     }
-    Some(problems.join(", ").into())
+    problems.truncate(problems.len() - 2);
+    Some(problems.into())
 }
