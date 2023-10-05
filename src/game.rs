@@ -32,6 +32,7 @@ pub struct Game {
     logger: Logger,
     root: PathBuf,
     branch: Branch,
+    needs_update: bool,
     version: (u32, u16),
     save_path: PathBuf,
     game_ini_path: PathBuf,
@@ -77,6 +78,7 @@ impl Game {
         logger: Logger,
         game_path: PathBuf,
         branch: Branch,
+        needs_update: bool,
         mut installed_mods: Vec<ModInfo>,
     ) -> Result<Self> {
         let save_path = game_path.join("ConanSandbox/Saved");
@@ -167,6 +169,7 @@ impl Game {
             logger,
             root: game_path,
             branch,
+            needs_update,
             version,
             save_path,
             game_ini_path,
@@ -179,6 +182,10 @@ impl Game {
 
     pub fn branch(&self) -> Branch {
         self.branch
+    }
+
+    pub fn needs_update(&self) -> bool {
+        self.needs_update
     }
 
     pub fn build_id(&self) -> u32 {

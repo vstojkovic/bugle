@@ -24,6 +24,7 @@ pub struct SteamGameLocation {
     game_path: PathBuf,
     workshop_path: Option<PathBuf>,
     branch: Branch,
+    needs_update: bool,
 }
 
 impl Steam {
@@ -39,17 +40,20 @@ impl Steam {
 
     pub fn locate_game(&mut self, branch: Branch) -> Result<SteamGameLocation> {
         debug!(self.logger, "Locating game installation");
-        let game_path = self
-            .installation
-            .app(&app_id(branch))
-            .ok_or_else(|| {
-                anyhow!(
-                    "Cannot locate Conan Exiles installation. Please verify that you have Conan \
+        let app = self.installation.app(&app_id(branch)).ok_or_else(|| {
+            anyhow!(
+                "Cannot locate Conan Exiles installation. Please verify that you have Conan \
                     Exiles installed in a Steam library and try again."
-                )
-            })?
-            .path
-            .clone();
+            )
+        })?;
+        let game_path = app.path.clone();
+        let needs_update = match &app.state_flags {
+            None => false,
+            Some(flags) => flags.into_iter().any(|flag| match flag {
+                steamlocate::steamapp::StateFlag::UpdateRequired => true,
+                _ => false,
+            }),
+        };
 
         debug!(self.logger, "Determining the workshop path");
         let workshop_path = self
@@ -64,6 +68,7 @@ impl Steam {
             game_path,
             workshop_path,
             branch,
+            needs_update,
         })
     }
 
@@ -83,6 +88,7 @@ impl Steam {
             self.logger.clone(),
             location.game_path,
             location.branch,
+            location.needs_update,
             installed_mods,
         )?;
 

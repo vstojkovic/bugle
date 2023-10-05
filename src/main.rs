@@ -1169,6 +1169,15 @@ async fn main() {
         }
     };
 
+    if game.needs_update() {
+        if gui::prompt_confirm(
+            "Conan Exiles needs to be updated. Do you want to close BUGLE?\n\
+                Note that closing BUGLE will not automatically start the update.",
+        ) {
+            return;
+        }
+    }
+
     let launcher = Launcher::new(
         root_logger.clone(),
         if log_level_override.is_none() { Some(log_level) } else { None },
