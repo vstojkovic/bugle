@@ -272,28 +272,28 @@ impl Launcher {
             Action::HomeAction(HomeAction::Launch) => self.launch_game(),
             Action::HomeAction(HomeAction::Continue) => self.continue_last_session(),
             Action::HomeAction(HomeAction::SwitchBranch(branch)) => {
-                self.update_config(|config| config.branch = branch)?;
+                self.update_config(|config| config.branch = branch);
                 env::restart_process()?;
                 app::quit();
                 Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureLogLevel(new_log_level)) => {
-                let update_result = self.update_config(|config| config.log_level = new_log_level);
-                if update_result.is_ok() {
-                    if let Some(log_level) = &self.log_level {
-                        log_level.store(
-                            new_log_level.0.as_usize(),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
-                    }
+                self.update_config(|config| config.log_level = new_log_level);
+                if let Some(log_level) = &self.log_level {
+                    log_level.store(
+                        new_log_level.0.as_usize(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                 }
-                update_result
+                Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureBattlEye(use_battleye)) => {
-                self.update_config(|config| config.use_battleye = use_battleye)
+                self.update_config(|config| config.use_battleye = use_battleye);
+                Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureTheme(theme)) => {
-                self.update_config(|config| config.theme = theme)
+                self.update_config(|config| config.theme = theme);
+                Ok(())
             }
             Action::HomeAction(HomeAction::RefreshAuthState) => {
                 self.main_window
@@ -321,7 +321,8 @@ impl Launcher {
                 self.game.save_favorites(favorites)
             }
             Action::ServerBrowser(ServerBrowserAction::UpdateConfig(sb_cfg)) => {
-                self.update_config(|config| config.server_browser = sb_cfg)
+                self.update_config(|config| config.server_browser = sb_cfg);
+                Ok(())
             }
             Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
                 Arc::clone(&self.saved_games_worker).list_games()
@@ -958,13 +959,12 @@ impl Launcher {
         self.config.borrow()
     }
 
-    fn update_config(&self, mutator: impl FnOnce(&mut Config)) -> Result<()> {
+    fn update_config(&self, mutator: impl FnOnce(&mut Config)) {
         let mut config = self.config.borrow_mut();
         mutator(&mut config);
         if let Err(err) = self.config_persister.save(&config) {
             warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
         }
-        Ok(())
     }
 
     fn cached_users(&self) -> Ref<CachedUsers> {
