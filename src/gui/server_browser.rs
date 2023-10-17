@@ -26,7 +26,7 @@ use crate::servers::{
 use self::actions_pane::{Action, ActionsPane};
 use self::connect_dialog::ConnectDialog;
 use self::details_pane::DetailsPane;
-use self::filter_pane::{FilterChange, FilterHolder, FilterPane};
+use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
 use self::state::{Filter, SortOrder};
 
@@ -98,6 +98,7 @@ pub(super) struct ServerBrowser {
     total_players_text: Frame,
     pending_update: Rc<Cell<Option<ServerBrowserUpdate>>>,
     state: Rc<RefCell<ServerBrowserState>>,
+    filter_dirty: Cell<bool>,
     refreshing: Cell<bool>,
 }
 
@@ -214,6 +215,7 @@ impl ServerBrowser {
             total_players_text,
             pending_update: Rc::new(Cell::new(None)),
             state: Rc::clone(&state),
+            filter_dirty: Cell::new(false),
             refreshing: Cell::new(true),
         });
 
@@ -587,13 +589,7 @@ impl ServerBrowser {
         let filter = state.filter();
         let order = state.order();
         let config = ServerBrowserConfig {
-            type_filter: filter.type_filter(),
-            mode: filter.mode(),
-            region: filter.region(),
-            battleye_required: filter.battleye_required(),
-            include_invalid: filter.include_invalid(),
-            include_password_protected: filter.include_password_protected(),
-            mods: filter.mods(),
+            filter: filter.as_ref().clone(),
             sort_criteria: order.criteria,
             scroll_lock: self.list_pane.scroll_lock(),
         };
@@ -606,12 +602,16 @@ impl FilterHolder for ServerBrowser {
         accessor(self.state.borrow().filter());
     }
 
-    fn mutate_filter(&self, change: FilterChange, mutator: impl FnOnce(&mut Filter)) {
+    fn mutate_filter(&self, mutator: impl FnOnce(&mut Filter)) {
         let selected_idx = self.selected_server_index();
         self.state.borrow_mut().update_filter(mutator);
         self.list_pane.populate(self.state.clone());
         self.set_selected_server_index(selected_idx, false);
-        if (change != FilterChange::Name) && (change != FilterChange::Map) {
+        self.filter_dirty.set(true);
+    }
+
+    fn persist_filter(&self) {
+        if self.filter_dirty.take() {
             self.update_config();
         }
     }

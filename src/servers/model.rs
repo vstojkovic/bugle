@@ -566,6 +566,19 @@ impl TypeFilter {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Filter {
+    pub name: String,
+    pub map: String,
+    pub type_filter: TypeFilter,
+    pub mode: Option<Mode>,
+    pub region: Option<Region>,
+    pub battleye_required: Option<bool>,
+    pub include_invalid: bool,
+    pub include_password_protected: bool,
+    pub mods: Option<bool>,
+}
+
 #[derive(Clone, Copy, Debug, AsRefStr, EnumIter, EnumString, Hash, PartialEq, Eq)]
 #[strum(ascii_case_insensitive)]
 pub enum SortKey {

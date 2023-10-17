@@ -5,7 +5,7 @@ use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
 
 use crate::env::current_exe_dir;
 use crate::game::Branch;
-use crate::servers::{Mode, Region, SortCriteria, SortKey, TypeFilter};
+use crate::servers::{Filter, Mode, Region, SortCriteria, SortKey, TypeFilter};
 
 #[derive(Debug, Default)]
 pub struct Config {
@@ -51,13 +51,7 @@ impl Default for ThemeChoice {
 
 #[derive(Debug, Default)]
 pub struct ServerBrowserConfig {
-    pub type_filter: TypeFilter,
-    pub mode: Option<Mode>,
-    pub region: Option<Region>,
-    pub battleye_required: Option<bool>,
-    pub include_invalid: bool,
-    pub include_password_protected: bool,
-    pub mods: Option<bool>,
+    pub filter: Filter,
     pub sort_criteria: SortCriteria,
     pub scroll_lock: bool,
 }
@@ -218,6 +212,14 @@ fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
     use std::str::FromStr;
 
     let section = ini.section(Some(SECTION_SERVER_BROWSER));
+    let name = section
+        .and_then(|section| section.get(KEY_NAME))
+        .unwrap_or_default()
+        .to_string();
+    let map = section
+        .and_then(|section| section.get(KEY_MAP))
+        .unwrap_or_default()
+        .to_string();
     let type_filter = section
         .and_then(|section| section.get(KEY_TYPE_FILTER))
         .and_then(|s| TypeFilter::from_str(s).ok())
@@ -256,42 +258,56 @@ fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
         .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
         .unwrap_or(true);
     ServerBrowserConfig {
-        type_filter,
-        mode,
-        region,
-        battleye_required,
-        include_invalid,
-        include_password_protected,
-        mods,
+        filter: Filter {
+            name,
+            map,
+            type_filter,
+            mode,
+            region,
+            battleye_required,
+            include_invalid,
+            include_password_protected,
+            mods,
+        },
         sort_criteria,
         scroll_lock,
     }
 }
 
 fn save_server_browser_config(ini: &mut Ini, config: &ServerBrowserConfig) {
-    let mut setter = ini.with_section(Some(SECTION_SERVER_BROWSER));
-    let setter = setter.set(KEY_TYPE_FILTER, config.type_filter.as_ref());
-    let setter = match config.mode {
+    let setter = &mut ini.with_section(Some(SECTION_SERVER_BROWSER));
+    let setter = if config.filter.name.is_empty() {
+        setter
+    } else {
+        setter.set(KEY_NAME, &config.filter.name)
+    };
+    let setter =
+        if config.filter.map.is_empty() { setter } else { setter.set(KEY_MAP, &config.filter.map) };
+    let setter = setter.set(KEY_TYPE_FILTER, config.filter.type_filter.as_ref());
+    let setter = match config.filter.mode {
         Some(mode) => setter.set(KEY_MODE, mode.as_ref()),
         None => setter,
     };
-    let setter = match config.region {
+    let setter = match config.filter.region {
         Some(region) => setter.set(KEY_REGION, region.as_ref()),
         None => setter,
     };
-    let setter = match config.battleye_required {
+    let setter = match config.filter.battleye_required {
         Some(required) => setter.set(KEY_BATTLEYE_REQUIRED, required.to_string()),
         None => setter,
     };
-    let setter = match config.mods {
+    let setter = match config.filter.mods {
         Some(mods) => setter.set(KEY_MODS, mods.to_string()),
         None => setter,
     };
     setter
-        .set(KEY_INCLUDE_INVALID, config.include_invalid.to_string())
+        .set(
+            KEY_INCLUDE_INVALID,
+            config.filter.include_invalid.to_string(),
+        )
         .set(
             KEY_INCLUDE_PASSWORD_PROTECTED,
-            config.include_password_protected.to_string(),
+            config.filter.include_password_protected.to_string(),
         )
         .set(
             KEY_SORT_CRITERIA,
@@ -311,6 +327,8 @@ const KEY_LOG_LEVEL: &str = "LogLevel";
 const KEY_BRANCH: &str = "Branch";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
 const KEY_THEME: &str = "Theme";
+const KEY_NAME: &str = "Name";
+const KEY_MAP: &str = "Map";
 const KEY_TYPE_FILTER: &str = "Type";
 const KEY_MODE: &str = "Mode";
 const KEY_REGION: &str = "Region";
