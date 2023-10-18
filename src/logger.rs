@@ -73,31 +73,9 @@ fn try_create_portable_mode_logger(
 
 #[cfg(windows)]
 fn try_create_appdata_logger(log_level: &Arc<AtomicUsize>) -> anyhow::Result<(Logger, AsyncGuard)> {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-    use std::path::PathBuf;
-    use std::ptr::null_mut;
+    use crate::env::{appdata_dir, AppDataFolder};
 
-    use anyhow::bail;
-    use winapi::um::combaseapi::CoTaskMemFree;
-    use winapi::um::knownfolders::FOLDERID_LocalAppDataLow;
-    use winapi::um::shlobj::SHGetKnownFolderPath;
-    use winapi::um::winnt::PWSTR;
-
-    let log_dir: OsString = unsafe {
-        let mut folder_path: PWSTR = null_mut();
-        let hr = SHGetKnownFolderPath(&FOLDERID_LocalAppDataLow, 0, null_mut(), &mut folder_path);
-        if hr < 0 {
-            bail!("Failed to get LocalLow appdata folder");
-        }
-        let path_len = (0..).take_while(|&i| *folder_path.offset(i) != 0).count();
-        let slice = std::slice::from_raw_parts(folder_path, path_len);
-        let dir = OsStringExt::from_wide(slice);
-        CoTaskMemFree(folder_path as _);
-        dir
-    };
-
-    let mut log_path = PathBuf::from(log_dir);
+    let mut log_path = appdata_dir(AppDataFolder::LocalLow)?;
     log_path.push("bugle");
     std::fs::create_dir_all(&log_path)?;
 

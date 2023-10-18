@@ -1079,19 +1079,25 @@ async fn main() {
     ));
     let (root_logger, log_guard) = create_root_logger(&log_level);
 
-    let config_persister: Box<dyn ConfigPersister + Send + Sync> =
-        match IniConfigPersister::for_current_exe() {
-            Ok(persister) => Box::new(persister),
-            Err(err) => {
-                warn!(
-                    root_logger,
-                    "Error trying to load or create the config file. \
-                     Proceeding with transient config.";
-                    "error" => err.to_string()
-                );
-                Box::new(TransientConfig)
-            }
-        };
+    let config_persister: Box<dyn ConfigPersister + Send + Sync> = match IniConfigPersister::new() {
+        Ok(persister) => {
+            info!(
+                root_logger,
+                "Opened persistent config file";
+                "path" => persister.path().display()
+            );
+            Box::new(persister)
+        }
+        Err(err) => {
+            warn!(
+                root_logger,
+                "Error trying to load or create the config file. \
+                 Proceeding with transient config.";
+                "error" => err.to_string()
+            );
+            Box::new(TransientConfig)
+        }
+    };
     let mut config = config_persister.load().unwrap_or_else(|err| {
         warn!(root_logger, "Error while loading the configuration"; "error" => err.to_string());
         Config::default()

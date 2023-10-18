@@ -78,11 +78,33 @@ pub struct IniConfigPersister {
 }
 
 impl IniConfigPersister {
-    pub fn for_current_exe() -> Result<Self> {
-        Self::new(current_exe_dir()?.join("bugle.ini"))
+    #[cfg(not(windows))]
+    pub fn new() -> Result<Self> {
+        Self::for_current_exe()
     }
 
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+    #[cfg(windows)]
+    pub fn new() -> Result<Self> {
+        Self::for_current_exe().or_else(|_| Self::in_appdata())
+    }
+
+    fn for_current_exe() -> Result<Self> {
+        Self::open(current_exe_dir()?.join("bugle.ini"))
+    }
+
+    #[cfg(windows)]
+    fn in_appdata() -> Result<Self> {
+        use crate::env::{appdata_dir, AppDataFolder};
+
+        let mut path = appdata_dir(AppDataFolder::Roaming)?;
+        path.push("bugle");
+        std::fs::create_dir_all(&path)?;
+
+        path.push("bugle.ini");
+        Self::open(path)
+    }
+
+    fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let _ = std::fs::OpenOptions::new()
             .read(true)
@@ -92,6 +114,10 @@ impl IniConfigPersister {
         Ok(Self {
             config_path: path.to_owned(),
         })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.config_path
     }
 }
 
