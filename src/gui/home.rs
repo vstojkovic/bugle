@@ -345,7 +345,7 @@ impl Home {
                 _ => None,
             };
             move |btn| {
-                let color = if btn.value() { Color::Background2 } else { Color::Foreground };
+                let color = if btn.value() { Color::Light2 } else { Color::Foreground };
                 platform_user_id_text.set_text_color(color);
                 platform_user_name_text.set_text_color(color);
                 fls_acct_id_text.set_text_color(color);

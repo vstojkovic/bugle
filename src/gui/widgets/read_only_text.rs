@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use fltk::enums::Align;
+use fltk::enums::{Align, Color};
 use fltk::prelude::*;
 use fltk::text::{Cursor, TextBuffer, TextEditor};
 use fltk_float::text::TextElement;
@@ -24,6 +24,7 @@ impl ReadOnlyText {
         editor.show_cursor(true);
         editor.set_cursor_style(Cursor::Simple);
         editor.set_scrollbar_align(Align::Clip);
+        editor.set_color(Color::Light2);
 
         let value = Rc::new(RefCell::new(initial_value));
         {
