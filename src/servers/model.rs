@@ -575,7 +575,7 @@ pub struct Filter {
     pub region: Option<Region>,
     pub battleye_required: Option<bool>,
     pub include_invalid: bool,
-    pub include_password_protected: bool,
+    pub exclude_password_protected: bool,
     pub mods: Option<bool>,
 }
 

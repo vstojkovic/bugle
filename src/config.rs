@@ -266,7 +266,7 @@ fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
             region,
             battleye_required,
             include_invalid,
-            include_password_protected,
+            exclude_password_protected: !include_password_protected,
             mods,
         },
         sort_criteria,
@@ -307,7 +307,7 @@ fn save_server_browser_config(ini: &mut Ini, config: &ServerBrowserConfig) {
         )
         .set(
             KEY_INCLUDE_PASSWORD_PROTECTED,
-            config.filter.include_password_protected.to_string(),
+            (!config.filter.exclude_password_protected).to_string(),
         )
         .set(
             KEY_SORT_CRITERIA,

@@ -79,11 +79,11 @@ impl Filter {
     }
 
     pub fn include_password_protected(&self) -> bool {
-        self.values.include_password_protected
+        !self.values.exclude_password_protected
     }
 
     pub fn set_include_password_protected(&mut self, include_password_protected: bool) {
-        self.values.include_password_protected = include_password_protected;
+        self.values.exclude_password_protected = !include_password_protected;
     }
 
     pub fn mods(&self) -> Option<bool> {
@@ -123,7 +123,7 @@ impl RowFilter<Server> for Filter {
                 .battleye_required
                 .map_or(true, |required| server.battleye_required == required)
             && self.values.include_invalid >= !server.is_valid()
-            && self.values.include_password_protected >= server.password_protected
+            && !(self.values.exclude_password_protected && server.password_protected)
             && self
                 .values
                 .mods
