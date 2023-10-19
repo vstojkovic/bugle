@@ -15,7 +15,7 @@ use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use game::platform::steam::{SteamClient, SteamModDirectory};
 use game::platform::ModDirectory;
-use game::MapRef;
+use game::{LaunchOptions, MapRef};
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -291,6 +291,14 @@ impl Launcher {
                 self.update_config(|config| config.use_battleye = use_battleye);
                 Ok(())
             }
+            Action::HomeAction(HomeAction::ConfigureUseAllCores(use_all_cores)) => {
+                self.update_config(|config| config.use_all_cores = use_all_cores);
+                Ok(())
+            }
+            Action::HomeAction(HomeAction::ConfigureExtraArgs(extra_args)) => {
+                self.update_config(|config| config.extra_args = extra_args);
+                Ok(())
+            }
             Action::HomeAction(HomeAction::ConfigureTheme(theme)) => {
                 self.update_config(|config| config.theme = theme);
                 Ok(())
@@ -431,7 +439,8 @@ impl Launcher {
                 }
             }
         };
-        if self.monitor_launch(self.game.launch(use_battleye, &[])?)? {
+        let launch_opts = self.launch_options(use_battleye);
+        if self.monitor_launch(self.game.launch(launch_opts, &[])?)? {
             app::quit();
         }
         Ok(())
@@ -479,7 +488,8 @@ impl Launcher {
         } else {
             return Ok(());
         };
-        if self.monitor_launch(self.game.continue_session(use_battleye)?)? {
+        let launch_opts = self.launch_options(use_battleye);
+        if self.monitor_launch(self.game.continue_session(launch_opts)?)? {
             app::quit();
         }
         Ok(())
@@ -514,7 +524,8 @@ impl Launcher {
                 }
             }
         };
-        if self.monitor_launch(self.game.join_server(addr, password, use_battleye)?)? {
+        let launch_opts = self.launch_options(use_battleye);
+        if self.monitor_launch(self.game.join_server(addr, password, launch_opts)?)? {
             app::quit();
         }
         Ok(())
@@ -807,7 +818,8 @@ impl Launcher {
 
         let use_battleye =
             if let BattlEyeUsage::Always(true) = self.config().use_battleye { true } else { false };
-        if self.monitor_launch(self.game.launch_single_player(map_id, use_battleye)?)? {
+        let launch_opts = self.launch_options(use_battleye);
+        if self.monitor_launch(self.game.launch_single_player(map_id, launch_opts)?)? {
             app::quit();
         }
         Ok(())
@@ -964,6 +976,15 @@ impl Launcher {
         mutator(&mut config);
         if let Err(err) = self.config_persister.save(&config) {
             warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
+        }
+    }
+
+    fn launch_options(&self, use_battleye: bool) -> LaunchOptions {
+        let config = self.config();
+        LaunchOptions {
+            enable_battleye: use_battleye,
+            use_all_cores: config.use_all_cores,
+            extra_args: config.extra_args.clone(),
         }
     }
 

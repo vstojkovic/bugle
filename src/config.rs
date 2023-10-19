@@ -12,6 +12,8 @@ pub struct Config {
     pub log_level: LogLevel,
     pub branch: Branch,
     pub use_battleye: BattlEyeUsage,
+    pub use_all_cores: bool,
+    pub extra_args: String,
     pub theme: ThemeChoice,
     pub server_browser: ServerBrowserConfig,
 }
@@ -149,6 +151,14 @@ impl ConfigPersister for IniConfigPersister {
                 _ => None,
             })
             .unwrap_or_default();
+        let use_all_cores = section
+            .and_then(|section| section.get(KEY_USE_ALL_CORES))
+            .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
+            .unwrap_or_default();
+        let extra_args = section
+            .and_then(|section| section.get(KEY_EXTRA_ARGS))
+            .unwrap_or_default()
+            .to_string();
         let theme = section
             .and_then(|section| section.get(KEY_THEME))
             .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
@@ -162,6 +172,8 @@ impl ConfigPersister for IniConfigPersister {
             log_level,
             branch,
             use_battleye,
+            use_all_cores,
+            extra_args,
             theme,
             server_browser: load_server_browser_config(&ini),
         })
@@ -169,7 +181,8 @@ impl ConfigPersister for IniConfigPersister {
 
     fn save(&self, config: &Config) -> Result<()> {
         let mut ini = Ini::new();
-        ini.with_general_section()
+        let setter = &mut ini.with_general_section();
+        let setter = setter
             .set(
                 KEY_LOG_LEVEL,
                 config.log_level.0.as_str().to_ascii_lowercase(),
@@ -189,13 +202,19 @@ impl ConfigPersister for IniConfigPersister {
                     BattlEyeUsage::Always(false) => BATTLEYE_NEVER,
                 },
             )
-            .set(
-                KEY_THEME,
-                match config.theme {
-                    ThemeChoice::Light => THEME_LIGHT,
-                    ThemeChoice::Dark => THEME_DARK,
-                },
-            );
+            .set(KEY_USE_ALL_CORES, config.use_all_cores.to_string());
+        let setter = if config.extra_args.is_empty() {
+            setter
+        } else {
+            setter.set(KEY_EXTRA_ARGS, &config.extra_args)
+        };
+        setter.set(
+            KEY_THEME,
+            match config.theme {
+                ThemeChoice::Light => THEME_LIGHT,
+                ThemeChoice::Dark => THEME_DARK,
+            },
+        );
         save_server_browser_config(&mut ini, &config.server_browser);
         save_ini(&ini, &self.config_path)
     }
@@ -352,6 +371,8 @@ const SECTION_SERVER_BROWSER: &str = "ServerBrowser";
 const KEY_LOG_LEVEL: &str = "LogLevel";
 const KEY_BRANCH: &str = "Branch";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
+const KEY_USE_ALL_CORES: &str = "UseAllCores";
+const KEY_EXTRA_ARGS: &str = "ExtraArgs";
 const KEY_THEME: &str = "Theme";
 const KEY_NAME: &str = "Name";
 const KEY_MAP: &str = "Map";

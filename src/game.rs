@@ -73,6 +73,13 @@ pub enum ServerRef {
     Unknown(SocketAddr),
 }
 
+#[derive(Debug)]
+pub struct LaunchOptions {
+    pub enable_battleye: bool,
+    pub use_all_cores: bool,
+    pub extra_args: String,
+}
+
 impl Game {
     fn new(
         logger: Logger,
@@ -388,29 +395,47 @@ impl Game {
         self.last_session.lock().unwrap()
     }
 
-    pub fn launch(&self, enable_battleye: bool, args: &[&str]) -> Result<Launch> {
+    pub fn launch(&self, options: LaunchOptions, args: &[&str]) -> Result<Launch> {
         let mut exe_path = self.root.join("ConanSandbox/Binaries/Win64");
-        exe_path.push(if enable_battleye { "ConanSandbox_BE.exe" } else { "ConanSandbox.exe" });
+        exe_path.push(if options.enable_battleye {
+            "ConanSandbox_BE.exe"
+        } else {
+            "ConanSandbox.exe"
+        });
 
         let mut cmd = Command::new(exe_path);
         cmd.args(args);
-        if enable_battleye {
+        if options.enable_battleye {
             cmd.arg("-BattlEye");
         }
+        if options.use_all_cores {
+            cmd.arg("-USEALLAVAILABLECORES");
+        }
+
+        match shlex::split(&options.extra_args) {
+            Some(args) => {
+                cmd.args(args);
+            }
+            None => warn!(
+                self.logger,
+                "Error parsing extra launch args";
+                "extra_args" => &options.extra_args
+            ),
+        };
 
         info!(self.logger, "Launching Conan Exiles"; "command" => format!("{:?}", cmd));
         Launch::new(&self.logger, cmd)
     }
 
-    pub fn continue_session(&self, enable_battleye: bool) -> Result<Launch> {
-        self.launch(enable_battleye, &["-continuesession"])
+    pub fn continue_session(&self, options: LaunchOptions) -> Result<Launch> {
+        self.launch(options, &["-continuesession"])
     }
 
     pub fn join_server(
         &self,
         addr: SocketAddr,
         password: Option<String>,
-        enable_battleye: bool,
+        options: LaunchOptions,
     ) -> Result<Launch> {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         game_ini
@@ -422,10 +447,10 @@ impl Game {
             .set(KEY_STARTED_LISTEN_SERVER_SESSION, "False");
         config::save_ini(&game_ini, &self.game_ini_path)?;
 
-        self.continue_session(enable_battleye)
+        self.continue_session(options)
     }
 
-    pub fn launch_single_player(&self, map_id: usize, enable_battleye: bool) -> Result<Launch> {
+    pub fn launch_single_player(&self, map_id: usize, options: LaunchOptions) -> Result<Launch> {
         let mut game_ini = config::load_ini(&self.game_ini_path)?;
         let map = &self.maps[map_id];
         game_ini
@@ -435,7 +460,7 @@ impl Game {
             .set(KEY_WAS_COOP_ENABLED, "False");
         config::save_ini(&game_ini, &self.game_ini_path)?;
 
-        self.continue_session(enable_battleye)
+        self.continue_session(options)
     }
 }
 

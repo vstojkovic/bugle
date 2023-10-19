@@ -190,6 +190,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "shlex",
  "slog",
  "slog-async",
  "slog-term",
@@ -1683,6 +1684,12 @@ dependencies = [
  "fake-simd",
  "opaque-debug",
 ]
+
+[[package]]
+name = "shlex"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7cee0529a6d40f580e7a5e6c495c8fbfe21b7b52795ed4bb5e62cdf92bc6380"
 
 [[package]]
 name = "signal-hook-registry"

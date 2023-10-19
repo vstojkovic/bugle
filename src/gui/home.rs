@@ -1,12 +1,14 @@
+use std::cell::Cell;
 use std::fs::File;
 use std::io::Write;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use fltk::button::{Button, LightButton};
-use fltk::enums::{Align, CallbackTrigger, Color, Font};
+use fltk::button::{Button, CheckButton, LightButton};
+use fltk::enums::{Align, CallbackTrigger, Color, Event, Font, FrameType};
 use fltk::frame::Frame;
 use fltk::group::Group;
+use fltk::input::Input;
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk_float::button::ButtonElement;
@@ -31,6 +33,8 @@ pub enum HomeAction {
     SwitchBranch(Branch),
     ConfigureLogLevel(LogLevel),
     ConfigureBattlEye(BattlEyeUsage),
+    ConfigureUseAllCores(bool),
+    ConfigureExtraArgs(String),
     ConfigureTheme(ThemeChoice),
     RefreshAuthState,
 }
@@ -173,27 +177,49 @@ impl Home {
         let sp_play_text = grid.span(1, 2).unwrap().wrap(ReadOnlyText::default());
 
         grid.row().add();
-        grid.cell()
-            .unwrap()
-            .wrap(create_info_label("Enable BattlEye:"));
-        let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
-        grid.cell()
-            .unwrap()
-            .wrap(create_info_label("BUGLE Logging Level:"));
-        let mut log_level_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
-
-        grid.row().add();
-        grid.span(1, 2).unwrap().skip();
-        grid.cell().unwrap().wrap(create_info_label("Theme:"));
-        let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
-
-        grid.row().add();
         grid.span(1, 3).unwrap().skip();
         let mut privacy_switch = grid
             .span(1, 2)
             .unwrap()
             .wrap(LightButton::default())
             .with_label("Hide Private Information");
+
+        grid.row().add();
+        grid.span(1, 5)
+            .unwrap()
+            .wrap(Frame::default())
+            .set_frame(FrameType::ThinDownFrame);
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Enable BattlEye:"));
+        let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Use all CPU cores:"));
+        let mut use_all_cores_button = grid.span(1, 2).unwrap().wrap(CheckButton::default());
+        use_all_cores_button.clear_visible_focus();
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Additional Launch Options:"));
+        let mut extra_args_input = grid.span(1, 4).unwrap().wrap(Input::default());
+
+        grid.row().add();
+        grid.span(1, 5)
+            .unwrap()
+            .wrap(Frame::default())
+            .set_frame(FrameType::ThinDownFrame);
+
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("BUGLE Logging Level:"));
+        let mut log_level_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        grid.cell().unwrap().wrap(create_info_label("Theme:"));
+        let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
 
         grid.row().with_stretch(1).add();
         grid.span(1, 5).unwrap().skip();
@@ -281,6 +307,33 @@ impl Home {
                     _ => unreachable!(),
                 };
                 on_action(HomeAction::ConfigureBattlEye(use_battleye)).unwrap();
+            }
+        });
+
+        use_all_cores_button.set_checked(config.use_all_cores);
+        use_all_cores_button.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                on_action(HomeAction::ConfigureUseAllCores(input.is_checked())).unwrap();
+            }
+        });
+
+        extra_args_input.set_value(&config.extra_args);
+        let extra_args_dirty = Rc::new(Cell::new(false));
+        extra_args_input.set_trigger(CallbackTrigger::Changed);
+        extra_args_input.set_callback({
+            let extra_args_dirty = Rc::clone(&extra_args_dirty);
+            move |_| extra_args_dirty.set(true)
+        });
+        extra_args_input.handle({
+            let on_action = Rc::clone(&on_action);
+            move |input, event| {
+                if let Event::Unfocus | Event::Hide = event {
+                    if extra_args_dirty.take() {
+                        on_action(HomeAction::ConfigureExtraArgs(input.value())).unwrap();
+                    }
+                }
+                false
             }
         });
 
