@@ -18,7 +18,7 @@ use slog::{error, FilterLevel, Logger};
 use tempfile::tempdir;
 
 use crate::auth::AuthState;
-use crate::config::{BattlEyeUsage, Config, LogLevel, ThemeChoice};
+use crate::config::{BattlEyeUsage, Config, LogLevel, ModMismatchChecks, ThemeChoice};
 use crate::game::{Branch, Game, MapRef, Maps, ServerRef, Session};
 use crate::workers::TaskState;
 
@@ -35,6 +35,7 @@ pub enum HomeAction {
     ConfigureBattlEye(BattlEyeUsage),
     ConfigureUseAllCores(bool),
     ConfigureExtraArgs(String),
+    ConfigureModMismatchChecks(ModMismatchChecks),
     ConfigureTheme(ThemeChoice),
     RefreshAuthState,
 }
@@ -221,6 +222,14 @@ impl Home {
         grid.cell().unwrap().wrap(create_info_label("Theme:"));
         let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
 
+        grid.row().add();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("Mod Mismatch Detection:"));
+        let mut mod_mismatch_check_button = grid.cell().unwrap().wrap(CheckButton::default());
+        mod_mismatch_check_button.clear_visible_focus();
+        grid.span(1, 3).unwrap().skip();
+
         grid.row().with_stretch(1).add();
         grid.span(1, 5).unwrap().skip();
 
@@ -334,6 +343,22 @@ impl Home {
                     }
                 }
                 false
+            }
+        });
+
+        mod_mismatch_check_button.set_checked(match config.mod_mismatch_checks {
+            ModMismatchChecks::Enabled => true,
+            ModMismatchChecks::Disabled => false,
+        });
+        mod_mismatch_check_button.set_callback({
+            let on_action = Rc::clone(&on_action);
+            move |input| {
+                let checks = if input.is_checked() {
+                    ModMismatchChecks::Enabled
+                } else {
+                    ModMismatchChecks::Disabled
+                };
+                on_action(HomeAction::ConfigureModMismatchChecks(checks)).unwrap();
             }
         });
 

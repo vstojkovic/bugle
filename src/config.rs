@@ -14,6 +14,7 @@ pub struct Config {
     pub use_battleye: BattlEyeUsage,
     pub use_all_cores: bool,
     pub extra_args: String,
+    pub mod_mismatch_checks: ModMismatchChecks,
     pub theme: ThemeChoice,
     pub server_browser: ServerBrowserConfig,
 }
@@ -36,6 +37,18 @@ pub enum BattlEyeUsage {
 impl Default for BattlEyeUsage {
     fn default() -> Self {
         Self::Always(true)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ModMismatchChecks {
+    Enabled,
+    Disabled,
+}
+
+impl Default for ModMismatchChecks {
+    fn default() -> Self {
+        Self::Enabled
     }
 }
 
@@ -159,6 +172,14 @@ impl ConfigPersister for IniConfigPersister {
             .and_then(|section| section.get(KEY_EXTRA_ARGS))
             .unwrap_or_default()
             .to_string();
+        let mod_mismatch_checks = section
+            .and_then(|section| section.get(KEY_DISABLE_MOD_MISMATCH_CHECKS))
+            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+                MOD_MISMATCH_CHECKS_ENABLED => Some(ModMismatchChecks::Enabled),
+                MOD_MISMATCH_CHECKS_DISABLED => Some(ModMismatchChecks::Disabled),
+                _ => None,
+            })
+            .unwrap_or_default();
         let theme = section
             .and_then(|section| section.get(KEY_THEME))
             .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
@@ -174,6 +195,7 @@ impl ConfigPersister for IniConfigPersister {
             use_battleye,
             use_all_cores,
             extra_args,
+            mod_mismatch_checks,
             theme,
             server_browser: load_server_browser_config(&ini),
         })
@@ -208,13 +230,21 @@ impl ConfigPersister for IniConfigPersister {
         } else {
             setter.set(KEY_EXTRA_ARGS, &config.extra_args)
         };
-        setter.set(
-            KEY_THEME,
-            match config.theme {
-                ThemeChoice::Light => THEME_LIGHT,
-                ThemeChoice::Dark => THEME_DARK,
-            },
-        );
+        setter
+            .set(
+                KEY_DISABLE_MOD_MISMATCH_CHECKS,
+                match config.mod_mismatch_checks {
+                    ModMismatchChecks::Enabled => MOD_MISMATCH_CHECKS_ENABLED,
+                    ModMismatchChecks::Disabled => MOD_MISMATCH_CHECKS_DISABLED,
+                },
+            )
+            .set(
+                KEY_THEME,
+                match config.theme {
+                    ThemeChoice::Light => THEME_LIGHT,
+                    ThemeChoice::Dark => THEME_DARK,
+                },
+            );
         save_server_browser_config(&mut ini, &config.server_browser);
         save_ini(&ini, &self.config_path)
     }
@@ -373,6 +403,7 @@ const KEY_BRANCH: &str = "Branch";
 const KEY_USE_BATTLEYE: &str = "UseBattlEye";
 const KEY_USE_ALL_CORES: &str = "UseAllCores";
 const KEY_EXTRA_ARGS: &str = "ExtraArgs";
+const KEY_DISABLE_MOD_MISMATCH_CHECKS: &str = "DisableModMismatchChecks";
 const KEY_THEME: &str = "Theme";
 const KEY_NAME: &str = "Name";
 const KEY_MAP: &str = "Map";
@@ -392,6 +423,9 @@ const BRANCH_PUBLIC_BETA: &str = "testlive";
 const BATTLEYE_AUTO: &str = "auto";
 const BATTLEYE_ALWAYS: &str = "always";
 const BATTLEYE_NEVER: &str = "never";
+
+const MOD_MISMATCH_CHECKS_ENABLED: &str = "enabled";
+const MOD_MISMATCH_CHECKS_DISABLED: &str = "disabled";
 
 const THEME_LIGHT: &str = "light";
 const THEME_DARK: &str = "dark";

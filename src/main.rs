@@ -30,6 +30,8 @@ mod parser_utils;
 mod servers;
 mod workers;
 
+use crate::config::ModMismatchChecks;
+
 use self::auth::{Account, AuthState, Capability, PlatformUser};
 use self::game::platform::steam::Steam;
 use self::game::{list_mod_controllers, Branch, Game, Launch, ModRef, Mods, ServerRef, Session};
@@ -297,6 +299,10 @@ impl Launcher {
             }
             Action::HomeAction(HomeAction::ConfigureExtraArgs(extra_args)) => {
                 self.update_config(|config| config.extra_args = extra_args);
+                Ok(())
+            }
+            Action::HomeAction(HomeAction::ConfigureModMismatchChecks(checks)) => {
+                self.update_config(|config| config.mod_mismatch_checks = checks);
                 Ok(())
             }
             Action::HomeAction(HomeAction::ConfigureTheme(theme)) => {
@@ -845,6 +851,10 @@ impl Launcher {
                 };
             }
             result
+        }
+
+        if let ModMismatchChecks::Disabled = self.config().mod_mismatch_checks {
+            return Ok(true);
         }
 
         if let Some(mismatch) = self.detect_single_player_mod_mismatch(mod_list, map_id)? {
