@@ -252,16 +252,18 @@ impl ServerBrowser {
                         Action::Join => {
                             if let Some(server_idx) = browser.list_pane.selected_index() {
                                 let action = {
-                                    let server = &browser.state.borrow()[server_idx];
+                                    let state = browser.state.borrow();
+                                    let server = &state[server_idx];
                                     if server.password_protected {
                                         let dialog =
                                             ConnectDialog::server_password(&browser.root, server);
-                                        dialog.show();
-                                        // TODO: Ensure main loop is run
-                                        while dialog.shown() {
-                                            fltk::app::wait();
-                                        }
-                                        match dialog.result() {
+
+                                        // The following line is necessary, otherwise the incoming
+                                        // server list updates panic because the state remains
+                                        // borrowed while the dialog is displayed. ¯\_(ツ)_/¯
+                                        drop(state);
+
+                                        match dialog.run() {
                                             Some(action) => action,
                                             None => return,
                                         }
@@ -351,12 +353,7 @@ impl ServerBrowser {
                         }
                         Action::DirectConnect => {
                             let dialog = ConnectDialog::direct_connect(&browser.root);
-                            dialog.show();
-                            // TODO: Ensure main loop is run
-                            while dialog.shown() {
-                                fltk::app::wait();
-                            }
-                            let action = match dialog.result() {
+                            let action = match dialog.run() {
                                 Some(action) => action,
                                 None => return,
                             };

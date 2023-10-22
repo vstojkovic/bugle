@@ -13,6 +13,7 @@ use auth::{CachedUser, CachedUsers};
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
+use fltk::prelude::WindowExt;
 use game::platform::steam::{SteamClient, SteamModDirectory};
 use game::platform::ModDirectory;
 use game::{LaunchOptions, MapRef};
@@ -161,7 +162,7 @@ impl Launcher {
         launcher
     }
 
-    fn run(&self, disable_prefetch: bool) {
+    fn run(self: &Rc<Self>, disable_prefetch: bool) {
         self.main_window.show();
 
         if disable_prefetch {
@@ -178,32 +179,47 @@ impl Launcher {
                 self.check_auth_state(),
             )));
 
-        while self.app.wait() {
-            while self.run_loop_iteration() {
-                app::check();
+        app::add_check({
+            let this = Rc::downgrade(self);
+            move |_| {
+                if let Some(this) = this.upgrade() {
+                    this.background_loop();
+                }
             }
+        });
+
+        while self.main_window.window().shown() {
+            self.app.wait();
         }
     }
 
-    fn run_loop_iteration(&self) -> bool {
-        self.steam.run_callbacks();
-        let mut pending_ref = self.pending_update.borrow_mut();
-        let pending_update = pending_ref.take();
-        let next_update = self.rx.recv().and_then(|msg| self.process_message(msg));
-        let (ready_update, pending_update) = match (pending_update, next_update) {
-            (Some(pending), Some(next)) => match pending.try_consolidate(next) {
-                Ok(consolidated) => (None, Some(consolidated)),
-                Err((pending, next)) => (Some(pending), Some(next)),
-            },
-            (Some(pending), None) => (Some(pending), None),
-            (None, Some(next)) => (None, Some(next)),
-            (None, None) => (None, None),
-        };
-        if let Some(update) = ready_update {
-            self.main_window.handle_update(update);
+    fn background_loop(&self) {
+        loop {
+            self.steam.run_callbacks();
+
+            let mut pending_ref = self.pending_update.borrow_mut();
+
+            let pending_update = pending_ref.take();
+            let next_update = self.rx.recv().and_then(|msg| self.process_message(msg));
+            let (ready_update, pending_update) = match (pending_update, next_update) {
+                (Some(pending), Some(next)) => match pending.try_consolidate(next) {
+                    Ok(consolidated) => (None, Some(consolidated)),
+                    Err((pending, next)) => (Some(pending), Some(next)),
+                },
+                (Some(pending), None) => (Some(pending), None),
+                (None, Some(next)) => (None, Some(next)),
+                (None, None) => (None, None),
+            };
+
+            if let Some(update) = ready_update {
+                self.main_window.handle_update(update);
+            }
+
+            *pending_ref = pending_update;
+            if pending_ref.is_none() {
+                return;
+            }
         }
-        *pending_ref = pending_update;
-        pending_ref.is_some()
     }
 
     fn process_message(&self, message: Message) -> Option<Update> {
@@ -679,9 +695,7 @@ impl Launcher {
             if monitor.result().is_some() {
                 return false;
             }
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
+            if !self.app.wait() {
                 return false;
             }
         }
@@ -701,9 +715,7 @@ impl Launcher {
             if result.is_some() {
                 return result;
             }
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
+            if !self.app.wait() {
                 return None;
             }
         }
@@ -727,9 +739,7 @@ impl Launcher {
             if monitor.result().is_some() {
                 break;
             }
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
+            if !self.app.wait() {
                 return None;
             }
             match self.last_session_battleye() {
@@ -802,9 +812,7 @@ impl Launcher {
                 launch.cancel();
                 return Ok(false);
             }
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
+            if !self.app.wait() {
                 return Ok(true);
             }
         }
@@ -946,15 +954,10 @@ impl Launcher {
 
         let dialog =
             ModUpdateSelectionDialog::new(self.main_window.window(), installed_mods, outdated_mods);
-        dialog.show();
-        while dialog.shown() {
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
-                return false;
-            }
-        }
-        let mods_to_update = dialog.result();
+        let mods_to_update = match dialog.run() {
+            None => return false,
+            Some(mods) => mods,
+        };
         if mods_to_update.is_empty() {
             return true;
         }
@@ -965,16 +968,9 @@ impl Launcher {
             mods_to_update,
             Rc::clone(&self.mod_directory),
         );
-        dialog.show();
-        while dialog.shown() {
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
-                return false;
-            }
-        }
+        dialog.run();
 
-        true
+        self.main_window.window().shown()
     }
 
     fn config(&self) -> Ref<Config> {
@@ -1047,14 +1043,7 @@ impl Launcher {
             height,
             &[(button, ())],
         );
-        dialog.show();
-        while dialog.shown() {
-            if self.run_loop_iteration() {
-                app::check();
-            } else if !self.app.wait() {
-                return;
-            }
-        }
+        dialog.run();
     }
 
     fn show_offline_singleplayer_bug_warning(&self) {

@@ -88,18 +88,16 @@ impl ConnectDialog {
         Self { window, result }
     }
 
-    pub fn show(&self) {
+    pub fn run(&self) -> Option<ServerBrowserAction> {
         let mut window = self.window.clone();
         window.make_modal(true);
         window.show();
-    }
 
-    pub fn result(&self) -> Option<ServerBrowserAction> {
+        while window.shown() {
+            fltk::app::wait();
+        }
+
         self.result.borrow_mut().take()
-    }
-
-    pub fn shown(&self) -> bool {
-        self.window.shown()
     }
 
     fn create_gui<T: WidgetExt + Clone + 'static>(

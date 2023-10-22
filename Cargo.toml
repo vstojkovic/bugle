@@ -13,7 +13,7 @@ chrono = "0.4.23"
 crc32fast = "1"
 dlopen = "0.1.8"
 flate2 = "1"
-fltk = { version = "1.4.4" }
+fltk = { version = "1.4.14" }
 fltk-float = "0.1.1"
 fltk-webview = "0.2.16"
 futures = "0.3"

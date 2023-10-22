@@ -108,24 +108,24 @@ impl ModUpdateSelectionDialog {
         }
     }
 
-    pub fn show(&self) {
+    pub fn run(self) -> Option<Vec<ModRef>> {
         let mut window = self.window.clone();
         window.make_modal(true);
         window.show();
-    }
 
-    pub fn shown(&self) -> bool {
-        self.window.shown()
-    }
+        while window.shown() {
+            if !fltk::app::wait() {
+                return None;
+            }
+        }
 
-    pub fn result(self) -> Vec<ModRef> {
         let mut result = Vec::new();
         for (idx, mod_ref) in self.outdated_mods.into_iter().enumerate() {
             if self.mod_selection.checked((idx + 1) as _) {
                 result.push(mod_ref);
             }
         }
-        result
+        Some(result)
     }
 }
 

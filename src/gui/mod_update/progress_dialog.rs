@@ -183,7 +183,7 @@ impl ModUpdateProgressDialog {
         }
     }
 
-    pub fn show(&self) {
+    pub fn run(self) {
         let mut window = self.window.clone();
         window.make_modal(true);
         window.show();
@@ -198,10 +198,12 @@ impl ModUpdateProgressDialog {
                 fltk::app::repeat_timeout3(0.5, handle);
             }
         });
-    }
 
-    pub fn shown(&self) -> bool {
-        self.window.shown()
+        while self.window.shown() {
+            if !fltk::app::wait() {
+                return;
+            }
+        }
     }
 }
 

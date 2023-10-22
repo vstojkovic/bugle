@@ -97,6 +97,13 @@ impl<T: Copy + 'static> Dialog<T> {
         window.show();
     }
 
+    pub fn run(&self) -> Option<T> {
+        while self.shown() {
+            fltk::app::wait();
+        }
+        self.result()
+    }
+
     pub fn result(&self) -> Option<T> {
         self.result.get()
     }
