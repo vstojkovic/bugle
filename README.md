@@ -12,7 +12,7 @@ that isn't there, feel free to open a GitHub issue about it, or contact me on Fu
 
 ## Installation
 
-Go to the v1.1.0 release and download the `bugle-v1.1.0-x86_64-pc-windows-msvc.zip` file. Unpack it
+Go to the v1.2.0 release and download the `bugle-v1.2.0-x86_64-pc-windows-msvc.zip` file. Unpack it
 into a directory where you're allowed to write files. It's a good idea to put it in its own
 directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
@@ -86,7 +86,8 @@ can visit the [BUGLE Roadmap Trello board](https://trello.com/b/zjDYQsq8/roadmap
 
 * **Mod mismatch warning if you stop using a mod.** If you use a mod in your single-player or co-op
 game and then decide to stop using it, it will leave traces in your game database. BUGLE will detect
-those traces, see that the mod isn't in your mod list, and warn you about mod mismatch.
+those traces, see that the mod isn't in your mod list, and warn you about mod mismatch. You can
+disable mod mismatch checks if this starts bothering you.
 * **Switching between Live and TestLive confuses Steam.** Just like with Funcom's launcher, when you
 run BUGLE, Steam shows you as playing Conan Exiles. When you click "Switch to TestLive" (or
 "Switch to Live") button in BUGLE, Steam will show you as playing both Live and TestLive versions

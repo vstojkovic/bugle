@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.2.0 (2023-10-22)
+
+More configuration options and QoL features.
+
+### Added
+
+- BUGLE will now inform you if the game needs to be updated.
+- Outdated mods can now be updated in the mod manager.
+- Mods can now be activated and deactivated by double-clicking in the mod manager.
+- Added an option to tell the game to try using all available CPU cores.
+- You can now specify additional command line arguments to be used when launching the game.
+- Added an option to disable mod mismatch checks.
+
+### Changed
+
+- Server name and map name in the server browser filter are now persisted.
+- Read-only text fields are now slightly shaded to avoid confusion.
+
+### Fixed
+
+- When clicking the "Launch" button, the launcher will check if any mods need to be updated.
+- If BUGLE cannot write its .ini file in the same folder as the executable, it will try to create
+  one in the appropriate user profile directory.
+
 ## 1.1.0 (2023-07-25)
 
 Miscellaneous QoL features.
