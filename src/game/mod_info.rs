@@ -15,35 +15,40 @@ use super::Branch;
 #[derive(Debug, Deserialize)]
 pub struct ModInfo {
     pub name: String,
+
+    #[serde(default)]
     pub description: String,
 
-    #[serde(rename = "changeNote")]
+    #[serde(rename = "changenote")]
+    #[serde(default)]
     pub change_notes: String,
 
+    #[serde(default)]
     pub author: String,
 
-    #[serde(rename = "authorUrl")]
+    #[serde(rename = "authorurl")]
+    #[serde(default)]
     pub author_url: String,
 
     #[serde(flatten)]
     pub version: ModVersion,
 
-    #[serde(rename = "bRequiresLoadOnStartup")]
+    #[serde(rename = "brequiresloadonstartup")]
     pub requires_load_on_startup: bool,
 
-    #[serde(rename = "steamPublishedFileId")]
+    #[serde(rename = "steampublishedfileid")]
     pub live_steam_file_id: String,
 
-    #[serde(rename = "steamTestLivePublishedFileId")]
+    #[serde(rename = "steamtestlivepublishedfileid")]
     pub testlive_steam_file_id: Option<String>,
 
-    #[serde(rename = "folderName")]
+    #[serde(rename = "foldername")]
     pub folder_name: String,
 
-    #[serde(rename = "revisionNumber")]
+    #[serde(rename = "revisionnumber")]
     pub revision_number: u64,
 
-    #[serde(rename = "snapshotId")]
+    #[serde(rename = "snapshotid")]
     pub snapshot_id: u64,
 
     #[serde(skip)]
@@ -55,13 +60,13 @@ pub struct ModInfo {
 
 #[derive(Debug, Deserialize)]
 pub struct ModVersion {
-    #[serde(rename = "versionMajor")]
+    #[serde(rename = "versionmajor")]
     major: u64,
 
-    #[serde(rename = "versionMinor")]
+    #[serde(rename = "versionminor")]
     minor: u64,
 
-    #[serde(rename = "versionBuild")]
+    #[serde(rename = "versionbuild")]
     build: u64,
 }
 
@@ -101,9 +106,12 @@ impl ModInfo {
             bytes
         };
 
+        let json = serde_json::from_slice(&json_bytes)?;
+        let json = json_lowercase_keys(json);
+
         Ok(Self {
             pak_path,
-            ..serde_json::from_slice(&json_bytes)?
+            ..serde_json::from_value(json)?
         })
     }
 
@@ -212,5 +220,15 @@ impl Index<usize> for Mods {
     type Output = ModInfo;
     fn index(&self, index: usize) -> &Self::Output {
         &self.mods[index]
+    }
+}
+
+fn json_lowercase_keys(json: serde_json::Value) -> serde_json::Value {
+    if let serde_json::Value::Object(obj) = json {
+        obj.into_iter()
+            .map(|(k, v)| (k.to_ascii_lowercase(), v))
+            .collect()
+    } else {
+        json
     }
 }
