@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.2.1 (2023-12-21)
+
+Bugfix for problems with "Tot!" mods.
+
+### Fixed
+
+- BUGLE will no longer complain about a "problem with your installation of Conan Exiles" when you
+have certain mods installed.
+
 ## 1.2.0 (2023-10-22)
 
 More configuration options and QoL features.
