@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use fltk::prelude::*;
 use nom::character::complete::{char, digit1};
 use nom::combinator::map_res;
 use nom::sequence::{separated_pair, terminated};
@@ -9,84 +8,37 @@ use nom::IResult;
 use strum::IntoEnumIterator;
 
 use crate::game::platform::ModDirectory;
-use crate::gui::widgets::{
-    make_readonly_cell_widget, DataTable, DataTableProperties, DataTableUpdate, ReadOnlyText,
-};
+use crate::gui::widgets::{use_inspector_macros, Inspector, PropertiesTable, PropertyRow};
 use crate::servers::{DropOnDeath, Server, Validity, Weekday};
 
 use super::{community_name, mode_name, region_name, weekday_name};
 
-type DetailRow = [Cow<'static, str>; 2];
-
 pub(super) struct DetailsPane {
-    table: DataTable<DetailRow>,
-    cell: ReadOnlyText,
+    table: PropertiesTable<Server, InspectorCtx>,
+}
+
+struct InspectorCtx {
     mod_resolver: Rc<dyn ModDirectory>,
 }
 
 impl DetailsPane {
     pub fn new(mod_resolver: Rc<dyn ModDirectory>) -> Self {
-        let table_props = DataTableProperties {
-            columns: vec!["Server Details".into()],
-            cell_selection_color: fltk::enums::Color::Free,
-            header_font_color: fltk::enums::Color::Gray0,
-            ..Default::default()
-        };
-        let width_padding = table_props.cell_padding * 2 + fltk::app::scrollbar_size();
-
-        let mut table = DataTable::<DetailRow>::default().with_properties(table_props);
-        table.set_row_header(true);
-        table.set_col_header(true);
-        table.set_col_resize(true);
-
-        table.end();
-
-        let cell = make_readonly_cell_widget(&table);
-
-        let pane = Self {
-            table,
-            cell,
-            mod_resolver,
-        };
-        pane.populate(None);
-
-        let mut table = pane.table.clone();
-        let mut header_width = 0i32;
-        fltk::draw::set_font(table.label_font(), table.label_size());
-        let mut consumer = |row: DetailRow| {
-            let (w, _) = fltk::draw::measure(row[0].as_ref(), true);
-            header_width = std::cmp::max(header_width, w);
-        };
-        for inspector in SERVER_DETAILS_ROWS.iter() {
-            inspector(&pane, None, &mut consumer, true);
+        let ctx = InspectorCtx { mod_resolver };
+        Self {
+            table: PropertiesTable::new(ctx, SERVER_DETAILS_ROWS, "Server Details"),
         }
-        header_width += width_padding;
-        table.set_row_header_width(header_width);
-
-        let w = table.w();
-        table.set_col_width(0, w - header_width - width_padding);
-
-        pane
     }
 
     pub fn populate(&self, server: Option<&Server>) {
-        self.cell.clone().hide();
-        {
-            let data = self.table.data();
-            let mut data = data.borrow_mut();
-            data.clear();
-            let mut consumer = |row| data.push(row);
-            for inspector in SERVER_DETAILS_ROWS.iter() {
-                inspector(self, server, &mut consumer, false);
-            }
-        }
-        self.table.updated(DataTableUpdate::DATA);
+        self.table.populate(server);
     }
+}
 
+impl InspectorCtx {
     fn inspect_raid_hours(
         &self,
         server: Option<&Server>,
-        row_consumer: &mut dyn FnMut(DetailRow),
+        row_consumer: &mut dyn FnMut(PropertyRow),
         include_empty: bool,
     ) {
         let mut header = "Raid Hours";
@@ -119,7 +71,7 @@ impl DetailsPane {
     fn inspect_mods(
         &self,
         server: Option<&Server>,
-        row_consumer: &mut dyn FnMut(DetailRow),
+        row_consumer: &mut dyn FnMut(PropertyRow),
         include_empty: bool,
     ) {
         let mut header = "Mods";
@@ -180,34 +132,9 @@ impl DetailsPane {
     }
 }
 
-type Inspector = fn(&DetailsPane, Option<&Server>, &mut dyn FnMut(DetailRow), bool);
+use_inspector_macros!(Server, InspectorCtx);
 
-macro_rules! inspect_attr {
-    ($header:literal, $lambda:expr) => {
-        |_: &DetailsPane,
-         server: Option<&Server>,
-         row_consumer: &mut dyn FnMut(DetailRow),
-         _include_empty: bool| {
-            row_consumer([$header.into(), server.map($lambda).unwrap_or_default()]);
-        }
-    };
-}
-
-macro_rules! inspect_opt_attr {
-    ($header:literal, $lambda:expr) => {
-        |_: &DetailsPane,
-         server: Option<&Server>,
-         row_consumer: &mut dyn FnMut(DetailRow),
-         include_empty: bool| {
-            let detail = server.and_then($lambda);
-            if detail.is_some() || include_empty {
-                row_consumer([$header.into(), detail.unwrap_or_default()]);
-            }
-        }
-    };
-}
-
-const SERVER_DETAILS_ROWS: &[Inspector] = &[
+const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
     inspect_attr!("ID", |server| server.id.clone().into()),
     inspect_attr!("Server Name", |server| server.name.clone().into()),
     inspect_attr!("Host", |server| server.host().into()),
@@ -257,7 +184,7 @@ const SERVER_DETAILS_ROWS: &[Inspector] = &[
     inspect_attr!("Thrall Crafting Time Multiplier", |server| {
         server.crafting.thrall_crafting_time_mult.to_string().into()
     }),
-    DetailsPane::inspect_raid_hours,
+    InspectorCtx::inspect_raid_hours,
     inspect_attr!("Stamina Cost Multiplier", |server| {
         server.survival.stamina_cost_mult.to_string().into()
     }),
@@ -304,7 +231,7 @@ const SERVER_DETAILS_ROWS: &[Inspector] = &[
             .unwrap_or_default()
             .into()
     }),
-    DetailsPane::inspect_mods,
+    InspectorCtx::inspect_mods,
     inspect_opt_attr!("Problems", problems_cell_value),
 ];
 

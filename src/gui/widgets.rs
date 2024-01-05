@@ -4,11 +4,14 @@ use fltk::prelude::*;
 use fltk::table::TableContext;
 
 mod data_table;
+mod properties_table;
 mod read_only_text;
 
 pub use self::data_table::{
     draw_table_cell, DataColumn, DataTable, DataTableProperties, DataTableUpdate,
 };
+pub(crate) use self::properties_table::use_inspector_macros;
+pub use self::properties_table::{Inspector, PropertiesTable, PropertyRow};
 pub use self::read_only_text::{ReadOnlyText, ReadOnlyTextElement};
 
 use super::is_table_nav_event;
