@@ -191,6 +191,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "shlex",
+ "size",
  "slog",
  "slog-async",
  "slog-term",
@@ -522,9 +523,9 @@ dependencies = [
 
 [[package]]
 name = "fltk-float"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b7192821261656be6b5a873d2c110f69a39f1910781f1ee2a1810d620f74e7b"
+checksum = "e4409a7f579bb9789ea2f123ee6879ae83afe356aa428136d49c1885eaf69fe5"
 dependencies = [
  "fltk",
 ]
@@ -1699,6 +1700,12 @@ checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "size"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fed904c7fb2856d868b92464fc8fa597fce366edea1a9cbfaa8cb5fe080bd6d"
 
 [[package]]
 name = "slab"

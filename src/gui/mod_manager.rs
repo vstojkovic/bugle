@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -13,15 +14,19 @@ use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
-use fltk_float::SimpleWrapper;
+use fltk_float::{LayoutElement, SimpleWrapper};
 use fltk_webview::Webview;
 use lazy_static::lazy_static;
+use size::Size;
 use slog::{error, Logger};
 
 use crate::game::{ModInfo, ModRef, Mods};
 
 use super::prelude::*;
-use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
+use super::widgets::{
+    use_inspector_macros, DataTable, DataTableProperties, DataTableUpdate, Inspector,
+    PropertiesTable, PropertyRow,
+};
 use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, CleanupFn, Handler};
 
 pub enum ModManagerAction {
@@ -39,6 +44,16 @@ pub enum ModManagerUpdate {
 enum Selection {
     Available(usize),
     Active(usize),
+}
+
+impl Selection {
+    fn from_row(ctor: fn(usize) -> Self, row_idx: i32) -> Option<Self> {
+        if row_idx >= 0 {
+            Some(ctor(row_idx as _))
+        } else {
+            None
+        }
+    }
 }
 
 struct ModListState {
@@ -87,10 +102,11 @@ type ModRow = [String; 3];
 
 pub(super) struct ModManager {
     logger: Logger,
-    tiles: Tile,
+    root: Tile,
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: DataTable<ModRow>,
     active_list: DataTable<ModRow>,
+    details_table: PropertiesTable<ModInfo, ()>,
     activate_button: Button,
     deactivate_button: Button,
     move_top_button: Button,
@@ -108,14 +124,21 @@ impl ModManager {
         mods: Arc<Mods>,
         on_action: impl Handler<ModManagerAction> + 'static,
     ) -> Rc<Self> {
-        let mut grid = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
-        grid.row().with_stretch(1).add();
+        let mut row_tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
+        row_tiles.col().with_stretch(1).add();
 
-        let mut tile_limits = Group::default_fill();
-        tile_limits.end();
-        tile_limits.hide();
+        let mut row_tile_limits = Group::default_fill();
+        row_tile_limits.end();
+        row_tile_limits.hide();
 
-        grid.col().with_stretch(1).add();
+        let mut col_tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
+        col_tiles.row().with_stretch(1).add();
+
+        let mut col_tile_limits = Group::default_fill();
+        col_tile_limits.end();
+        col_tile_limits.hide();
+
+        col_tiles.col().with_stretch(1).add();
         let mut available_list = DataTable::default().with_properties(DataTableProperties {
             columns: vec![
                 ("Available Mods", Align::Left).into(),
@@ -132,7 +155,8 @@ impl ModManager {
         available_list.set_col_header(true);
         available_list.set_col_resize(true);
         available_list.end();
-        grid.cell()
+        col_tiles
+            .cell()
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(
@@ -140,7 +164,7 @@ impl ModManager {
                 Default::default(),
             ));
 
-        grid.col().add();
+        col_tiles.col().add();
 
         let mut button_grid = Grid::builder_with_factory(wrapper_factory())
             .with_padding(10, 0, 10, 0)
@@ -242,17 +266,18 @@ impl ModManager {
         button_grid.row().with_stretch(1).add();
         button_grid.cell().unwrap().skip();
 
-        let button_grid = button_grid.end();
+        let button_grid = Rc::new(button_grid.end());
         let mut button_col = button_grid.group();
         button_col.set_frame(FrameType::FlatBox);
         button_col.make_resizable(false);
 
-        grid.cell()
+        col_tiles
+            .cell()
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
-            .add(button_grid);
+            .add_shared(Rc::<Grid>::clone(&button_grid));
 
-        grid.col().with_stretch(1).add();
+        col_tiles.col().with_stretch(1).add();
         let mut active_list = DataTable::default().with_properties(DataTableProperties {
             columns: vec![
                 ("Active Mods", Align::Left).into(),
@@ -269,7 +294,8 @@ impl ModManager {
         active_list.set_col_header(true);
         active_list.set_col_resize(true);
         active_list.end();
-        grid.cell()
+        col_tiles
+            .cell()
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(
@@ -277,34 +303,42 @@ impl ModManager {
                 Default::default(),
             ));
 
-        let grid = grid.end();
-        grid.layout_children(); // necessary for Tile
+        let col_tiles = col_tiles.end();
+        col_tiles.layout_children(); // necessary for Tile
+        let col_tiles_widget = col_tiles.group();
+
+        row_tiles.row().with_stretch(4).add();
+        row_tiles
+            .cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(col_tiles);
 
         adjust_col_widths(&mut available_list);
         adjust_col_widths(&mut active_list);
 
-        let mut tiles = grid.group();
-        tile_limits.resize(
-            tiles.x() + button_col.width() * 2,
-            tiles.y(),
-            tiles.width() - button_col.width() * 4,
-            tiles.height(),
+        col_tile_limits.resize(
+            col_tiles_widget.x() + button_col.width() * 2,
+            col_tiles_widget.y(),
+            col_tiles_widget.width() - button_col.width() * 4,
+            col_tiles_widget.height(),
         );
-        tiles.resizable(&tile_limits);
-        tiles.hide();
+        col_tiles_widget.resizable(&col_tile_limits);
 
         let left_tile = available_list.as_base_widget();
         let mut mid_tile = button_col;
         let right_tile = active_list.as_base_widget();
 
         {
+            let button_grid = Rc::clone(&button_grid);
             let fixed_width = mid_tile.width();
-            let tiles = tiles.clone();
+            let tiles = col_tiles_widget.clone();
             let mut left_tile = left_tile.clone();
             let mut right_tile = right_tile.clone();
             let mut old_x = mid_tile.x();
             mid_tile.resize_callback(move |tile, mut x, y, w, h| {
                 if w == fixed_width {
+                    button_grid.layout_children();
                     return;
                 }
                 if x != old_x {
@@ -321,12 +355,38 @@ impl ModManager {
             });
         }
 
+        row_tiles.row().with_stretch(1).add();
+        let details_table = PropertiesTable::new((), MOD_DETAILS_ROWS, "Mod Details");
+        row_tiles
+            .cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                details_table.as_base_widget(),
+                Default::default(),
+            ));
+
+        let grid = row_tiles.end();
+        grid.layout_children();
+        let mut root = grid.group();
+
+        row_tile_limits.resize(
+            root.x(),
+            root.y() + button_grid.min_size().height,
+            root.width(),
+            root.height() - button_grid.min_size().height,
+        );
+        root.resizable(&row_tile_limits);
+
+        root.hide();
+
         let manager = Rc::new(Self {
             logger,
-            tiles,
+            root,
             on_action: Box::new(on_action),
             available_list: available_list.clone(),
             active_list: active_list.clone(),
+            details_table,
             activate_button: activate_button.clone(),
             deactivate_button: deactivate_button.clone(),
             move_top_button: move_top_button.clone(),
@@ -389,8 +449,8 @@ impl ModManager {
     }
 
     pub fn show(&self) -> CleanupFn {
-        let mut tiles = self.tiles.clone();
-        tiles.show();
+        let mut root = self.root.clone();
+        root.show();
 
         if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
             error!(self.logger, "Error loading mod list"; "error" => %err);
@@ -398,7 +458,7 @@ impl ModManager {
         }
 
         Box::new(move || {
-            tiles.hide();
+            root.hide();
         })
     }
 
@@ -461,14 +521,16 @@ impl ModManager {
         let mut table = self.available_list.clone();
         let _ = table.take_focus();
 
-        self.set_selection(Some(Selection::Available(table.callback_row() as _)));
+        let selection = Selection::from_row(Selection::Available, table.callback_row());
+        self.set_selection(selection);
     }
 
     fn active_clicked(&self) {
         let mut table = self.active_list.clone();
         let _ = table.take_focus();
 
-        self.set_selection(Some(Selection::Active(table.callback_row() as _)));
+        let selection = Selection::from_row(Selection::Active, table.callback_row());
+        self.set_selection(selection);
     }
 
     fn set_selection(&self, selection: Option<Selection>) {
@@ -482,6 +544,7 @@ impl ModManager {
             Some(Selection::Available(_)) => self.active_list.clone().unset_selection(),
             Some(Selection::Active(_)) => self.available_list.clone().unset_selection(),
         }
+        self.details_table.populate(state.selected_mod_info());
         drop(state);
         self.update_actions();
     }
@@ -706,6 +769,37 @@ const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
 const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 const CSS_INFO_BODY: &str = include_str!("mod_info.css");
 
+use_inspector_macros!(ModInfo, ());
+
+const MOD_DETAILS_ROWS: &[Inspector<ModInfo, ()>] = &[
+    inspect_attr!("Name", |info| info.name.clone().into()),
+    inspect_author,
+    inspect_attr!("Version", |info| info.version.to_string().into()),
+    inspect_attr!("Filename", |info| info
+        .pak_path
+        .display()
+        .to_string()
+        .into()),
+    inspect_attr!("Size", |info| format!(
+        "{}",
+        Size::from_bytes(info.pak_size)
+            .format()
+            .with_base(size::Base::Base10)
+    )
+    .into()),
+    inspect_attr!("Devkit Version", |info| format!(
+        "{}/{}",
+        info.devkit_revision, info.devkit_snapshot
+    )
+    .into()),
+    inspect_opt_attr!("Steam ID (Live)", |info| opt_str_value(
+        &info.live_steam_file_id
+    )),
+    inspect_opt_attr!("Steam ID (TestLive)", |info| opt_str_value(
+        &info.testlive_steam_file_id
+    )),
+];
+
 lazy_static! {
     static ref BBCODE: BBCode = BBCode::from_config(BBCodeTagConfig::extended(), None).unwrap();
 }
@@ -758,4 +852,39 @@ fn mutate_table<R>(table: &DataTable<ModRow>, mutator: impl FnOnce(&mut Vec<ModR
     drop(data);
     table.updated(DataTableUpdate::DATA);
     result
+}
+
+fn inspect_author(
+    _: &(),
+    mod_info: Option<&ModInfo>,
+    row_consumer: &mut dyn FnMut(PropertyRow),
+    _include_empty: bool,
+) {
+    const HEADER: &str = "Author";
+
+    let mod_info = match mod_info {
+        Some(mod_info) => mod_info,
+        None => {
+            row_consumer([HEADER.into(), "".into()]);
+            return;
+        }
+    };
+
+    row_consumer([HEADER.into(), mod_info.author.clone().into()]);
+    if let Some(url) = opt_str_value(&mod_info.author_url) {
+        row_consumer(["".into(), url]);
+    }
+}
+
+fn opt_str_value(value: &Option<String>) -> Option<Cow<'static, str>> {
+    match value.as_ref() {
+        None => None,
+        Some(s) => {
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_string().into())
+            }
+        }
+    }
 }

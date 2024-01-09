@@ -27,8 +27,7 @@ pub struct ModInfo {
     pub author: String,
 
     #[serde(rename = "authorurl")]
-    #[serde(default)]
-    pub author_url: String,
+    pub author_url: Option<String>,
 
     #[serde(flatten)]
     pub version: ModVersion,
@@ -37,7 +36,7 @@ pub struct ModInfo {
     pub requires_load_on_startup: bool,
 
     #[serde(rename = "steampublishedfileid")]
-    pub live_steam_file_id: String,
+    pub live_steam_file_id: Option<String>,
 
     #[serde(rename = "steamtestlivepublishedfileid")]
     pub testlive_steam_file_id: Option<String>,
@@ -46,13 +45,16 @@ pub struct ModInfo {
     pub folder_name: String,
 
     #[serde(rename = "revisionnumber")]
-    pub revision_number: u64,
+    pub devkit_revision: u32,
 
     #[serde(rename = "snapshotid")]
-    pub snapshot_id: u64,
+    pub devkit_snapshot: u16,
 
     #[serde(skip)]
     pub pak_path: PathBuf,
+
+    #[serde(skip)]
+    pub pak_size: u64,
 
     #[serde(skip)]
     needs_update: AtomicBool,
@@ -72,6 +74,7 @@ pub struct ModVersion {
 
 impl ModInfo {
     pub(super) fn new(pak_path: PathBuf) -> Result<Self> {
+        let pak_size = std::fs::metadata(&pak_path)?.len();
         let pak = Archive::new(&pak_path)?;
         let entry = pak
             .entry("modinfo.json")
@@ -111,13 +114,14 @@ impl ModInfo {
 
         Ok(Self {
             pak_path,
+            pak_size,
             ..serde_json::from_value(json)?
         })
     }
 
     pub fn steam_file_id(&self, branch: Branch) -> Option<u64> {
         let id_str = match branch {
-            Branch::Main => &self.live_steam_file_id,
+            Branch::Main => self.live_steam_file_id.as_ref()?,
             Branch::PublicBeta => self.testlive_steam_file_id.as_ref()?,
         };
         id_str.parse().ok()
