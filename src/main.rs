@@ -852,6 +852,7 @@ impl Launcher {
                 result.push('\n');
                 match mod_ref {
                     ModRef::Installed(idx) => result.push_str(&mods[idx].name),
+                    ModRef::Custom(mod_info) => result.push_str(&mod_info.name),
                     ModRef::UnknownFolder(folder) => result.push_str(&format!("??? ({})", folder)),
                     ModRef::UnknownPakPath(path) => {
                         result.push_str(&format!("??? ({})", path.display()))

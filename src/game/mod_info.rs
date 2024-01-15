@@ -1,9 +1,11 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io::Read;
-use std::ops::Index;
+use std::ops::{Deref, Index};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 use binread::{BinReaderExt, BinResult};
@@ -57,6 +59,9 @@ pub struct ModInfo {
     pub pak_size: u64,
 
     #[serde(skip)]
+    pub provenance: ModProvenance,
+
+    #[serde(skip)]
     needs_update: AtomicBool,
 }
 
@@ -72,8 +77,20 @@ pub struct ModVersion {
     build: u64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ModProvenance {
+    Local,
+    Steam,
+}
+
+impl Default for ModProvenance {
+    fn default() -> Self {
+        Self::Local
+    }
+}
+
 impl ModInfo {
-    pub(super) fn new(pak_path: PathBuf) -> Result<Self> {
+    pub(super) fn new(pak_path: PathBuf, provenance: ModProvenance) -> Result<Self> {
         let pak_size = std::fs::metadata(&pak_path)?.len();
         let pak = Archive::new(&pak_path)?;
         let entry = pak
@@ -115,6 +132,7 @@ impl ModInfo {
         Ok(Self {
             pak_path,
             pak_size,
+            provenance,
             ..serde_json::from_value(json)?
         })
     }
@@ -146,6 +164,7 @@ impl ToString for ModVersion {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum ModRef {
     Installed(usize),
+    Custom(CustomMod),
     UnknownFolder(String),
     UnknownPakPath(PathBuf),
 }
@@ -157,6 +176,30 @@ impl ModRef {
         } else {
             None
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomMod(Arc<ModInfo>);
+
+impl Hash for CustomMod {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (&*self.0 as *const ModInfo).hash(state);
+    }
+}
+
+impl PartialEq for CustomMod {
+    fn eq(&self, other: &Self) -> bool {
+        (&*self.0 as *const ModInfo) == (&*other.0 as *const ModInfo)
+    }
+}
+
+impl Eq for CustomMod {}
+
+impl Deref for CustomMod {
+    type Target = ModInfo;
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
@@ -189,11 +232,11 @@ impl Mods {
         self.mods.len()
     }
 
-    pub fn get(&self, mod_ref: &ModRef) -> Option<&ModInfo> {
-        if let ModRef::Installed(idx) = mod_ref {
-            self.mods.get(*idx)
-        } else {
-            None
+    pub fn get<'s: 'r, 'm: 'r, 'r>(&'s self, mod_ref: &'m ModRef) -> Option<&'r ModInfo> {
+        match mod_ref {
+            ModRef::Installed(idx) => self.mods.get(*idx),
+            ModRef::Custom(mod_info) => Some(&*mod_info),
+            _ => None,
         }
     }
 
@@ -201,6 +244,10 @@ impl Mods {
         let pak_path: Cow<'p, Path> = pak_path.into();
         if let Some(&idx) = self.by_pak_path.get(pak_path.as_ref()) {
             ModRef::Installed(idx)
+        } else if let Ok(mod_info) =
+            ModInfo::new(pak_path.as_ref().to_path_buf(), ModProvenance::Local)
+        {
+            ModRef::Custom(CustomMod(Arc::new(mod_info)))
         } else {
             ModRef::UnknownPakPath(pak_path.into_owned())
         }

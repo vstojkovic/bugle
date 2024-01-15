@@ -1,6 +1,4 @@
 use std::cell::Cell;
-use std::fs::File;
-use std::io::Write;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -15,13 +13,13 @@ use fltk_float::button::ButtonElement;
 use fltk_float::grid::Grid;
 use fltk_float::{LayoutElement, LayoutWidgetWrapper};
 use slog::{error, FilterLevel, Logger};
-use tempfile::tempdir;
 
 use crate::auth::AuthState;
 use crate::config::{BattlEyeUsage, Config, LogLevel, ModMismatchChecks, ThemeChoice};
 use crate::game::{Branch, Game, MapRef, Maps, ServerRef, Session};
 use crate::workers::TaskState;
 
+use super::assets::Assets;
 use super::prelude::*;
 use super::theme::Theme;
 use super::widgets::ReadOnlyText;
@@ -592,20 +590,7 @@ const ERR_SWITCHING_TO_MAIN: &str = "Error while trying to switch to Live.";
 const ERR_SWITCHING_TO_PUBLIC_BETA: &str = "Error while trying to switch to TestLive.";
 
 fn install_crom_font() -> Font {
-    try_install_crom_font().unwrap_or(Font::TimesBold)
-}
-
-fn try_install_crom_font() -> anyhow::Result<Font> {
-    let dir = tempdir()?;
-    let path = dir.path().join("Crom_v1.ttf");
-
-    let mut file = File::create(&path)?;
-    file.write_all(include_bytes!("Crom_v1.ttf"))?;
-    drop(file);
-
-    let font = Font::load_font(path)?;
-    Font::set_font(Font::Zapfdingbats, &font);
-    Ok(Font::Zapfdingbats)
+    Assets::crom_font().unwrap_or(Font::TimesBold)
 }
 
 fn create_info_label(text: &str) -> Frame {

@@ -14,6 +14,7 @@ use fltk_float::input::InputElement;
 use fltk_float::misc::InputChoiceElement;
 use fltk_float::WrapperFactory;
 
+mod assets;
 mod data;
 mod dialog;
 pub mod glyph;

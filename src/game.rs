@@ -26,7 +26,7 @@ pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::{MapInfo, Maps};
 pub use self::launch::Launch;
-pub use self::mod_info::{ModInfo, ModRef, Mods};
+pub use self::mod_info::{ModInfo, ModProvenance, ModRef, Mods};
 
 pub struct Game {
     logger: Logger,
@@ -350,6 +350,7 @@ impl Game {
         for mod_ref in mod_list {
             let pak_path = match mod_ref {
                 ModRef::Installed(_) => &self.installed_mods.get(mod_ref).unwrap().pak_path,
+                ModRef::Custom(mod_info) => &mod_info.pak_path,
                 ModRef::UnknownPakPath(path) => path,
                 ModRef::UnknownFolder(_) => continue,
             };

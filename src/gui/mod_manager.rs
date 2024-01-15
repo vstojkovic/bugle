@@ -22,6 +22,7 @@ use slog::{error, Logger};
 
 use crate::game::{ModInfo, ModRef, Mods};
 
+use super::assets::Assets;
 use super::prelude::*;
 use super::widgets::{
     use_inspector_macros, DataTable, DataTableProperties, DataTableUpdate, Inspector,
@@ -98,7 +99,16 @@ impl ModListState {
     }
 }
 
-type ModRow = [String; 3];
+struct ModRow {
+    icon_idx: i32,
+    text: [String; 3],
+}
+
+impl ModRow {
+    fn text(&self, col: usize) -> &str {
+        &self.text[col - 1]
+    }
+}
 
 pub(super) struct ModManager {
     logger: Logger,
@@ -139,17 +149,20 @@ impl ModManager {
         col_tile_limits.hide();
 
         col_tiles.col().with_stretch(1).add();
-        let mut available_list = DataTable::default().with_properties(DataTableProperties {
-            columns: vec![
-                ("Available Mods", Align::Left).into(),
-                ("Version", Align::Left).into(),
-                ("Author", Align::Left).into(),
-            ],
-            cell_padding: 4,
-            cell_selection_color: fltk::enums::Color::Free,
-            header_font_color: fltk::enums::Color::Gray0,
-            ..Default::default()
-        });
+        let mut available_list = DataTable::new(ModRow::text)
+            .with_draw_fn(make_draw_fn())
+            .with_properties(DataTableProperties {
+                columns: vec![
+                    "".into(),
+                    ("Available Mods", Align::Left).into(),
+                    ("Version", Align::Left).into(),
+                    ("Author", Align::Left).into(),
+                ],
+                cell_padding: 4,
+                cell_selection_color: fltk::enums::Color::Free,
+                header_font_color: fltk::enums::Color::Gray0,
+                ..Default::default()
+            });
         available_list.make_resizable(true);
         available_list.set_row_header(false);
         available_list.set_col_header(true);
@@ -278,17 +291,20 @@ impl ModManager {
             .add_shared(Rc::<Grid>::clone(&button_grid));
 
         col_tiles.col().with_stretch(1).add();
-        let mut active_list = DataTable::default().with_properties(DataTableProperties {
-            columns: vec![
-                ("Active Mods", Align::Left).into(),
-                ("Version", Align::Left).into(),
-                ("Author", Align::Left).into(),
-            ],
-            cell_padding: 4,
-            cell_selection_color: fltk::enums::Color::Free,
-            header_font_color: fltk::enums::Color::Gray0,
-            ..Default::default()
-        });
+        let mut active_list = DataTable::new(ModRow::text)
+            .with_draw_fn(make_draw_fn())
+            .with_properties(DataTableProperties {
+                columns: vec![
+                    "".into(),
+                    ("Active Mods", Align::Left).into(),
+                    ("Version", Align::Left).into(),
+                    ("Author", Align::Left).into(),
+                ],
+                cell_padding: 4,
+                cell_selection_color: fltk::enums::Color::Free,
+                header_font_color: fltk::enums::Color::Gray0,
+                ..Default::default()
+            });
         active_list.make_resizable(true);
         active_list.set_row_header(false);
         active_list.set_col_header(true);
@@ -616,6 +632,7 @@ impl ModManager {
         let row_idx = state.get_selected_active().unwrap();
 
         let mod_ref = state.active.remove(row_idx);
+        let row = mutate_table(&mut self.active_list.clone(), |data| data.remove(row_idx));
         if let ModRef::Installed(mod_idx) = &mod_ref {
             let dest_row_idx = state
                 .available
@@ -623,7 +640,6 @@ impl ModManager {
                 .unwrap_err();
             state.available.insert(dest_row_idx, mod_ref);
 
-            let row = mutate_table(&mut self.active_list.clone(), |data| data.remove(row_idx));
             mutate_table(&mut self.available_list.clone(), |data| {
                 data.insert(dest_row_idx, row)
             });
@@ -809,8 +825,14 @@ fn adjust_col_widths(table: &mut DataTable<ModRow>) {
     let scrollbar_width =
         if scrollbar_width > 0 { scrollbar_width } else { fltk::app::scrollbar_size() };
 
-    let width = table.width() - table.col_width(1) - table.col_width(2) - scrollbar_width - 2;
-    table.set_col_width(0, width);
+    table.set_col_width(0, 24);
+    let width = table.width()
+        - table.col_width(0)
+        - table.col_width(2)
+        - table.col_width(3)
+        - scrollbar_width
+        - 2;
+    table.set_col_width(1, width);
 }
 
 fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {
@@ -831,18 +853,67 @@ fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
         let version = mod_info.version.to_string();
         let version =
             if mod_info.needs_update() { format!("@reload {}", version) } else { version };
-        [mod_info.name.clone(), version, mod_info.author.clone()]
+        ModRow {
+            icon_idx: mod_info.provenance as i32 + 1,
+            text: [mod_info.name.clone(), version, mod_info.author.clone()],
+        }
     } else {
-        [
-            match mod_ref {
-                ModRef::Installed(_) => unreachable!(),
-                ModRef::UnknownFolder(folder) => format!("??? ({})", folder),
-                ModRef::UnknownPakPath(path) => format!("??? ({})", path.display()),
-            },
-            "???".to_string(),
-            "???".to_string(),
-        ]
+        ModRow {
+            icon_idx: 0,
+            text: [
+                match mod_ref {
+                    ModRef::Installed(_) => unreachable!(),
+                    ModRef::Custom(_) => unreachable!(),
+                    ModRef::UnknownFolder(folder) => format!("??? ({})", folder),
+                    ModRef::UnknownPakPath(path) => format!("??? ({})", path.display()),
+                },
+                "???".to_string(),
+                "???".to_string(),
+            ],
+        }
     }
+}
+
+fn make_draw_fn() -> impl 'static + FnMut(&DataTable<ModRow>, i32, i32, i32, i32, i32, i32) {
+    let mut icons = Assets::mod_provenance_icons();
+    move |table: &DataTable<ModRow>, row: i32, col: i32, x: i32, y: i32, w: i32, h: i32| match col {
+        0 => draw_icon_cell(&mut icons, table, row, col, x, y, w, h),
+        _ => table.default_draw_cell(row, col, x, y, w, h),
+    }
+}
+
+fn draw_icon_cell<I: ImageExt>(
+    icons: &mut I,
+    table: &DataTable<ModRow>,
+    row: i32,
+    col: i32,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+) {
+    let data = table.data();
+    let data = data.borrow();
+    let icon_idx = data[row as usize].icon_idx;
+
+    let props = table.properties();
+    let props = props.borrow();
+
+    let fill_color = if table.is_selected(row as i32, col as i32) {
+        props.cell_selection_color
+    } else {
+        props.cell_color
+    };
+
+    fltk::draw::set_draw_color(fill_color);
+    fltk::draw::draw_rectf(x, y, w, h);
+
+    let ix = x + (w - 16) / 2;
+    let iy = y + (h - 16) / 2;
+    icons.draw_ext(ix, iy, 16, 16, 0, icon_idx * 16);
+
+    fltk::draw::set_draw_color(props.cell_border_color);
+    fltk::draw::draw_rect(x, y, w, h);
 }
 
 fn mutate_table<R>(table: &DataTable<ModRow>, mutator: impl FnOnce(&mut Vec<ModRow>) -> R) -> R {

@@ -12,7 +12,7 @@ mod mod_directory;
 
 pub use self::client::{SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
-use crate::game::{Branch, Game, ModInfo};
+use crate::game::{Branch, Game, ModInfo, ModProvenance};
 use crate::Message;
 
 pub struct Steam {
@@ -127,7 +127,7 @@ fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModInfo>> {
             let pak_path = pak_path?.path();
             match pak_path.extension() {
                 Some(ext) if ext == "pak" => {
-                    mods.push(ModInfo::new(pak_path)?);
+                    mods.push(ModInfo::new(pak_path, ModProvenance::Steam)?);
                 }
                 _ => (),
             };
