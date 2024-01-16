@@ -47,6 +47,7 @@ tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 ucs2 = "0.3.2"
 urlencoding = "2"
+walkdir = "2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["combaseapi", "mswsock", "shlobj", "tlhelp32", "wincon", "winsock2", "winuser"] }

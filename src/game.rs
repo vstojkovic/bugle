@@ -11,6 +11,7 @@ use ini::Properties;
 use lazy_static::lazy_static;
 use regex::Regex;
 use slog::{debug, info, warn, Logger};
+use walkdir::WalkDir;
 
 mod engine;
 mod launch;
@@ -93,6 +94,9 @@ impl Game {
 
         debug!(logger, "Querying game version");
         let version = get_game_version(&game_path)?;
+
+        debug!(logger, "Collecting local mods");
+        collect_local_mods(&game_path, &mut installed_mods)?;
 
         let mod_list_path = game_path.join("ConanSandbox/Mods/modlist.txt");
         installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
@@ -482,3 +486,19 @@ const KEY_LAST_MAP: &str = "LastMap";
 const KEY_SERVERS_LIST: &str = "ServersList";
 const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";
+
+fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModInfo>) -> Result<()> {
+    // TODO: Log warnings for recoverable errors
+
+    for entry in WalkDir::new(game_path.join("ConanSandbox/Mods")) {
+        let pak_path = entry?.path().to_path_buf();
+        match pak_path.extension() {
+            Some(ext) if ext == "pak" => {
+                mods.push(ModInfo::new(pak_path, ModProvenance::Local)?);
+            }
+            _ => (),
+        };
+    }
+
+    Ok(())
+}
