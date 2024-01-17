@@ -12,7 +12,7 @@ use fltk_float::SimpleWrapper;
 use humansize::SizeFormatter;
 
 use crate::game::platform::{ModDirectory, ModUpdate};
-use crate::game::{ModInfo, ModRef, Mods};
+use crate::game::{ModEntry, ModRef, Mods};
 use crate::gui::widgets::{draw_table_cell, DataTable, DataTableProperties, DataTableUpdate};
 use crate::gui::wrapper_factory;
 use crate::workers::TaskState;
@@ -47,9 +47,9 @@ struct ProgressRow {
 }
 
 impl ProgressRow {
-    fn new(mod_info: &ModInfo, mod_directory: Rc<dyn ModDirectory>) -> Self {
-        let name = mod_info.name.clone();
-        let update = mod_directory.start_update(mod_info);
+    fn new(mod_entry: &ModEntry, mod_directory: Rc<dyn ModDirectory>) -> Self {
+        let name = mod_entry.info.name.clone();
+        let update = mod_directory.start_update(mod_entry);
         let (status, display_text) = match &update {
             Ok(_) => (ProgressStatus::Pending, name.clone()),
             Err(_) => (ProgressStatus::Error, format!("{} [error]", &name)),

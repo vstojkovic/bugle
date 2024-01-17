@@ -9,7 +9,7 @@ use steamworks::SteamError;
 
 use crate::game::platform::steam::client::DownloadCallback;
 use crate::game::platform::{ModDirectory, ModUpdate};
-use crate::game::{ModInfo, Mods};
+use crate::game::{ModEntry, Mods};
 use crate::gui::ServerBrowserUpdate;
 use crate::logger::IteratorFormatter;
 use crate::workers::TaskState;
@@ -34,9 +34,9 @@ impl SteamModDirectory {
         let branch = client.branch();
 
         let mut map = HashMap::with_capacity(installed_mods.len());
-        for mod_info in installed_mods.iter() {
-            if let Some(id) = mod_info.steam_file_id(branch) {
-                map.insert(id, mod_info.name.clone());
+        for entry in installed_mods.iter() {
+            if let Some(id) = entry.info.steam_file_id(branch) {
+                map.insert(id, entry.info.name.clone());
             }
         }
 
@@ -83,8 +83,9 @@ impl ModDirectory for SteamModDirectory {
         }
     }
 
-    fn needs_update(self: Rc<Self>, mod_ref: &ModInfo) -> Result<bool> {
+    fn needs_update(self: Rc<Self>, mod_ref: &ModEntry) -> Result<bool> {
         let mod_id = mod_ref
+            .info
             .steam_file_id(self.client.branch())
             .ok_or_else(|| anyhow!("Mod does not have a Steam file ID"))?;
         self.client
@@ -96,8 +97,9 @@ impl ModDirectory for SteamModDirectory {
         self.client.can_play_online()
     }
 
-    fn start_update(self: Rc<Self>, mod_ref: &ModInfo) -> Result<Rc<dyn ModUpdate>> {
+    fn start_update(self: Rc<Self>, mod_ref: &ModEntry) -> Result<Rc<dyn ModUpdate>> {
         let mod_id = mod_ref
+            .info
             .steam_file_id(self.client.branch())
             .ok_or(anyhow!("Mod does not have a Steam file ID"))?;
         let update = Rc::new(SteamModUpdate {

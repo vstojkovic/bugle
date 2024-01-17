@@ -27,7 +27,7 @@ pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::{MapInfo, Maps};
 pub use self::launch::Launch;
-pub use self::mod_info::{ModInfo, ModProvenance, ModRef, Mods};
+pub use self::mod_info::{ModEntry, ModInfo, ModProvenance, ModRef, Mods};
 
 pub struct Game {
     logger: Logger,
@@ -87,7 +87,7 @@ impl Game {
         game_path: PathBuf,
         branch: Branch,
         needs_update: bool,
-        mut installed_mods: Vec<ModInfo>,
+        mut installed_mods: Vec<ModEntry>,
     ) -> Result<Self> {
         let save_path = game_path.join("ConanSandbox/Saved");
         let config_path = save_path.join("Config/WindowsNoEditor");
@@ -99,7 +99,7 @@ impl Game {
         collect_local_mods(&game_path, &mut installed_mods)?;
 
         let mod_list_path = game_path.join("ConanSandbox/Mods/modlist.txt");
-        installed_mods.sort_by(|lhs, rhs| lhs.name.cmp(&rhs.name));
+        installed_mods.sort_by(|lhs, rhs| lhs.info.name.cmp(&rhs.info.name));
 
         let mut maps = Maps::new();
         let map_extractor = MapExtractor::new(logger.clone());
@@ -487,14 +487,14 @@ const KEY_SERVERS_LIST: &str = "ServersList";
 const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";
 
-fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModInfo>) -> Result<()> {
+fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModEntry>) -> Result<()> {
     // TODO: Log warnings for recoverable errors
 
     for entry in WalkDir::new(game_path.join("ConanSandbox/Mods")) {
         let pak_path = entry?.path().to_path_buf();
         match pak_path.extension() {
             Some(ext) if ext == "pak" => {
-                mods.push(ModInfo::new(pak_path, ModProvenance::Local)?);
+                mods.push(ModEntry::new(pak_path, ModProvenance::Local)?);
             }
             _ => (),
         };

@@ -12,7 +12,7 @@ mod mod_directory;
 
 pub use self::client::{SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
-use crate::game::{Branch, Game, ModInfo, ModProvenance};
+use crate::game::{Branch, Game, ModEntry, ModProvenance};
 use crate::Message;
 
 pub struct Steam {
@@ -107,7 +107,7 @@ fn app_id(branch: Branch) -> u32 {
     }
 }
 
-fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModInfo>> {
+fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModEntry>> {
     // TODO: Log warnings for recoverable errors
 
     let manifest_path = workshop_path.join(format!("appworkshop_{}.acf", app_id(branch)));
@@ -127,7 +127,7 @@ fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModInfo>> {
             let pak_path = pak_path?.path();
             match pak_path.extension() {
                 Some(ext) if ext == "pak" => {
-                    mods.push(ModInfo::new(pak_path, ModProvenance::Steam)?);
+                    mods.push(ModEntry::new(pak_path, ModProvenance::Steam)?);
                 }
                 _ => (),
             };

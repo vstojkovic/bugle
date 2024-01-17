@@ -20,7 +20,7 @@ use lazy_static::lazy_static;
 use size::Size;
 use slog::{error, Logger};
 
-use crate::game::{ModInfo, ModRef, Mods};
+use crate::game::{ModEntry, ModRef, Mods};
 
 use super::assets::Assets;
 use super::prelude::*;
@@ -90,7 +90,7 @@ impl ModListState {
         }
     }
 
-    fn selected_mod_info(&self) -> Option<&ModInfo> {
+    fn selected_mod(&self) -> Option<&ModEntry> {
         match self.selection {
             None => None,
             Some(Selection::Available(idx)) => self.installed.get(&self.available[idx]),
@@ -116,7 +116,7 @@ pub(super) struct ModManager {
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: DataTable<ModRow>,
     active_list: DataTable<ModRow>,
-    details_table: PropertiesTable<ModInfo, ()>,
+    details_table: PropertiesTable<ModEntry, ()>,
     activate_button: Button,
     deactivate_button: Button,
     move_top_button: Button,
@@ -514,12 +514,9 @@ impl ModManager {
 
     fn populate_tables(&self) {
         let state = self.state.borrow();
-        self.update_mods_button.clone().set_activated(
-            state
-                .installed
-                .iter()
-                .any(|mod_info| mod_info.needs_update()),
-        );
+        self.update_mods_button
+            .clone()
+            .set_activated(state.installed.iter().any(|entry| entry.needs_update()));
 
         populate_table(
             &mut self.available_list.clone(),
@@ -560,7 +557,7 @@ impl ModManager {
             Some(Selection::Available(_)) => self.active_list.clone().unset_selection(),
             Some(Selection::Active(_)) => self.available_list.clone().unset_selection(),
         }
-        self.details_table.populate(state.selected_mod_info());
+        self.details_table.populate(state.selected_mod());
         drop(state);
         self.update_actions();
     }
@@ -741,19 +738,19 @@ impl ModManager {
 
     fn show_description(&self) {
         let state = self.state.borrow();
-        let mod_info = state.selected_mod_info().unwrap();
+        let entry = state.selected_mod().unwrap();
         self.show_bbcode(
-            &format!("Description: {}", &mod_info.name),
-            &mod_info.description,
+            &format!("Description: {}", &entry.info.name),
+            &entry.info.description,
         );
     }
 
     fn show_change_notes(&self) {
         let state = self.state.borrow();
-        let mod_info = state.selected_mod_info().unwrap();
+        let entry = state.selected_mod().unwrap();
         self.show_bbcode(
-            &format!("Change Notes: {}", &mod_info.name),
-            &mod_info.change_notes,
+            &format!("Change Notes: {}", &entry.info.name),
+            &entry.info.change_notes,
         );
     }
 
@@ -785,34 +782,34 @@ const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
 const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 const CSS_INFO_BODY: &str = include_str!("mod_info.css");
 
-use_inspector_macros!(ModInfo, ());
+use_inspector_macros!(ModEntry, ());
 
-const MOD_DETAILS_ROWS: &[Inspector<ModInfo, ()>] = &[
-    inspect_attr!("Name", |info| info.name.clone().into()),
+const MOD_DETAILS_ROWS: &[Inspector<ModEntry, ()>] = &[
+    inspect_attr!("Name", |entry| entry.info.name.clone().into()),
     inspect_author,
-    inspect_attr!("Version", |info| info.version.to_string().into()),
-    inspect_attr!("Filename", |info| info
+    inspect_attr!("Version", |entry| entry.info.version.to_string().into()),
+    inspect_attr!("Filename", |entry| entry
         .pak_path
         .display()
         .to_string()
         .into()),
-    inspect_attr!("Size", |info| format!(
+    inspect_attr!("Size", |entry| format!(
         "{}",
-        Size::from_bytes(info.pak_size)
+        Size::from_bytes(entry.pak_size)
             .format()
             .with_base(size::Base::Base10)
     )
     .into()),
-    inspect_attr!("Devkit Version", |info| format!(
+    inspect_attr!("Devkit Version", |entry| format!(
         "{}/{}",
-        info.devkit_revision, info.devkit_snapshot
+        entry.info.devkit_revision, entry.info.devkit_snapshot
     )
     .into()),
-    inspect_opt_attr!("Steam ID (Live)", |info| opt_str_value(
-        &info.live_steam_file_id
+    inspect_opt_attr!("Steam ID (Live)", |entry| opt_str_value(
+        &entry.info.live_steam_file_id
     )),
-    inspect_opt_attr!("Steam ID (TestLive)", |info| opt_str_value(
-        &info.testlive_steam_file_id
+    inspect_opt_attr!("Steam ID (TestLive)", |entry| opt_str_value(
+        &entry.info.testlive_steam_file_id
     )),
 ];
 
@@ -849,13 +846,12 @@ fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {
 }
 
 fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
-    if let Some(mod_info) = mods.get(mod_ref) {
-        let version = mod_info.version.to_string();
-        let version =
-            if mod_info.needs_update() { format!("@reload {}", version) } else { version };
+    if let Some(entry) = mods.get(mod_ref) {
+        let version = entry.info.version.to_string();
+        let version = if entry.needs_update() { format!("@reload {}", version) } else { version };
         ModRow {
-            icon_idx: mod_info.provenance as i32 + 1,
-            text: [mod_info.name.clone(), version, mod_info.author.clone()],
+            icon_idx: entry.provenance as i32 + 1,
+            text: [entry.info.name.clone(), version, entry.info.author.clone()],
         }
     } else {
         ModRow {
@@ -927,22 +923,22 @@ fn mutate_table<R>(table: &DataTable<ModRow>, mutator: impl FnOnce(&mut Vec<ModR
 
 fn inspect_author(
     _: &(),
-    mod_info: Option<&ModInfo>,
+    entry: Option<&ModEntry>,
     row_consumer: &mut dyn FnMut(PropertyRow),
     _include_empty: bool,
 ) {
     const HEADER: &str = "Author";
 
-    let mod_info = match mod_info {
-        Some(mod_info) => mod_info,
+    let entry = match entry {
+        Some(entry) => entry,
         None => {
             row_consumer([HEADER.into(), "".into()]);
             return;
         }
     };
 
-    row_consumer([HEADER.into(), mod_info.author.clone().into()]);
-    if let Some(url) = opt_str_value(&mod_info.author_url) {
+    row_consumer([HEADER.into(), entry.info.author.clone().into()]);
+    if let Some(url) = opt_str_value(&entry.info.author_url) {
         row_consumer(["".into(), url]);
     }
 }

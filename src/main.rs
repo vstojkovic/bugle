@@ -429,7 +429,7 @@ impl Launcher {
                     .installed_mods()
                     .iter()
                     .enumerate()
-                    .filter(|(_, mod_info)| mod_info.needs_update())
+                    .filter(|(_, entry)| entry.needs_update())
                     .map(|(idx, _)| ModRef::Installed(idx))
                     .collect();
                 if self.update_mods(outdated_mods) {
@@ -851,8 +851,8 @@ impl Launcher {
             for mod_ref in refs {
                 result.push('\n');
                 match mod_ref {
-                    ModRef::Installed(idx) => result.push_str(&mods[idx].name),
-                    ModRef::Custom(mod_info) => result.push_str(&mod_info.name),
+                    ModRef::Installed(idx) => result.push_str(&mods[idx].info.name),
+                    ModRef::Custom(entry) => result.push_str(&entry.info.name),
                     ModRef::UnknownFolder(folder) => result.push_str(&format!("??? ({})", folder)),
                     ModRef::UnknownPakPath(path) => {
                         result.push_str(&format!("??? ({})", path.display()))
@@ -904,8 +904,8 @@ impl Launcher {
 
         let mut added_mods = HashSet::new();
         for mod_ref in active_mods.drain() {
-            if let Some(mod_info) = installed_mods.get(&mod_ref) {
-                if let Some(active) = required_folders.get_mut(&mod_info.folder_name) {
+            if let Some(entry) = installed_mods.get(&mod_ref) {
+                if let Some(active) = required_folders.get_mut(&entry.info.folder_name) {
                     *active = true;
                     continue;
                 }
@@ -936,8 +936,8 @@ impl Launcher {
         let installed_mods = self.game.installed_mods();
         let mut outdated_mods = Vec::new();
         for mod_ref in mod_list {
-            if let Some(mod_info) = installed_mods.get(mod_ref) {
-                if mod_info.needs_update() {
+            if let Some(entry) = installed_mods.get(mod_ref) {
+                if entry.needs_update() {
                     outdated_mods.push(mod_ref.clone());
                 }
             }
@@ -1010,14 +1010,14 @@ impl Launcher {
             return;
         }
 
-        for mod_info in self.game.installed_mods().iter() {
-            match Rc::clone(&self.mod_directory).needs_update(mod_info) {
-                Ok(needs_update) => mod_info.set_needs_update(needs_update),
+        for entry in self.game.installed_mods().iter() {
+            match Rc::clone(&self.mod_directory).needs_update(entry) {
+                Ok(needs_update) => entry.set_needs_update(needs_update),
                 Err(err) => warn!(
                     self.logger,
                     "Error checking whether mod needs update";
-                    "mod_name" => &mod_info.name,
-                    "pak_path" => ?mod_info.pak_path,
+                    "mod_name" => &entry.info.name,
+                    "pak_path" => ?entry.pak_path,
                     "error" => %err,
                 ),
             }

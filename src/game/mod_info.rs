@@ -14,6 +14,15 @@ use serde::Deserialize;
 use super::engine::pak::Archive;
 use super::Branch;
 
+#[derive(Debug)]
+pub struct ModEntry {
+    pub pak_path: PathBuf,
+    pub pak_size: u64,
+    pub provenance: ModProvenance,
+    pub info: ModInfo,
+    needs_update: AtomicBool,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ModInfo {
     pub name: String,
@@ -51,18 +60,6 @@ pub struct ModInfo {
 
     #[serde(rename = "snapshotid")]
     pub devkit_snapshot: u16,
-
-    #[serde(skip)]
-    pub pak_path: PathBuf,
-
-    #[serde(skip)]
-    pub pak_size: u64,
-
-    #[serde(skip)]
-    pub provenance: ModProvenance,
-
-    #[serde(skip)]
-    needs_update: AtomicBool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,10 +86,32 @@ impl Default for ModProvenance {
     }
 }
 
-impl ModInfo {
+impl ModEntry {
     pub(super) fn new(pak_path: PathBuf, provenance: ModProvenance) -> Result<Self> {
+        let info = ModInfo::new(&pak_path)?;
         let pak_size = std::fs::metadata(&pak_path)?.len();
-        let pak = Archive::new(&pak_path)?;
+        Ok(Self {
+            pak_path,
+            pak_size,
+            provenance,
+            info,
+            needs_update: AtomicBool::new(false),
+        })
+    }
+
+    pub fn needs_update(&self) -> bool {
+        self.needs_update.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn set_needs_update(&self, value: bool) {
+        self.needs_update
+            .store(value, std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl ModInfo {
+    pub(super) fn new(pak_path: &Path) -> Result<Self> {
+        let pak = Archive::new(pak_path)?;
         let entry = pak
             .entry("modinfo.json")
             .ok_or(anyhow!("Missing modinfo.json"))?;
@@ -129,12 +148,7 @@ impl ModInfo {
         let json = serde_json::from_slice(&json_bytes)?;
         let json = json_lowercase_keys(json);
 
-        Ok(Self {
-            pak_path,
-            pak_size,
-            provenance,
-            ..serde_json::from_value(json)?
-        })
+        Ok(serde_json::from_value(json)?)
     }
 
     pub fn steam_file_id(&self, branch: Branch) -> Option<u64> {
@@ -143,15 +157,6 @@ impl ModInfo {
             Branch::PublicBeta => self.testlive_steam_file_id.as_ref()?,
         };
         id_str.parse().ok()
-    }
-
-    pub fn needs_update(&self) -> bool {
-        self.needs_update.load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    pub fn set_needs_update(&self, value: bool) {
-        self.needs_update
-            .store(value, std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -180,45 +185,45 @@ impl ModRef {
 }
 
 #[derive(Clone, Debug)]
-pub struct CustomMod(Arc<ModInfo>);
+pub struct CustomMod(Arc<ModEntry>);
 
 impl Hash for CustomMod {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (&*self.0 as *const ModInfo).hash(state);
+        (&*self.0 as *const ModEntry).hash(state);
     }
 }
 
 impl PartialEq for CustomMod {
     fn eq(&self, other: &Self) -> bool {
-        (&*self.0 as *const ModInfo) == (&*other.0 as *const ModInfo)
+        (&*self.0 as *const ModEntry) == (&*other.0 as *const ModEntry)
     }
 }
 
 impl Eq for CustomMod {}
 
 impl Deref for CustomMod {
-    type Target = ModInfo;
+    type Target = ModEntry;
     fn deref(&self) -> &Self::Target {
         &*self.0
     }
 }
 
 pub struct Mods {
-    mods: Vec<ModInfo>,
+    mods: Vec<ModEntry>,
     by_pak_path: HashMap<PathBuf, usize>,
     by_folder: HashMap<String, usize>,
 }
 
 impl Mods {
-    pub(super) fn new(mods: Vec<ModInfo>) -> Self {
+    pub(super) fn new(mods: Vec<ModEntry>) -> Self {
         let mut by_pak_path = HashMap::with_capacity(mods.len());
-        for (idx, mod_info) in mods.iter().enumerate() {
-            by_pak_path.insert(mod_info.pak_path.clone(), idx);
+        for (idx, entry) in mods.iter().enumerate() {
+            by_pak_path.insert(entry.pak_path.clone(), idx);
         }
 
         let mut by_folder = HashMap::with_capacity(mods.len());
-        for (idx, mod_info) in mods.iter().enumerate() {
-            by_folder.insert(mod_info.folder_name.clone(), idx);
+        for (idx, entry) in mods.iter().enumerate() {
+            by_folder.insert(entry.info.folder_name.clone(), idx);
         }
 
         Self {
@@ -232,7 +237,7 @@ impl Mods {
         self.mods.len()
     }
 
-    pub fn get<'s: 'r, 'm: 'r, 'r>(&'s self, mod_ref: &'m ModRef) -> Option<&'r ModInfo> {
+    pub fn get<'s: 'r, 'm: 'r, 'r>(&'s self, mod_ref: &'m ModRef) -> Option<&'r ModEntry> {
         match mod_ref {
             ModRef::Installed(idx) => self.mods.get(*idx),
             ModRef::Custom(mod_info) => Some(&*mod_info),
@@ -245,7 +250,7 @@ impl Mods {
         if let Some(&idx) = self.by_pak_path.get(pak_path.as_ref()) {
             ModRef::Installed(idx)
         } else if let Ok(mod_info) =
-            ModInfo::new(pak_path.as_ref().to_path_buf(), ModProvenance::Local)
+            ModEntry::new(pak_path.as_ref().to_path_buf(), ModProvenance::Local)
         {
             ModRef::Custom(CustomMod(Arc::new(mod_info)))
         } else {
@@ -262,13 +267,13 @@ impl Mods {
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &ModInfo> {
+    pub fn iter(&self) -> impl Iterator<Item = &ModEntry> {
         self.mods.iter()
     }
 }
 
 impl Index<usize> for Mods {
-    type Output = ModInfo;
+    type Output = ModEntry;
     fn index(&self, index: usize) -> &Self::Output {
         &self.mods[index]
     }
