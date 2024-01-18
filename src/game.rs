@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
@@ -99,7 +100,7 @@ impl Game {
         collect_local_mods(&game_path, &mut installed_mods)?;
 
         let mod_list_path = game_path.join("ConanSandbox/Mods/modlist.txt");
-        installed_mods.sort_by(|lhs, rhs| lhs.info.name.cmp(&rhs.info.name));
+        installed_mods.sort_by(mod_sort_cmp);
 
         let mut maps = Maps::new();
         let map_extractor = MapExtractor::new(logger.clone());
@@ -488,8 +489,6 @@ const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";
 
 fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModEntry>) -> Result<()> {
-    // TODO: Log warnings for recoverable errors
-
     for entry in WalkDir::new(game_path.join("ConanSandbox/Mods")) {
         let pak_path = entry?.path().to_path_buf();
         match pak_path.extension() {
@@ -501,4 +500,13 @@ fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModEntry>) -> Result<()> 
     }
 
     Ok(())
+}
+
+fn mod_sort_cmp(lhs: &ModEntry, rhs: &ModEntry) -> Ordering {
+    match (lhs.info.as_ref(), rhs.info.as_ref()) {
+        (Ok(linfo), Ok(rinfo)) => linfo.name.cmp(&rinfo.name),
+        (Ok(_), Err(_)) => Ordering::Less,
+        (Err(_), Ok(_)) => Ordering::Greater,
+        (Err(_), Err(_)) => lhs.pak_path.cmp(&rhs.pak_path),
+    }
 }

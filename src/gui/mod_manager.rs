@@ -564,14 +564,19 @@ impl ModManager {
 
     fn update_actions(&self) {
         let state = self.state.borrow();
-        let (activate, deactivate, move_up, move_down, more_info) = match state.selection {
-            None => (false, false, false, false, false),
-            Some(Selection::Available(_)) => (true, false, false, false, true),
+        let (activate, deactivate, move_up, move_down) = match state.selection {
+            None => (false, false, false, false),
+            Some(Selection::Available(_)) => (true, false, false, false),
             Some(Selection::Active(idx)) => {
                 let last_idx = state.active.len() - 1;
-                (false, true, idx > 0, idx < last_idx, true)
+                (false, true, idx > 0, idx < last_idx)
             }
         };
+
+        let more_info = state
+            .selected_mod()
+            .and_then(|entry| entry.info.as_ref().ok())
+            .is_some();
 
         self.activate_button.clone().set_activated(activate);
         self.deactivate_button.clone().set_activated(deactivate);
@@ -738,20 +743,14 @@ impl ModManager {
 
     fn show_description(&self) {
         let state = self.state.borrow();
-        let entry = state.selected_mod().unwrap();
-        self.show_bbcode(
-            &format!("Description: {}", &entry.info.name),
-            &entry.info.description,
-        );
+        let info = state.selected_mod().unwrap().info.as_ref().unwrap();
+        self.show_bbcode(&format!("Description: {}", &info.name), &info.description);
     }
 
     fn show_change_notes(&self) {
         let state = self.state.borrow();
-        let entry = state.selected_mod().unwrap();
-        self.show_bbcode(
-            &format!("Change Notes: {}", &entry.info.name),
-            &entry.info.change_notes,
-        );
+        let info = state.selected_mod().unwrap().info.as_ref().unwrap();
+        self.show_bbcode(&format!("Change Notes: {}", &info.name), &info.change_notes);
     }
 
     fn show_bbcode(&self, title: &str, content: &str) {
@@ -783,11 +782,25 @@ const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
 const CSS_INFO_BODY: &str = include_str!("mod_info.css");
 
 use_inspector_macros!(ModEntry, ());
+macro_rules! info_attr {
+    ($lambda:expr) => {
+        |entry| {
+            entry
+                .info
+                .as_ref()
+                .map($lambda)
+                .ok()
+                .unwrap_or("???".into())
+        }
+    };
+}
 
 const MOD_DETAILS_ROWS: &[Inspector<ModEntry, ()>] = &[
-    inspect_attr!("Name", |entry| entry.info.name.clone().into()),
-    inspect_author,
-    inspect_attr!("Version", |entry| entry.info.version.to_string().into()),
+    inspect_opt_attr!("Problem", |entry| entry
+        .info
+        .as_ref()
+        .err()
+        .map(|err| err.to_string().into())),
     inspect_attr!("Filename", |entry| entry
         .pak_path
         .display()
@@ -800,17 +813,26 @@ const MOD_DETAILS_ROWS: &[Inspector<ModEntry, ()>] = &[
             .with_base(size::Base::Base10)
     )
     .into()),
-    inspect_attr!("Devkit Version", |entry| format!(
-        "{}/{}",
-        entry.info.devkit_revision, entry.info.devkit_snapshot
-    )
-    .into()),
-    inspect_opt_attr!("Steam ID (Live)", |entry| opt_str_value(
-        &entry.info.live_steam_file_id
-    )),
-    inspect_opt_attr!("Steam ID (TestLive)", |entry| opt_str_value(
-        &entry.info.testlive_steam_file_id
-    )),
+    inspect_attr!("Name", info_attr!(|info| info.name.clone().into())),
+    inspect_author,
+    inspect_attr!(
+        "Version",
+        info_attr!(|info| info.version.to_string().into())
+    ),
+    inspect_attr!(
+        "Devkit Version",
+        info_attr!(|info| format!("{}/{}", info.devkit_revision, info.devkit_snapshot).into())
+    ),
+    inspect_opt_attr!("Steam ID (Live)", |entry| entry
+        .info
+        .as_ref()
+        .ok()
+        .and_then(|info| opt_str_value(&info.live_steam_file_id))),
+    inspect_opt_attr!("Steam ID (TestLive)", |entry| entry
+        .info
+        .as_ref()
+        .ok()
+        .and_then(|info| opt_str_value(&info.testlive_steam_file_id))),
 ];
 
 lazy_static! {
@@ -847,26 +869,35 @@ fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {
 
 fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
     if let Some(entry) = mods.get(mod_ref) {
-        let version = entry.info.version.to_string();
-        let version = if entry.needs_update() { format!("@reload {}", version) } else { version };
-        ModRow {
-            icon_idx: entry.provenance as i32 + 1,
-            text: [entry.info.name.clone(), version, entry.info.author.clone()],
+        if let Ok(info) = &entry.info {
+            let version = info.version.to_string();
+            let version =
+                if entry.needs_update() { format!("@reload {}", version) } else { version };
+            ModRow {
+                icon_idx: entry.provenance as i32 + 1,
+                text: [info.name.clone(), version, info.author.clone()],
+            }
+        } else {
+            make_err_row(entry.pak_path.display())
         }
     } else {
-        ModRow {
-            icon_idx: 0,
-            text: [
-                match mod_ref {
-                    ModRef::Installed(_) => unreachable!(),
-                    ModRef::Custom(_) => unreachable!(),
-                    ModRef::UnknownFolder(folder) => format!("??? ({})", folder),
-                    ModRef::UnknownPakPath(path) => format!("??? ({})", path.display()),
-                },
-                "???".to_string(),
-                "???".to_string(),
-            ],
+        match mod_ref {
+            ModRef::Installed(_) => unreachable!(),
+            ModRef::Custom(_) => unreachable!(),
+            ModRef::UnknownFolder(folder) => make_err_row(folder),
+            ModRef::UnknownPakPath(path) => make_err_row(path.display()),
         }
+    }
+}
+
+fn make_err_row<N: std::fmt::Display>(alt_name: N) -> ModRow {
+    ModRow {
+        icon_idx: 0,
+        text: [
+            format!("??? ({})", alt_name),
+            "???".to_string(),
+            "???".to_string(),
+        ],
     }
 }
 
@@ -937,8 +968,16 @@ fn inspect_author(
         }
     };
 
-    row_consumer([HEADER.into(), entry.info.author.clone().into()]);
-    if let Some(url) = opt_str_value(&entry.info.author_url) {
+    let info = match entry.info.as_ref() {
+        Ok(info) => info,
+        Err(_) => {
+            row_consumer([HEADER.into(), "???".into()]);
+            return;
+        }
+    };
+
+    row_consumer([HEADER.into(), info.author.clone().into()]);
+    if let Some(url) = opt_str_value(&info.author_url) {
         row_consumer(["".into(), url]);
     }
 }

@@ -19,7 +19,7 @@ pub struct ModEntry {
     pub pak_path: PathBuf,
     pub pak_size: u64,
     pub provenance: ModProvenance,
-    pub info: ModInfo,
+    pub info: Result<ModInfo>,
     needs_update: AtomicBool,
 }
 
@@ -88,7 +88,7 @@ impl Default for ModProvenance {
 
 impl ModEntry {
     pub(super) fn new(pak_path: PathBuf, provenance: ModProvenance) -> Result<Self> {
-        let info = ModInfo::new(&pak_path)?;
+        let info = ModInfo::new(&pak_path);
         let pak_size = std::fs::metadata(&pak_path)?.len();
         Ok(Self {
             pak_path,
@@ -223,7 +223,9 @@ impl Mods {
 
         let mut by_folder = HashMap::with_capacity(mods.len());
         for (idx, entry) in mods.iter().enumerate() {
-            by_folder.insert(entry.info.folder_name.clone(), idx);
+            if let Ok(info) = &entry.info {
+                by_folder.insert(info.folder_name.clone(), idx);
+            }
         }
 
         Self {

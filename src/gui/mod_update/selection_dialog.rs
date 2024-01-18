@@ -42,7 +42,7 @@ impl ModUpdateSelectionDialog {
         let mut mod_selection = CheckBrowser::default();
         for mod_ref in outdated_mods.iter() {
             let entry = mods.get(mod_ref).unwrap();
-            mod_selection.add(&entry.info.name, true);
+            mod_selection.add(&entry.info.as_ref().unwrap().name, true);
         }
         grid.cell().unwrap().add(SimpleWrapper::new(
             mod_selection.clone(),

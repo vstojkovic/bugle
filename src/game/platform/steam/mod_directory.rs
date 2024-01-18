@@ -35,8 +35,10 @@ impl SteamModDirectory {
 
         let mut map = HashMap::with_capacity(installed_mods.len());
         for entry in installed_mods.iter() {
-            if let Some(id) = entry.info.steam_file_id(branch) {
-                map.insert(id, entry.info.name.clone());
+            if let Ok(info) = entry.info.as_ref() {
+                if let Some(id) = info.steam_file_id(branch) {
+                    map.insert(id, info.name.clone());
+                }
             }
         }
 
@@ -83,9 +85,12 @@ impl ModDirectory for SteamModDirectory {
         }
     }
 
-    fn needs_update(self: Rc<Self>, mod_ref: &ModEntry) -> Result<bool> {
-        let mod_id = mod_ref
-            .info
+    fn needs_update(self: Rc<Self>, entry: &ModEntry) -> Result<bool> {
+        let mod_info = match entry.info.as_ref() {
+            Ok(info) => info,
+            Err(_) => return Ok(false),
+        };
+        let mod_id = mod_info
             .steam_file_id(self.client.branch())
             .ok_or_else(|| anyhow!("Mod does not have a Steam file ID"))?;
         self.client
@@ -97,9 +102,11 @@ impl ModDirectory for SteamModDirectory {
         self.client.can_play_online()
     }
 
-    fn start_update(self: Rc<Self>, mod_ref: &ModEntry) -> Result<Rc<dyn ModUpdate>> {
-        let mod_id = mod_ref
+    fn start_update(self: Rc<Self>, entry: &ModEntry) -> Result<Rc<dyn ModUpdate>> {
+        let mod_id = entry
             .info
+            .as_ref()
+            .unwrap() // start_update should not be called if needs_update returned false
             .steam_file_id(self.client.branch())
             .ok_or(anyhow!("Mod does not have a Steam file ID"))?;
         let update = Rc::new(SteamModUpdate {

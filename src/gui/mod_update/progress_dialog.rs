@@ -48,7 +48,7 @@ struct ProgressRow {
 
 impl ProgressRow {
     fn new(mod_entry: &ModEntry, mod_directory: Rc<dyn ModDirectory>) -> Self {
-        let name = mod_entry.info.name.clone();
+        let name = mod_entry.info.as_ref().unwrap().name.clone();
         let update = mod_directory.start_update(mod_entry);
         let (status, display_text) = match &update {
             Ok(_) => (ProgressStatus::Pending, name.clone()),

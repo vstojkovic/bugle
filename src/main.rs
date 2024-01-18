@@ -32,6 +32,7 @@ mod servers;
 mod workers;
 
 use crate::config::ModMismatchChecks;
+use crate::game::ModEntry;
 
 use self::auth::{Account, AuthState, Capability, PlatformUser};
 use self::game::platform::steam::Steam;
@@ -840,6 +841,13 @@ impl Launcher {
     }
 
     fn validate_single_player_mods(&self, mod_list: Vec<ModRef>, map_id: usize) -> Result<bool> {
+        fn push_name(s: &mut String, entry: &ModEntry) {
+            if let Ok(info) = entry.info.as_ref() {
+                s.push_str(&info.name);
+            } else {
+                s.push_str(&format!("??? ({})", entry.pak_path.display()));
+            }
+        }
         fn join_mod_names(heading: &str, mods: &Mods, refs: HashSet<ModRef>) -> String {
             let mut result = String::new();
             if refs.is_empty() {
@@ -851,8 +859,8 @@ impl Launcher {
             for mod_ref in refs {
                 result.push('\n');
                 match mod_ref {
-                    ModRef::Installed(idx) => result.push_str(&mods[idx].info.name),
-                    ModRef::Custom(entry) => result.push_str(&entry.info.name),
+                    ModRef::Installed(idx) => push_name(&mut result, &mods[idx]),
+                    ModRef::Custom(entry) => push_name(&mut result, &entry),
                     ModRef::UnknownFolder(folder) => result.push_str(&format!("??? ({})", folder)),
                     ModRef::UnknownPakPath(path) => {
                         result.push_str(&format!("??? ({})", path.display()))
@@ -904,8 +912,11 @@ impl Launcher {
 
         let mut added_mods = HashSet::new();
         for mod_ref in active_mods.drain() {
-            if let Some(entry) = installed_mods.get(&mod_ref) {
-                if let Some(active) = required_folders.get_mut(&entry.info.folder_name) {
+            let info = installed_mods
+                .get(&mod_ref)
+                .and_then(|entry| entry.info.as_ref().ok());
+            if let Some(info) = info {
+                if let Some(active) = required_folders.get_mut(&info.folder_name) {
                     *active = true;
                     continue;
                 }
@@ -1016,7 +1027,7 @@ impl Launcher {
                 Err(err) => warn!(
                     self.logger,
                     "Error checking whether mod needs update";
-                    "mod_name" => &entry.info.name,
+                    "mod_name" => entry.info.as_ref().map(|info| info.name.as_str()).unwrap_or("???"),
                     "pak_path" => ?entry.pak_path,
                     "error" => %err,
                 ),

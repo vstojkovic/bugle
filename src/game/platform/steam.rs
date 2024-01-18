@@ -108,8 +108,6 @@ fn app_id(branch: Branch) -> u32 {
 }
 
 fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModEntry>> {
-    // TODO: Log warnings for recoverable errors
-
     let manifest_path = workshop_path.join(format!("appworkshop_{}.acf", app_id(branch)));
     if !manifest_path.exists() {
         return Ok(Vec::new());
