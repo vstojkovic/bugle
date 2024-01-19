@@ -7,9 +7,8 @@ use bbscope::{BBCode, BBCodeTagConfig};
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{Align, FrameType, Shortcut};
+use fltk::enums::{Align, FrameType};
 use fltk::group::{Group, Tile};
-use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk::window::Window;
@@ -123,7 +122,8 @@ pub(super) struct ModManager {
     move_up_button: Button,
     move_down_button: Button,
     move_bottom_button: Button,
-    more_info_button: MenuButton,
+    description_button: Button,
+    change_notes_button: Button,
     update_mods_button: Button,
     state: RefCell<ModListState>,
 }
@@ -258,13 +258,21 @@ impl ModManager {
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
-        let mut more_info_button = button_grid
+        let mut description_button = button_grid
             .cell()
             .unwrap()
-            .wrap(MenuButton::default())
+            .wrap(Button::default())
             .with_label("\u{1f4dc}")
-            .with_tooltip("Show information about the selected mod");
-        more_info_button.deactivate();
+            .with_tooltip("Show selected mod's description");
+        description_button.deactivate();
+        button_grid.row().add();
+        let mut change_notes_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("\u{1f4c6}")
+            .with_tooltip("Show selected mod's change notes");
+        change_notes_button.deactivate();
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
@@ -409,7 +417,8 @@ impl ModManager {
             move_up_button: move_up_button.clone(),
             move_down_button: move_down_button.clone(),
             move_bottom_button: move_bottom_button.clone(),
-            more_info_button: more_info_button.clone(),
+            description_button: description_button.clone(),
+            change_notes_button: change_notes_button.clone(),
             update_mods_button: update_mods_button.clone(),
             state: RefCell::new(ModListState::new(mods)),
         });
@@ -447,19 +456,8 @@ impl ModManager {
         move_down_button.set_callback(manager.weak_cb(Self::move_down_clicked));
         move_bottom_button.set_callback(manager.weak_cb(Self::move_bottom_clicked));
         update_mods_button.set_callback(manager.weak_cb(Self::update_mods_clicked));
-
-        more_info_button.add(
-            "Description",
-            Shortcut::None,
-            MenuFlag::Normal,
-            manager.weak_cb(Self::show_description),
-        );
-        more_info_button.add(
-            "Change Notes",
-            Shortcut::None,
-            MenuFlag::Normal,
-            manager.weak_cb(Self::show_change_notes),
-        );
+        description_button.set_callback(manager.weak_cb(Self::show_description));
+        change_notes_button.set_callback(manager.weak_cb(Self::show_change_notes));
 
         manager
     }
@@ -584,7 +582,8 @@ impl ModManager {
         self.move_up_button.clone().set_activated(move_up);
         self.move_down_button.clone().set_activated(move_down);
         self.move_bottom_button.clone().set_activated(move_down);
-        self.more_info_button.clone().set_activated(more_info);
+        self.description_button.clone().set_activated(more_info);
+        self.change_notes_button.clone().set_activated(more_info);
     }
 
     fn clear_clicked(&self) {
