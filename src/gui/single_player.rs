@@ -555,7 +555,7 @@ const PROMPT_DELETE_BACKUP: &str = "Are you sure you want to delete this backup?
 fn make_db_list() -> DataTable<Vec<String>> {
     let mut db_list = DataTable::default().with_properties(DataTableProperties {
         columns: vec![
-            ("Filename", 310).into(),
+            ("Filename", 440).into(),
             ("Last Played", 200).into(),
             ("Character", 160).into(),
             ("Level", 50).into(),

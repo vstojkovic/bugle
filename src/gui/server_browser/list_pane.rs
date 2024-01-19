@@ -378,7 +378,7 @@ const SERVER_LIST_COLS: &[Column] = &[
     col!(glyph::FLAG, 20, Center, None, |server| str_if(server.is_official(), glyph::FLAG)),
     col!(glyph::EYE, 20, Center, None, |server| str_if(server.battleye_required, glyph::EYE)),
     col!(glyph::HEART, 20, Center, None, |server| str_if(server.favorite, glyph::HEART)),
-    col!("Server Name", 380, Left, Some(SortKey::Name), |server| server.name.clone().into()),
+    col!("Server Name", 470, Left, Some(SortKey::Name), |server| server.name.clone().into()),
     col!("Map", 150, Center, Some(SortKey::Map), |server| server.map.clone().into()),
     col!("Mode", 80, Center, Some(SortKey::Mode), |server| mode_name(server.mode()).into()),
     col!("Region", 80, Center, Some(SortKey::Region), |server| region_name(server.region).into()),

@@ -61,7 +61,7 @@ impl LauncherWindow {
             .with_default_align(CellAlign::Stretch)
             .add();
 
-        window.col().with_min_size(200).add();
+        window.col().with_min_size(140).add();
         let (mut main_menu, main_menu_grid) = MainMenu::new();
         window.cell().unwrap().add(main_menu_grid);
 
