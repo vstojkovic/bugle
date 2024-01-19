@@ -403,6 +403,7 @@ impl ModManager {
         root.resizable(&row_tile_limits);
 
         root.hide();
+        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         let manager = Rc::new(Self {
             logger,

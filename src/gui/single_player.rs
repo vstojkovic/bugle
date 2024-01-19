@@ -190,6 +190,7 @@ impl SinglePlayer {
 
         let mut root = grid.group();
         root.hide();
+        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         let single_player = Rc::new(Self {
             logger,

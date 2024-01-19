@@ -7,7 +7,7 @@ use fltk::enums::Event;
 use fltk::group::Group;
 use fltk::prelude::*;
 use fltk::window::Window;
-use fltk_float::grid::{CellAlign, GridBuilder};
+use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::SimpleWrapper;
 use slog::Logger;
 
@@ -47,35 +47,33 @@ impl LauncherWindow {
                 panic!("Action handler not yet assigned");
             })));
 
-        let window = GridBuilder::with_factory(
-            Window::default().with_size(1280, 760).with_label("BUGLE"),
-            wrapper_factory(),
-        );
-        let mut window = window
+        let mut window = Window::default().with_size(1280, 760).with_label("BUGLE");
+
+        let root = Grid::builder_with_factory(wrapper_factory());
+        let mut root = root
             .with_col_spacing(10)
             .with_row_spacing(10)
             .with_padding(10, 10, 10, 10);
-        window
-            .row()
+        root.row()
             .with_stretch(1)
             .with_default_align(CellAlign::Stretch)
             .add();
 
-        window.col().with_min_size(140).add();
+        root.col().with_min_size(140).add();
         let (mut main_menu, main_menu_grid) = MainMenu::new();
-        window.cell().unwrap().add(main_menu_grid);
+        root.cell().unwrap().add(main_menu_grid);
 
-        window.col().with_stretch(1).add();
+        root.col().with_stretch(1).add();
 
         let content_group = Group::default_fill();
         content_group.end();
-        window.cell().unwrap().add(SimpleWrapper::new(
+        root.cell().unwrap().add(SimpleWrapper::new(
             content_group.clone(),
             Default::default(),
         ));
 
-        let window = window.end();
-        window.layout_children();
+        let root = root.end();
+        root.layout_children();
 
         Group::set_current(Some(&content_group));
 
@@ -118,12 +116,12 @@ impl LauncherWindow {
             )
         };
 
-        let mut window = window.group();
         window.set_callback(|_| {
             if app::event() == Event::Close {
                 app::quit();
             }
         });
+        window.resize_callback(move |_, _, _, _, _| root.layout_children());
 
         let cleanup_fn: Rc<RefCell<CleanupFn>> = Rc::new(RefCell::new(Box::new(|| ())));
 

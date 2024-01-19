@@ -203,6 +203,7 @@ impl ServerBrowser {
 
         let mut root = grid.group();
         root.hide();
+        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         let browser = Rc::new(Self {
             logger,

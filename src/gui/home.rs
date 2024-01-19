@@ -289,6 +289,7 @@ impl Home {
 
         let mut root = grid.group();
         root.hide();
+        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         refresh_platform_button.deactivate();
         refresh_fls_button.deactivate();
