@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use fltk::button::Button;
 use fltk::dialog;
-use fltk::enums::CallbackTrigger;
+use fltk::enums::{CallbackTrigger, Event};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::misc::InputChoice;
@@ -22,8 +22,8 @@ use crate::game::{GameDB, Maps};
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
 use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
+use super::Handler;
 use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory};
-use super::{CleanupFn, Handler};
 
 pub enum SinglePlayerAction {
     ListSavedGames,
@@ -194,7 +194,7 @@ impl SinglePlayer {
 
         let single_player = Rc::new(Self {
             logger,
-            root,
+            root: root.clone(),
             on_action: Box::new(on_action),
             in_progress_table,
             backups_table: backups_table.clone(),
@@ -206,6 +206,18 @@ impl SinglePlayer {
             maps,
             state: RefCell::new(SinglePlayerState::new(selected_map_id)),
         });
+
+        {
+            let this = Rc::downgrade(&single_player);
+            root.handle(move |_, event| {
+                if let Event::Show = event {
+                    if let Some(this) = this.upgrade() {
+                        this.on_show();
+                    }
+                }
+                false
+            });
+        }
 
         {
             let this = Rc::downgrade(&single_player);
@@ -238,15 +250,8 @@ impl SinglePlayer {
         single_player
     }
 
-    pub fn show(&self) -> CleanupFn {
-        let mut root = self.root.clone();
-        root.show();
-
-        (self.on_action)(SinglePlayerAction::ListSavedGames).unwrap();
-
-        Box::new(move || {
-            root.hide();
-        })
+    pub fn root(&self) -> &impl WidgetExt {
+        &self.root
     }
 
     pub fn handle_update(&self, update: SinglePlayerUpdate) {
@@ -262,6 +267,10 @@ impl SinglePlayer {
     }
 
     declare_weak_cb!();
+
+    fn on_show(&self) {
+        (self.on_action)(SinglePlayerAction::ListSavedGames).unwrap();
+    }
 
     fn set_games(&self, mut games: Vec<GameDB>) {
         {

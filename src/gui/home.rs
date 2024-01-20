@@ -23,7 +23,7 @@ use super::assets::Assets;
 use super::prelude::*;
 use super::theme::Theme;
 use super::widgets::ReadOnlyText;
-use super::{alert_error, wrapper_factory, CleanupFn, Handler};
+use super::{alert_error, wrapper_factory, Handler};
 
 pub enum HomeAction {
     Launch,
@@ -498,13 +498,8 @@ impl Home {
         })
     }
 
-    pub fn show(&self) -> CleanupFn {
-        let mut root = self.root.clone();
-        root.show();
-
-        Box::new(move || {
-            root.hide();
-        })
+    pub fn root(&self) -> &impl WidgetExt {
+        &self.root
     }
 
     pub fn handle_update(&self, update: HomeUpdate) {

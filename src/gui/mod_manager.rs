@@ -7,7 +7,7 @@ use bbscope::{BBCode, BBCodeTagConfig};
 use bit_vec::BitVec;
 use fltk::app;
 use fltk::button::Button;
-use fltk::enums::{Align, FrameType};
+use fltk::enums::{Align, Event, FrameType};
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use fltk::table::TableContext;
@@ -27,7 +27,7 @@ use super::widgets::{
     use_inspector_macros, DataTable, DataTableProperties, DataTableUpdate, Inspector,
     PropertiesTable, PropertyRow,
 };
-use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, CleanupFn, Handler};
+use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, Handler};
 
 pub enum ModManagerAction {
     LoadModList,
@@ -407,7 +407,7 @@ impl ModManager {
 
         let manager = Rc::new(Self {
             logger,
-            root,
+            root: root.clone(),
             on_action: Box::new(on_action),
             available_list: available_list.clone(),
             active_list: active_list.clone(),
@@ -425,6 +425,18 @@ impl ModManager {
         });
 
         manager.update_actions();
+
+        {
+            let this = Rc::downgrade(&manager);
+            root.handle(move |_, event| {
+                if let Event::Show = event {
+                    if let Some(this) = this.upgrade() {
+                        this.on_show();
+                    }
+                }
+                false
+            });
+        }
 
         available_list.set_callback(manager.weak_cb(|this| {
             if is_table_nav_event() && this.available_list.callback_context() == TableContext::Cell
@@ -463,18 +475,8 @@ impl ModManager {
         manager
     }
 
-    pub fn show(&self) -> CleanupFn {
-        let mut root = self.root.clone();
-        root.show();
-
-        if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
-            error!(self.logger, "Error loading mod list"; "error" => %err);
-            alert_error(ERR_LOADING_MOD_LIST, &err);
-        }
-
-        Box::new(move || {
-            root.hide();
-        })
+    pub fn root(&self) -> &impl WidgetExt {
+        &self.root
     }
 
     pub fn handle_update(&self, update: ModManagerUpdate) {
@@ -484,6 +486,13 @@ impl ModManager {
     }
 
     declare_weak_cb!();
+
+    fn on_show(&self) {
+        if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
+            error!(self.logger, "Error loading mod list"; "error" => %err);
+            alert_error(ERR_LOADING_MOD_LIST, &err);
+        }
+    }
 
     fn populate_state(&self, active_mods: Vec<ModRef>) {
         let mut state = self.state.borrow_mut();

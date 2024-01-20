@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
-use fltk::enums::Align;
+use fltk::enums::{Align, Event};
 use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
@@ -31,7 +31,7 @@ use self::list_pane::ListPane;
 use self::state::{Filter, SortOrder};
 
 use super::data::IterableTableSource;
-use super::{alert_error, wrapper_factory, CleanupFn, Handler};
+use super::{alert_error, wrapper_factory, Handler};
 
 mod actions_pane;
 mod connect_dialog;
@@ -207,7 +207,7 @@ impl ServerBrowser {
 
         let browser = Rc::new(Self {
             logger,
-            root,
+            root: root.clone(),
             on_action: Box::new(on_action),
             list_pane: Rc::clone(&list_pane),
             details_pane,
@@ -219,6 +219,18 @@ impl ServerBrowser {
             filter_dirty: Cell::new(false),
             refreshing: Cell::new(true),
         });
+
+        {
+            let browser = Rc::downgrade(&browser);
+            root.handle(move |_, event| {
+                if let Event::Show = event {
+                    if let Some(browser) = browser.upgrade() {
+                        browser.on_show();
+                    }
+                }
+                false
+            });
+        }
 
         filter_pane.set_filter_holder(Rc::clone(&browser));
         {
@@ -375,17 +387,8 @@ impl ServerBrowser {
         browser
     }
 
-    pub fn show(&self) -> CleanupFn {
-        let mut root = self.root.clone();
-        root.show();
-
-        if let Some(update) = self.pending_update.take() {
-            self.handle_update(update);
-        }
-
-        Box::new(move || {
-            root.hide();
-        })
+    pub fn root(&self) -> &impl WidgetExt {
+        &self.root
     }
 
     pub fn handle_update(&self, update: ServerBrowserUpdate) {
@@ -427,6 +430,12 @@ impl ServerBrowser {
                     }
                 }
             }
+        }
+    }
+
+    fn on_show(&self) {
+        if let Some(update) = self.pending_update.take() {
+            self.handle_update(update);
         }
     }
 

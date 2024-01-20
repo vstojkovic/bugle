@@ -74,8 +74,6 @@ impl Update {
 pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
 impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
 
-type CleanupFn = Box<dyn FnMut()>;
-
 pub fn alert_error(message: &str, err: &anyhow::Error) {
     fltk_dialog::alert_default(&format!("{}\n{}", message, err));
 }

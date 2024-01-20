@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use fltk::app;
 use fltk::enums::Event;
-use fltk::group::Group;
+use fltk::group::{Group, Wizard};
 use fltk::prelude::*;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid};
@@ -21,12 +21,11 @@ use super::mod_manager::ModManager;
 use super::server_browser::ServerBrowser;
 use super::single_player::SinglePlayer;
 use super::wrapper_factory;
-use super::{Action, CleanupFn, Handler, Update};
+use super::{Action, Handler, Update};
 
 pub struct LauncherWindow {
     window: Window,
     on_action: Rc<RefCell<Box<dyn Handler<Action>>>>,
-    cleanup_fn: Rc<RefCell<CleanupFn>>,
     home: Rc<Home>,
     server_browser: Rc<ServerBrowser>,
     single_player: Rc<SinglePlayer>,
@@ -65,7 +64,8 @@ impl LauncherWindow {
 
         root.col().with_stretch(1).add();
 
-        let content_group = Group::default_fill();
+        let mut content_group = Wizard::default_fill();
+        content_group.set_frame(fltk::enums::FrameType::NoBox);
         content_group.end();
         root.cell().unwrap().add(SimpleWrapper::new(
             content_group.clone(),
@@ -123,42 +123,38 @@ impl LauncherWindow {
         });
         window.resize_callback(move |_, _, _, _, _| root.layout_children());
 
-        let cleanup_fn: Rc<RefCell<CleanupFn>> = Rc::new(RefCell::new(Box::new(|| ())));
+        content_group.set_current_widget(home.root());
 
         {
-            let old_cleanup = Rc::clone(&cleanup_fn);
+            let mut content_group = content_group.clone();
             let home = Rc::clone(&home);
-            main_menu.set_on_home(move || switch_content(&old_cleanup, || home.show()));
+            main_menu.set_on_home(move || content_group.set_current_widget(home.root()));
         }
 
         {
-            let old_cleanup = Rc::clone(&cleanup_fn);
+            let mut content_group = content_group.clone();
             let server_browser = Rc::clone(&server_browser);
-            main_menu.set_on_online(move || {
-                switch_content(&old_cleanup, || server_browser.show());
-            });
+            main_menu
+                .set_on_online(move || content_group.set_current_widget(server_browser.root()));
         }
 
         {
-            let old_cleanup = Rc::clone(&cleanup_fn);
+            let mut content_group = content_group.clone();
             let single_player = Rc::clone(&single_player);
             main_menu.set_on_single_player(move || {
-                switch_content(&old_cleanup, || single_player.show());
+                content_group.set_current_widget(single_player.root())
             });
         }
 
         {
-            let old_cleanup = Rc::clone(&cleanup_fn);
+            let mut content_group = content_group.clone();
             let mod_manager = Rc::clone(&mod_manager);
-            main_menu.set_on_mods(move || {
-                switch_content(&old_cleanup, || mod_manager.show());
-            });
+            main_menu.set_on_mods(move || content_group.set_current_widget(mod_manager.root()));
         }
 
         Self {
             window,
             on_action,
-            cleanup_fn,
             home,
             server_browser,
             single_player,
@@ -171,7 +167,7 @@ impl LauncherWindow {
     }
 
     pub fn show(&self) {
-        switch_content(&self.cleanup_fn, || self.home.show());
+        // switch_content(&self.cleanup_fn, || self.home.show());
         self.window.clone().show();
     }
 
@@ -187,12 +183,4 @@ impl LauncherWindow {
     pub fn window(&self) -> &Window {
         &self.window
     }
-}
-
-fn switch_content(
-    old_cleanup_fn: &Rc<RefCell<CleanupFn>>,
-    mut show_new_content_fn: impl FnMut() -> CleanupFn,
-) {
-    old_cleanup_fn.borrow_mut()();
-    let _ = old_cleanup_fn.replace(show_new_content_fn());
 }
