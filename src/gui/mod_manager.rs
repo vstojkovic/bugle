@@ -111,6 +111,7 @@ impl ModRow {
 
 pub(super) struct ModManager {
     logger: Logger,
+    grid: Grid<Tile>,
     root: Tile,
     on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: DataTable<ModRow>,
@@ -153,7 +154,7 @@ impl ModManager {
             .with_draw_fn(make_draw_fn())
             .with_properties(DataTableProperties {
                 columns: vec![
-                    "".into(),
+                    ("", 24).into(),
                     ("Available Mods", Align::Left).into(),
                     ("Version", Align::Left).into(),
                     ("Author", Align::Left).into(),
@@ -303,7 +304,7 @@ impl ModManager {
             .with_draw_fn(make_draw_fn())
             .with_properties(DataTableProperties {
                 columns: vec![
-                    "".into(),
+                    ("", 24).into(),
                     ("Active Mods", Align::Left).into(),
                     ("Version", Align::Left).into(),
                     ("Author", Align::Left).into(),
@@ -338,8 +339,8 @@ impl ModManager {
             .with_vert_align(CellAlign::Stretch)
             .add(col_tiles);
 
-        adjust_col_widths(&mut available_list);
-        adjust_col_widths(&mut active_list);
+        available_list.set_flex_col(1);
+        active_list.set_flex_col(1);
 
         col_tile_limits.resize(
             col_tiles_widget.x() + button_col.width() * 2,
@@ -403,10 +404,10 @@ impl ModManager {
         root.resizable(&row_tile_limits);
 
         root.hide();
-        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         let manager = Rc::new(Self {
             logger,
+            grid,
             root: root.clone(),
             on_action: Box::new(on_action),
             available_list: available_list.clone(),
@@ -785,6 +786,16 @@ impl ModManager {
     }
 }
 
+impl LayoutElement for ModManager {
+    fn min_size(&self) -> fltk_float::Size {
+        self.grid.min_size()
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.grid.layout(x, y, width, height);
+    }
+}
+
 const PROMPT_CLEAR_MODS: &str = "Are you sure you want to clear the mod list?";
 const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
 const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
@@ -846,21 +857,6 @@ const MOD_DETAILS_ROWS: &[Inspector<ModEntry, ()>] = &[
 
 lazy_static! {
     static ref BBCODE: BBCode = BBCode::from_config(BBCodeTagConfig::extended(), None).unwrap();
-}
-
-fn adjust_col_widths(table: &mut DataTable<ModRow>) {
-    let scrollbar_width = table.scrollbar_size();
-    let scrollbar_width =
-        if scrollbar_width > 0 { scrollbar_width } else { fltk::app::scrollbar_size() };
-
-    table.set_col_width(0, 24);
-    let width = table.width()
-        - table.col_width(0)
-        - table.col_width(2)
-        - table.col_width(3)
-        - scrollbar_width
-        - 2;
-    table.set_col_width(1, width);
 }
 
 fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {

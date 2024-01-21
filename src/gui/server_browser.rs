@@ -10,7 +10,7 @@ use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
-use fltk_float::SimpleWrapper;
+use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
@@ -89,6 +89,7 @@ impl From<ServerBrowserUpdate> for super::Update {
 
 pub(super) struct ServerBrowser {
     logger: Logger,
+    grid: Grid,
     root: Group,
     on_action: Box<dyn Handler<ServerBrowserAction>>,
     list_pane: Rc<ListPane>,
@@ -123,7 +124,9 @@ impl ServerBrowser {
 
         grid.row().add();
         let filter_pane = FilterPane::new(maps);
-        grid.cell().unwrap().add(filter_pane.element());
+        grid.cell()
+            .unwrap()
+            .add_shared(Rc::<FilterPane>::clone(&filter_pane));
 
         grid.row().add();
         let mut stats_grid = Grid::builder_with_factory(wrapper_factory())
@@ -203,10 +206,10 @@ impl ServerBrowser {
 
         let mut root = grid.group();
         root.hide();
-        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         let browser = Rc::new(Self {
             logger,
+            grid,
             root: root.clone(),
             on_action: Box::new(on_action),
             list_pane: Rc::clone(&list_pane),
@@ -601,6 +604,16 @@ impl ServerBrowser {
             scroll_lock: self.list_pane.scroll_lock(),
         };
         (self.on_action)(ServerBrowserAction::UpdateConfig(config)).unwrap();
+    }
+}
+
+impl LayoutElement for ServerBrowser {
+    fn min_size(&self) -> fltk_float::Size {
+        self.grid.min_size()
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.grid.layout(x, y, width, height)
     }
 }
 

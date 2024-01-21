@@ -58,8 +58,7 @@ impl<S: 'static, C: 'static> PropertiesTable<S, C> {
         header_width += width_padding;
         table.set_row_header_width(header_width);
 
-        let w = table.w();
-        table.set_col_width(0, w - header_width - width_padding);
+        table.set_flex_col(1);
 
         this
     }

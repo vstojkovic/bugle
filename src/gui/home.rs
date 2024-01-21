@@ -44,6 +44,7 @@ pub enum HomeUpdate {
 }
 
 pub struct Home {
+    grid: Grid,
     root: Group,
     game: Arc<Game>,
     platform_user_id_text: ReadOnlyText,
@@ -289,7 +290,6 @@ impl Home {
 
         let mut root = grid.group();
         root.hide();
-        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         refresh_platform_button.deactivate();
         refresh_fls_button.deactivate();
@@ -484,6 +484,7 @@ impl Home {
         let _ = launch_button.take_focus();
 
         Rc::new(Self {
+            grid,
             root,
             game,
             platform_user_id_text,
@@ -554,6 +555,16 @@ impl Home {
             TaskState::Ready(Err(err)) => format!("No, {}", err),
         };
         self.sp_play_text.set_value(sp_play_str);
+    }
+}
+
+impl LayoutElement for Home {
+    fn min_size(&self) -> fltk_float::Size {
+        self.grid.min_size()
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.grid.layout(x, y, width, height)
     }
 }
 

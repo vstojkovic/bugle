@@ -179,6 +179,33 @@ impl<T: 'static> DataTable<T> {
         inner.redraw();
     }
 
+    pub fn set_flex_col(&mut self, mut flex_col: i32) {
+        let mut flex_width = self.width();
+
+        let frame = self.frame();
+        flex_width -= frame.dx() + frame.dw();
+        flex_width -= fltk::app::scrollbar_size();
+        if self.row_header() {
+            flex_col -= 1;
+            flex_width -= self.row_header_width();
+        }
+        for col in 0..self.cols() {
+            if col != flex_col {
+                flex_width -= self.col_width(col);
+            }
+        }
+        self.set_col_width(flex_col, flex_width);
+
+        let mut this = self.inner.clone();
+        let mut old_width = self.width();
+        self.resize_callback(move |_, _, _, width, _| {
+            let delta = width - old_width;
+            old_width = width;
+            let flex_width = this.col_width(flex_col) + delta;
+            this.set_col_width(flex_col, flex_width);
+        });
+    }
+
     pub fn default_draw_cell(&self, row: i32, col: i32, x: i32, y: i32, w: i32, h: i32) {
         let text = self.cell_text(row, col);
         let props = self.props.borrow();

@@ -3,12 +3,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use fltk::app;
-use fltk::enums::Event;
-use fltk::group::{Group, Wizard};
+use fltk::enums::{Event, FrameType};
+use fltk::group::Wizard;
 use fltk::prelude::*;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid};
-use fltk_float::SimpleWrapper;
+use fltk_float::overlay::OverlayBuilder;
+use fltk_float::LayoutElement;
 use slog::Logger;
 
 use crate::config::Config;
@@ -64,18 +65,7 @@ impl LauncherWindow {
 
         root.col().with_stretch(1).add();
 
-        let mut content_group = Wizard::default_fill();
-        content_group.set_frame(fltk::enums::FrameType::NoBox);
-        content_group.end();
-        root.cell().unwrap().add(SimpleWrapper::new(
-            content_group.clone(),
-            Default::default(),
-        ));
-
-        let root = root.end();
-        root.layout_children();
-
-        Group::set_current(Some(&content_group));
+        let mut content_overlay = OverlayBuilder::new(Wizard::default_fill());
 
         let home = {
             let on_action = Rc::clone(&on_action);
@@ -88,6 +78,7 @@ impl LauncherWindow {
                 move |home_action| on_action.borrow()(Action::HomeAction(home_action)),
             )
         };
+        content_overlay.add_shared(Rc::<Home>::clone(&home));
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
@@ -99,6 +90,7 @@ impl LauncherWindow {
                 move |browser_action| on_action.borrow()(Action::ServerBrowser(browser_action)),
             )
         };
+        content_overlay.add_shared(Rc::<ServerBrowser>::clone(&server_browser));
 
         let single_player = {
             let on_action = Rc::clone(&on_action);
@@ -106,6 +98,7 @@ impl LauncherWindow {
                 on_action.borrow()(Action::SinglePlayer(sp_action))
             })
         };
+        content_overlay.add_shared(Rc::<SinglePlayer>::clone(&single_player));
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
@@ -115,12 +108,24 @@ impl LauncherWindow {
                 move |mod_mgr_action| on_action.borrow()(Action::ModManager(mod_mgr_action)),
             )
         };
+        content_overlay.add_shared(Rc::<ModManager>::clone(&mod_manager));
+
+        let content_overlay = content_overlay.end();
+        let mut content_group = content_overlay.group();
+        content_group.set_frame(FrameType::NoBox);
+        root.cell().unwrap().add(content_overlay);
+
+        let root = root.end();
+        root.layout_children();
 
         window.set_callback(|_| {
             if app::event() == Event::Close {
                 app::quit();
             }
         });
+        let min_size = root.min_size();
+        window.size_range(min_size.width, min_size.height, 0, 0);
+        window.make_resizable(true);
         window.resize_callback(move |_, _, _, _, _| root.layout_children());
 
         content_group.set_current_widget(home.root());
@@ -167,7 +172,6 @@ impl LauncherWindow {
     }
 
     pub fn show(&self) {
-        // switch_content(&self.cleanup_fn, || self.home.show());
         self.window.clone().show();
     }
 

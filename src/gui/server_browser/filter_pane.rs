@@ -154,12 +154,6 @@ impl FilterPane {
         })
     }
 
-    pub fn element(self: &Rc<Self>) -> FilterPaneElement {
-        FilterPaneElement {
-            pane: Rc::clone(self),
-        }
-    }
-
     pub fn set_filter_holder(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
         filter_holder.access_filter(|filter| self.populate(filter));
         self.set_callbacks(filter_holder);
@@ -349,17 +343,13 @@ impl FilterPane {
     }
 }
 
-pub(super) struct FilterPaneElement {
-    pane: Rc<FilterPane>,
-}
-
-impl LayoutElement for FilterPaneElement {
+impl LayoutElement for FilterPane {
     fn min_size(&self) -> fltk_float::Size {
-        self.pane.grid.min_size()
+        self.grid.min_size()
     }
 
     fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
-        self.pane.grid.layout(x, y, width, height)
+        self.grid.layout(x, y, width, height)
     }
 }
 

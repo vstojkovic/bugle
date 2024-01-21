@@ -524,9 +524,9 @@ dependencies = [
 
 [[package]]
 name = "fltk-float"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4409a7f579bb9789ea2f123ee6879ae83afe356aa428136d49c1885eaf69fe5"
+checksum = "23be2cc31ba86e58fd784107a4a7de8917b7b7eaad0afde77e5c2a7bf2998e48"
 dependencies = [
  "fltk",
 ]

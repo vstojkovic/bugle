@@ -14,7 +14,7 @@ use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_float::grid::{CellAlign, Grid};
-use fltk_float::SimpleWrapper;
+use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 
 use crate::game::{GameDB, Maps};
@@ -78,6 +78,7 @@ impl SinglePlayerState {
 
 pub struct SinglePlayer {
     logger: Logger,
+    grid: Grid,
     root: Group,
     on_action: Box<dyn Handler<SinglePlayerAction>>,
     in_progress_table: DataTable<Vec<String>>,
@@ -190,10 +191,10 @@ impl SinglePlayer {
 
         let mut root = grid.group();
         root.hide();
-        root.resize_callback(move |_, _, _, _, _| grid.layout_children());
 
         let single_player = Rc::new(Self {
             logger,
+            grid,
             root: root.clone(),
             on_action: Box::new(on_action),
             in_progress_table,
@@ -549,6 +550,16 @@ impl SinglePlayer {
     }
 }
 
+impl LayoutElement for SinglePlayer {
+    fn min_size(&self) -> fltk_float::Size {
+        self.grid.min_size()
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.grid.layout(x, y, width, height)
+    }
+}
+
 const ERR_LISTING_SAVED_GAMES: &str = "Error while enumerating saves games.";
 const ERR_LAUNCHING_SP: &str = "Error while trying to launch the single-player game.";
 const ERR_LOADING_GAME: &str = "Error while loading a saved game.";
@@ -565,7 +576,7 @@ const PROMPT_DELETE_BACKUP: &str = "Are you sure you want to delete this backup?
 fn make_db_list() -> DataTable<Vec<String>> {
     let mut db_list = DataTable::default().with_properties(DataTableProperties {
         columns: vec![
-            ("Filename", 440).into(),
+            "Filename".into(),
             ("Last Played", 200).into(),
             ("Character", 160).into(),
             ("Level", 50).into(),
@@ -580,6 +591,7 @@ fn make_db_list() -> DataTable<Vec<String>> {
     db_list.set_col_resize(true);
     db_list.set_col_header(true);
     db_list.set_row_header(false);
+    db_list.set_flex_col(0);
     db_list.end();
 
     db_list
