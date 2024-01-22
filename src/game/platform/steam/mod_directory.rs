@@ -9,7 +9,7 @@ use steamworks::SteamError;
 
 use crate::game::platform::steam::client::DownloadCallback;
 use crate::game::platform::{ModDirectory, ModUpdate};
-use crate::game::{ModEntry, Mods};
+use crate::game::{ModEntry, ModProvenance, Mods};
 use crate::gui::ServerBrowserUpdate;
 use crate::logger::IteratorFormatter;
 use crate::workers::TaskState;
@@ -86,6 +86,9 @@ impl ModDirectory for SteamModDirectory {
     }
 
     fn needs_update(self: Rc<Self>, entry: &ModEntry) -> Result<bool> {
+        if entry.provenance != ModProvenance::Steam {
+            return Ok(false);
+        }
         let mod_info = match entry.info.as_ref() {
             Ok(info) => info,
             Err(_) => return Ok(false),
