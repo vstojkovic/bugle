@@ -28,7 +28,7 @@ impl Default for LogLevel {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattlEyeUsage {
     Auto,
     Always(bool),

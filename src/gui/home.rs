@@ -177,7 +177,18 @@ impl Home {
         let sp_play_text = grid.span(1, 2).unwrap().wrap(ReadOnlyText::default());
 
         grid.row().add();
-        grid.span(1, 3).unwrap().skip();
+        grid.cell()
+            .unwrap()
+            .wrap(create_info_label("BattlEye Installed?"));
+        let battleye_installed = match game.battleye_installed() {
+            Some(true) => "Yes",
+            Some(false) => "No",
+            None => "Unable to determine",
+        };
+        grid.cell()
+            .unwrap()
+            .wrap(ReadOnlyText::new(battleye_installed.to_string()));
+        grid.cell().unwrap().skip();
         let mut privacy_switch = grid
             .span(1, 2)
             .unwrap()

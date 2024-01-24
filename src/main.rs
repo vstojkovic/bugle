@@ -21,6 +21,7 @@ use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
 mod auth;
+mod battleye;
 mod config;
 mod env;
 mod game;
@@ -1213,6 +1214,20 @@ async fn main() {
                 Note that closing BUGLE will not automatically start the update.",
         ) {
             return;
+        }
+    }
+
+    if !game.battleye_installed().unwrap_or(true)
+        && (config.use_battleye != BattlEyeUsage::Always(false))
+    {
+        if gui::prompt_confirm(
+            "BattlEye is not installed on your computer. Do you want to configure BUGLE\nto launch \
+            Conan Exiles with BattlEye disabled?",
+        ) {
+            config.use_battleye = BattlEyeUsage::Always(false);
+            if let Err(err) = config_persister.save(&config) {
+                warn!(root_logger, "Error while saving the configuration"; "error" => %err);
+            }
         }
     }
 

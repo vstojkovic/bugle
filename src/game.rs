@@ -20,6 +20,7 @@ mod mod_info;
 pub mod platform;
 
 use crate::auth::{CachedUser, CachedUsers};
+use crate::battleye::is_battleye_installed;
 use crate::config;
 use crate::game::engine::version::get_game_version;
 use crate::servers::{FavoriteServer, FavoriteServers, Server};
@@ -42,6 +43,7 @@ pub struct Game {
     installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
     last_session: Mutex<Option<Session>>,
+    battleye_installed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -170,6 +172,15 @@ impl Game {
             None
         };
 
+        debug!(logger, "Checking if BattlEye is installed");
+        let battleye_installed = match is_battleye_installed(&logger) {
+            Ok(installed) => Some(installed),
+            Err(err) => {
+                warn!(logger, "Could not determine if BattlEye is installed"; "error" => %err);
+                None
+            }
+        };
+
         info!(
             logger,
             "Valid Conan Exiles installation found";
@@ -189,6 +200,7 @@ impl Game {
             installed_mods: Arc::new(Mods::new(installed_mods)),
             maps: Arc::new(maps),
             last_session: Mutex::new(last_session),
+            battleye_installed,
         })
     }
 
@@ -228,6 +240,10 @@ impl Game {
 
     pub fn maps(&self) -> &Arc<Maps> {
         &self.maps
+    }
+
+    pub fn battleye_installed(&self) -> Option<bool> {
+        self.battleye_installed
     }
 
     pub fn load_cached_users(&self) -> Result<CachedUsers> {
