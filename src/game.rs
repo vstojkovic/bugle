@@ -24,6 +24,7 @@ use crate::battleye::is_battleye_installed;
 use crate::config;
 use crate::game::engine::version::get_game_version;
 use crate::servers::{FavoriteServer, FavoriteServers, Server};
+use crate::util::PathExt;
 
 pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
@@ -92,8 +93,8 @@ impl Game {
         needs_update: bool,
         mut installed_mods: Vec<ModEntry>,
     ) -> Result<Self> {
-        let save_path = game_path.join("ConanSandbox/Saved");
-        let config_path = save_path.join("Config/WindowsNoEditor");
+        let save_path = game_path.join_all(["ConanSandbox", "Saved"]);
+        let config_path = save_path.join_all(["Config", "WindowsNoEditor"]);
 
         debug!(logger, "Querying game version");
         let version = get_game_version(&game_path)?;
@@ -101,7 +102,7 @@ impl Game {
         debug!(logger, "Collecting local mods");
         collect_local_mods(&game_path, &mut installed_mods)?;
 
-        let mod_list_path = game_path.join("ConanSandbox/Mods/modlist.txt");
+        let mod_list_path = game_path.join_all(["ConanSandbox", "Mods", "modlist.txt"]);
         installed_mods.sort_by(mod_sort_cmp);
 
         let mut maps = Maps::new();
@@ -109,7 +110,7 @@ impl Game {
 
         debug!(logger, "Enumerating base game maps");
         map_extractor.extract_base_game_maps(
-            game_path.join("ConanSandbox/Content/Paks/Base.pak"),
+            game_path.join_all(["ConanSandbox", "Content", "Paks", "Base.pak"]),
             &mut maps,
         )?;
 
@@ -418,7 +419,7 @@ impl Game {
     }
 
     pub fn launch(&self, options: LaunchOptions, args: &[&str]) -> Result<Launch> {
-        let mut exe_path = self.root.join("ConanSandbox/Binaries/Win64");
+        let mut exe_path = self.root.join_all(["ConanSandbox", "Binaries", "Win64"]);
         exe_path.push(if options.enable_battleye {
             "ConanSandbox_BE.exe"
         } else {
@@ -505,7 +506,7 @@ const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";
 
 fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModEntry>) -> Result<()> {
-    for entry in WalkDir::new(game_path.join("ConanSandbox/Mods")) {
+    for entry in WalkDir::new(game_path.join_all(["ConanSandbox", "Mods"])) {
         let pak_path = entry?.path().to_path_buf();
         match pak_path.extension() {
             Some(ext) if ext == "pak" => {

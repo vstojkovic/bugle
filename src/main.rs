@@ -30,6 +30,7 @@ mod logger;
 mod net;
 mod parser_utils;
 mod servers;
+mod util;
 mod workers;
 
 use crate::config::ModMismatchChecks;

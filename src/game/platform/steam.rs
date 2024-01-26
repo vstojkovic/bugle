@@ -13,6 +13,7 @@ mod mod_directory;
 pub use self::client::{SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
 use crate::game::{Branch, Game, ModEntry, ModProvenance};
+use crate::util::PathExt;
 use crate::Message;
 
 pub struct Steam {
@@ -117,7 +118,7 @@ fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModEntry>> {
     let manifest = Vdf::parse(&manifest)?;
     let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
 
-    let mut path = workshop_path.join(format!("content/{}", app_id(branch)));
+    let mut path = workshop_path.join_all(["content", &format!("{}", app_id(branch))]);
     let mut mods = Vec::with_capacity(mod_ids.len());
     for mod_id in mod_ids {
         path.push(mod_id);
