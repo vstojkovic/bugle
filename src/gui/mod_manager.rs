@@ -19,7 +19,7 @@ use lazy_static::lazy_static;
 use size::Size;
 use slog::{error, Logger};
 
-use crate::game::{ModEntry, ModRef, Mods};
+use crate::game::{Branch, ModEntry, ModRef, Mods};
 
 use super::assets::Assets;
 use super::prelude::*;
@@ -111,6 +111,7 @@ impl ModRow {
 
 pub(super) struct ModManager {
     logger: Logger,
+    branch: Branch,
     grid: Grid<Tile>,
     root: Tile,
     on_action: Box<dyn Handler<ModManagerAction>>,
@@ -133,6 +134,7 @@ impl ModManager {
     pub fn new(
         logger: Logger,
         mods: Arc<Mods>,
+        branch: Branch,
         on_action: impl Handler<ModManagerAction> + 'static,
     ) -> Rc<Self> {
         let mut row_tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
@@ -210,6 +212,13 @@ impl ModManager {
             .wrap(Button::default())
             .with_label("@filesave")
             .with_tooltip("Export the mod list into a file");
+        button_grid.row().add();
+        let mut copy_modlist_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("@2import")
+            .with_tooltip("Copy the server launcher mod list to clipboard");
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
@@ -407,6 +416,7 @@ impl ModManager {
 
         let manager = Rc::new(Self {
             logger,
+            branch,
             grid,
             root: root.clone(),
             on_action: Box::new(on_action),
@@ -463,6 +473,7 @@ impl ModManager {
         clear_button.set_callback(manager.weak_cb(Self::clear_clicked));
         import_button.set_callback(manager.weak_cb(Self::import_clicked));
         export_button.set_callback(manager.weak_cb(Self::export_clicked));
+        copy_modlist_button.set_callback(manager.weak_cb(Self::copy_modlist_clicked));
         activate_button.set_callback(manager.weak_cb(Self::activate_clicked));
         deactivate_button.set_callback(manager.weak_cb(Self::deactivate_clicked));
         move_top_button.set_callback(manager.weak_cb(Self::move_top_clicked));
@@ -618,6 +629,40 @@ impl ModManager {
         if let Err(err) = (self.on_action)(ModManagerAction::ExportModList(state.active.clone())) {
             error!(self.logger, "Error exporting mod list"; "error" => %err);
             alert_error(ERR_SAVING_MOD_LIST, &err);
+        }
+    }
+
+    fn copy_modlist_clicked(&self) {
+        use std::fmt::Write;
+
+        let state = self.state.borrow();
+        let mut text = String::new();
+        for mod_ref in state.active.iter() {
+            if let Some(entry) = state.installed.get(mod_ref) {
+                if let Some(id) = entry
+                    .info
+                    .as_ref()
+                    .ok()
+                    .and_then(|info| info.steam_file_id(self.branch))
+                {
+                    write!(text, ",{}", id).unwrap();
+                } else {
+                    write!(text, ",{}", entry.pak_path.display()).unwrap();
+                }
+            } else {
+                match mod_ref {
+                    ModRef::Installed(_) => unreachable!(),
+                    ModRef::Custom(_) => unreachable!(),
+                    ModRef::UnknownPakPath(path) => write!(text, ",{}", path.display()).unwrap(),
+                    ModRef::UnknownFolder(_) => (),
+                }
+            }
+        }
+
+        if text.is_empty() {
+            fltk::app::copy("");
+        } else {
+            fltk::app::copy(&text[1..]);
         }
     }
 

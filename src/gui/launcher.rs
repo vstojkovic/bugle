@@ -105,6 +105,7 @@ impl LauncherWindow {
             ModManager::new(
                 logger.clone(),
                 Arc::clone(game.installed_mods()),
+                game.branch(),
                 move |mod_mgr_action| on_action.borrow()(Action::ModManager(mod_mgr_action)),
             )
         };
