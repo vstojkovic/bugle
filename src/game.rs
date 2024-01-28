@@ -28,9 +28,9 @@ use crate::util::PathExt;
 
 pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
-pub use self::engine::map::{MapInfo, Maps};
+pub use self::engine::map::Maps;
 pub use self::launch::Launch;
-pub use self::mod_info::{ModEntry, ModInfo, ModProvenance, ModRef, Mods};
+pub use self::mod_info::{ModEntry, ModProvenance, ModRef, Mods};
 
 pub struct Game {
     logger: Logger,
