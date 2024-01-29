@@ -1146,6 +1146,7 @@ async fn main() {
 
     let app = App::default();
     Theme::from_config(config.theme).apply();
+    gui::glyph::add_symbols();
 
     let mut steam = match Steam::locate(&root_logger) {
         Some(steam) => steam,

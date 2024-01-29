@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use fltk::button::{Button, CheckButton, LightButton};
-use fltk::enums::{Align, CallbackTrigger, Color, Event, Font, FrameType};
+use fltk::enums::{Align, CallbackTrigger, Color, Event, FrameType};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::input::Input;
@@ -91,13 +91,8 @@ impl Home {
             .with_label("Welcome to");
 
         grid.row().add();
-        let mut bugle_label = grid
-            .span(1, 5)
-            .unwrap()
-            .wrap(Frame::default())
-            .with_label("BUGLE");
-        bugle_label.set_label_font(install_crom_font());
-        bugle_label.set_label_size(bugle_label.label_size() * 3);
+        let mut bugle_label = grid.span(1, 5).unwrap().wrap(Frame::default());
+        bugle_label.set_image(Some(Assets::bugle_logo()));
 
         grid.row().add();
         grid.span(1, 5)
@@ -606,10 +601,6 @@ impl LayoutElement for BigButtonElement {
 const ERR_LAUNCHING_GAME: &str = "Error while trying to launch the game.";
 const ERR_SWITCHING_TO_MAIN: &str = "Error while trying to switch to Live.";
 const ERR_SWITCHING_TO_PUBLIC_BETA: &str = "Error while trying to switch to TestLive.";
-
-fn install_crom_font() -> Font {
-    Assets::crom_font().unwrap_or(Font::TimesBold)
-}
 
 fn create_info_label(text: &str) -> Frame {
     Frame::default()

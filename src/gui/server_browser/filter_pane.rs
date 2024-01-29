@@ -95,7 +95,7 @@ impl FilterPane {
             .cell()
             .unwrap()
             .wrap(CheckButton::default())
-            .with_label(&format!("{} Show invalid servers", glyph::WARNING));
+            .with_label(&format!("{} Show invalid servers", glyph::ERROR));
 
         grid.row().add();
         grid.cell()
@@ -129,7 +129,7 @@ impl FilterPane {
         battleye_input.input().set_readonly(true);
         battleye_input.input().clear_visible_focus();
         battleye_input.add("All");
-        battleye_input.add(&format!("Required {}", glyph::EYE));
+        battleye_input.add(&format!("Required {}", glyph::BATTLEYE));
         battleye_input.add("Not Required");
         battleye_input.set_value_index(0);
         let pwd_prot_check = grid
@@ -356,9 +356,9 @@ impl LayoutElement for FilterPane {
 fn type_name(type_filter: TypeFilter) -> Cow<'static, str> {
     match type_filter {
         TypeFilter::All => "All".into(),
-        TypeFilter::Official => format!("Official {}", glyph::FLAG).into(),
+        TypeFilter::Official => format!("Official {}", glyph::OFFICIAL).into(),
         TypeFilter::Private => "Private".into(),
-        TypeFilter::Favorite => format!("Favorite {}", glyph::HEART).into(),
+        TypeFilter::Favorite => format!("Favorite {}", glyph::FAVORITE).into(),
     }
 }
 

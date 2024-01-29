@@ -19,9 +19,8 @@ use lazy_static::lazy_static;
 use size::Size;
 use slog::{error, Logger};
 
-use crate::game::{Branch, ModEntry, ModRef, Mods};
+use crate::game::{Branch, ModEntry, ModProvenance, ModRef, Mods};
 
-use super::assets::Assets;
 use super::prelude::*;
 use super::widgets::{
     use_inspector_macros, DataTable, DataTableProperties, DataTableUpdate, Inspector,
@@ -98,16 +97,7 @@ impl ModListState {
     }
 }
 
-struct ModRow {
-    icon_idx: i32,
-    text: [String; 3],
-}
-
-impl ModRow {
-    fn text(&self, col: usize) -> &str {
-        &self.text[col - 1]
-    }
-}
+type ModRow = [String; 4];
 
 pub(super) struct ModManager {
     logger: Logger,
@@ -152,20 +142,18 @@ impl ModManager {
         col_tile_limits.hide();
 
         col_tiles.col().with_stretch(1).add();
-        let mut available_list = DataTable::new(ModRow::text)
-            .with_draw_fn(make_draw_fn())
-            .with_properties(DataTableProperties {
-                columns: vec![
-                    ("", 24).into(),
-                    ("Available Mods", Align::Left).into(),
-                    ("Version", Align::Left).into(),
-                    ("Author", Align::Left).into(),
-                ],
-                cell_padding: 4,
-                cell_selection_color: fltk::enums::Color::Free,
-                header_font_color: fltk::enums::Color::Gray0,
-                ..Default::default()
-            });
+        let mut available_list = DataTable::default().with_properties(DataTableProperties {
+            columns: vec![
+                ("", 24).into(),
+                ("Available Mods", Align::Left).into(),
+                ("Version", Align::Left).into(),
+                ("Author", Align::Left).into(),
+            ],
+            cell_padding: 4,
+            cell_selection_color: fltk::enums::Color::Free,
+            header_font_color: fltk::enums::Color::Gray0,
+            ..Default::default()
+        });
         available_list.make_resizable(true);
         available_list.set_row_header(false);
         available_list.set_col_header(true);
@@ -196,28 +184,28 @@ impl ModManager {
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("@filenew")
+            .with_label("@file_clear")
             .with_tooltip("Clear the mod list");
         button_grid.row().add();
         let mut import_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("@fileopen")
+            .with_label("@folder_open")
             .with_tooltip("Import the mod list from a file");
         button_grid.row().add();
         let mut export_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("@filesave")
+            .with_label("@floppy")
             .with_tooltip("Export the mod list into a file");
         button_grid.row().add();
         let mut copy_modlist_button = button_grid
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("@2import")
+            .with_label("@clipboard_data")
             .with_tooltip("Copy the server launcher mod list to clipboard");
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
@@ -272,7 +260,7 @@ impl ModManager {
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("\u{1f4dc}")
+            .with_label("@info")
             .with_tooltip("Show selected mod's description");
         description_button.deactivate();
         button_grid.row().add();
@@ -280,7 +268,7 @@ impl ModManager {
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("\u{1f4c6}")
+            .with_label("@news")
             .with_tooltip("Show selected mod's change notes");
         change_notes_button.deactivate();
         button_grid.row().add();
@@ -290,7 +278,7 @@ impl ModManager {
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("@reload")
+            .with_label("@cloud_download")
             .with_tooltip("Update outdated mods");
         update_mods_button.deactivate();
 
@@ -309,20 +297,18 @@ impl ModManager {
             .add_shared(Rc::<Grid>::clone(&button_grid));
 
         col_tiles.col().with_stretch(1).add();
-        let mut active_list = DataTable::new(ModRow::text)
-            .with_draw_fn(make_draw_fn())
-            .with_properties(DataTableProperties {
-                columns: vec![
-                    ("", 24).into(),
-                    ("Active Mods", Align::Left).into(),
-                    ("Version", Align::Left).into(),
-                    ("Author", Align::Left).into(),
-                ],
-                cell_padding: 4,
-                cell_selection_color: fltk::enums::Color::Free,
-                header_font_color: fltk::enums::Color::Gray0,
-                ..Default::default()
-            });
+        let mut active_list = DataTable::default().with_properties(DataTableProperties {
+            columns: vec![
+                ("", 24).into(),
+                ("Active Mods", Align::Left).into(),
+                ("Version", Align::Left).into(),
+                ("Author", Align::Left).into(),
+            ],
+            cell_padding: 4,
+            cell_selection_color: fltk::enums::Color::Free,
+            header_font_color: fltk::enums::Color::Gray0,
+            ..Default::default()
+        });
         active_list.make_resizable(true);
         active_list.set_row_header(false);
         active_list.set_col_header(true);
@@ -922,11 +908,13 @@ fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
         if let Ok(info) = &entry.info {
             let version = info.version.to_string();
             let version =
-                if entry.needs_update() { format!("@reload {}", version) } else { version };
-            ModRow {
-                icon_idx: entry.provenance as i32 + 1,
-                text: [info.name.clone(), version, info.author.clone()],
-            }
+                if entry.needs_update() { format!("@cloud_download {}", version) } else { version };
+            [
+                provenance_glyph(entry.provenance),
+                info.name.clone(),
+                version,
+                info.author.clone(),
+            ]
         } else {
             make_err_row(entry.pak_path.display())
         }
@@ -941,56 +929,19 @@ fn make_mod_row(mods: &Mods, mod_ref: &ModRef) -> ModRow {
 }
 
 fn make_err_row<N: std::fmt::Display>(alt_name: N) -> ModRow {
-    ModRow {
-        icon_idx: 0,
-        text: [
-            format!("??? ({})", alt_name),
-            "???".to_string(),
-            "???".to_string(),
-        ],
-    }
+    [
+        "@error".to_string(),
+        format!("??? ({})", alt_name),
+        "???".to_string(),
+        "???".to_string(),
+    ]
 }
 
-fn make_draw_fn() -> impl 'static + FnMut(&DataTable<ModRow>, i32, i32, i32, i32, i32, i32) {
-    let mut icons = Assets::mod_provenance_icons();
-    move |table: &DataTable<ModRow>, row: i32, col: i32, x: i32, y: i32, w: i32, h: i32| match col {
-        0 => draw_icon_cell(&mut icons, table, row, col, x, y, w, h),
-        _ => table.default_draw_cell(row, col, x, y, w, h),
+fn provenance_glyph(provenance: ModProvenance) -> String {
+    match provenance {
+        ModProvenance::Local => "@folder".to_string(),
+        ModProvenance::Steam => "@steam".to_string(),
     }
-}
-
-fn draw_icon_cell<I: ImageExt>(
-    icons: &mut I,
-    table: &DataTable<ModRow>,
-    row: i32,
-    col: i32,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-) {
-    let data = table.data();
-    let data = data.borrow();
-    let icon_idx = data[row as usize].icon_idx;
-
-    let props = table.properties();
-    let props = props.borrow();
-
-    let fill_color = if table.is_selected(row as i32, col as i32) {
-        props.cell_selection_color
-    } else {
-        props.cell_color
-    };
-
-    fltk::draw::set_draw_color(fill_color);
-    fltk::draw::draw_rectf(x, y, w, h);
-
-    let ix = x + (w - 16) / 2;
-    let iy = y + (h - 16) / 2;
-    icons.draw_ext(ix, iy, 16, 16, 0, icon_idx * 16);
-
-    fltk::draw::set_draw_color(props.cell_border_color);
-    fltk::draw::draw_rect(x, y, w, h);
 }
 
 fn mutate_table<R>(table: &DataTable<ModRow>, mutator: impl FnOnce(&mut Vec<ModRow>) -> R) -> R {

@@ -3,7 +3,7 @@ use std::rc::Rc;
 use fltk::app;
 use fltk::button::{Button, CheckButton, LightButton, ReturnButton};
 use fltk::dialog as fltk_dialog;
-use fltk::enums::Event;
+use fltk::enums::{Color, Event};
 use fltk::frame::Frame;
 use fltk::input::{Input, SecretInput};
 use fltk::menu::MenuButton;
@@ -26,6 +26,7 @@ mod mod_update;
 mod prelude;
 mod server_browser;
 mod single_player;
+mod svg_symbol;
 pub mod theme;
 mod widgets;
 
@@ -112,4 +113,10 @@ fn is_table_nav_event() -> bool {
         Event::Released => app::event_is_click(),
         _ => false,
     }
+}
+
+fn color_rgb(color: Color) -> u32 {
+    let bits = color.bits();
+    let rgbi = if bits > 255 { bits } else { unsafe { fltk_sys::fl::Fl_cmap(bits) } };
+    rgbi >> 8
 }
