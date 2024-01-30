@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::Read;
@@ -74,7 +75,7 @@ pub struct ModVersion {
     build: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ModProvenance {
     Local,
     Steam,
@@ -87,7 +88,7 @@ impl Default for ModProvenance {
 }
 
 impl ModEntry {
-    pub(super) fn new(pak_path: PathBuf, provenance: ModProvenance) -> Result<Self> {
+    fn new(pak_path: PathBuf, provenance: ModProvenance) -> Result<Self> {
         let info = ModInfo::new(&pak_path);
         let pak_size = std::fs::metadata(&pak_path)?.len();
         Ok(Self {
@@ -208,14 +209,45 @@ impl Deref for CustomMod {
     }
 }
 
+pub struct ModLibraryBuilder {
+    roots: HashMap<ModProvenance, PathBuf>,
+    mods: Vec<ModEntry>,
+}
+
+impl ModLibraryBuilder {
+    pub fn new() -> Self {
+        Self {
+            roots: HashMap::new(),
+            mods: Vec::new(),
+        }
+    }
+
+    pub fn map_root(&mut self, provenance: ModProvenance, root: PathBuf) {
+        self.roots.insert(provenance, root);
+    }
+
+    pub fn add(&mut self, pak_path: PathBuf, provenance: ModProvenance) -> Result<()> {
+        self.mods.push(ModEntry::new(pak_path, provenance)?);
+        Ok(())
+    }
+
+    pub fn build(self) -> Mods {
+        Mods::new(self)
+    }
+}
+
 pub struct Mods {
+    roots: HashMap<ModProvenance, PathBuf>,
     mods: Vec<ModEntry>,
     by_pak_path: HashMap<PathBuf, usize>,
     by_folder: HashMap<String, usize>,
 }
 
 impl Mods {
-    pub(super) fn new(mods: Vec<ModEntry>) -> Self {
+    fn new(builder: ModLibraryBuilder) -> Self {
+        let mut mods = builder.mods;
+        mods.sort_by(mod_sort_cmp);
+
         let mut by_pak_path = HashMap::with_capacity(mods.len());
         for (idx, entry) in mods.iter().enumerate() {
             by_pak_path.insert(entry.pak_path.clone(), idx);
@@ -229,6 +261,7 @@ impl Mods {
         }
 
         Self {
+            roots: builder.roots,
             mods,
             by_pak_path,
             by_folder,
@@ -272,6 +305,10 @@ impl Mods {
     pub fn iter(&self) -> impl Iterator<Item = &ModEntry> {
         self.mods.iter()
     }
+
+    pub fn root_for(&self, provenance: ModProvenance) -> Option<&Path> {
+        self.roots.get(&provenance).map(|p| p.as_path())
+    }
 }
 
 impl Index<usize> for Mods {
@@ -288,5 +325,14 @@ fn json_lowercase_keys(json: serde_json::Value) -> serde_json::Value {
             .collect()
     } else {
         json
+    }
+}
+
+fn mod_sort_cmp(lhs: &ModEntry, rhs: &ModEntry) -> Ordering {
+    match (lhs.info.as_ref(), rhs.info.as_ref()) {
+        (Ok(linfo), Ok(rinfo)) => linfo.name.cmp(&rinfo.name),
+        (Ok(_), Err(_)) => Ordering::Less,
+        (Err(_), Ok(_)) => Ordering::Greater,
+        (Err(_), Err(_)) => lhs.pak_path.cmp(&rhs.pak_path),
     }
 }

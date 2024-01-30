@@ -12,7 +12,7 @@ mod mod_directory;
 
 pub use self::client::{SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
-use crate::game::{Branch, Game, ModEntry, ModProvenance};
+use crate::game::{Branch, Game, ModLibraryBuilder, ModProvenance};
 use crate::util::PathExt;
 use crate::Message;
 
@@ -82,7 +82,7 @@ impl Steam {
         let installed_mods = if let Some(workshop_path) = location.workshop_path {
             collect_mods(&workshop_path, location.branch)?
         } else {
-            Vec::new()
+            ModLibraryBuilder::new()
         };
 
         let game = Game::new(
@@ -108,10 +108,11 @@ fn app_id(branch: Branch) -> u32 {
     }
 }
 
-fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModEntry>> {
+fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<ModLibraryBuilder> {
+    let mut mods = ModLibraryBuilder::new();
     let manifest_path = workshop_path.join(format!("appworkshop_{}.acf", app_id(branch)));
     if !manifest_path.exists() {
-        return Ok(Vec::new());
+        return Ok(mods);
     }
 
     let manifest = std::fs::read_to_string(manifest_path)?;
@@ -119,20 +120,20 @@ fn collect_mods(workshop_path: &Path, branch: Branch) -> Result<Vec<ModEntry>> {
     let mod_ids = collect_mod_ids(&manifest).ok_or(anyhow!("Malformed workshop manifest"))?;
 
     let mut path = workshop_path.join_all(["content", &format!("{}", app_id(branch))]);
-    let mut mods = Vec::with_capacity(mod_ids.len());
     for mod_id in mod_ids {
         path.push(mod_id);
         for pak_path in std::fs::read_dir(&path)? {
             let pak_path = pak_path?.path();
             match pak_path.extension() {
                 Some(ext) if ext == "pak" => {
-                    mods.push(ModEntry::new(pak_path, ModProvenance::Steam)?);
+                    mods.add(pak_path, ModProvenance::Steam)?;
                 }
                 _ => (),
             };
         }
         path.pop();
     }
+    mods.map_root(ModProvenance::Steam, path);
 
     Ok(mods)
 }

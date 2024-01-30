@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
 use auth::{CachedUser, CachedUsers};
+use bit_vec::BitVec;
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
@@ -439,6 +440,18 @@ impl Launcher {
                     self.check_mod_updates();
                 }
                 Ok(())
+            }
+            Action::ModManager(ModManagerAction::FixModListErrors(mut mod_list)) => {
+                if !self.fix_mod_list(&mut mod_list) {
+                    dialog::alert_default("Could not fix all of the errors in the mod list.");
+                }
+                let result = self.game.save_mod_list(mod_list.iter());
+                if result.is_ok() {
+                    self.tx.send(Message::Update(Update::ModManager(
+                        ModManagerUpdate::PopulateModList(mod_list),
+                    )));
+                }
+                result
             }
         }
     }
@@ -985,6 +998,45 @@ impl Launcher {
         dialog.run();
 
         self.main_window.window().shown()
+    }
+
+    fn fix_mod_list(&self, mod_list: &mut Vec<ModRef>) -> bool {
+        let installed_mods = self.game.installed_mods();
+        let mut available_set = BitVec::from_elem(installed_mods.len(), true);
+
+        for mod_ref in mod_list.iter() {
+            if let ModRef::Installed(idx) = mod_ref {
+                available_set.set(*idx, false);
+            }
+        }
+
+        let mut fixed_all = true;
+        for mod_ref in mod_list.iter_mut() {
+            let pak_path = match mod_ref {
+                ModRef::UnknownPakPath(path) => path,
+                _ => continue,
+            };
+            let fixed_idx = installed_mods.iter().enumerate().find_map(|(idx, entry)| {
+                if !available_set[idx] {
+                    return None;
+                }
+                let root = installed_mods.root_for(entry.provenance)?;
+                let suffix = entry.pak_path.strip_prefix(root).ok()?;
+                if pak_path.ends_with(suffix) {
+                    Some(idx)
+                } else {
+                    None
+                }
+            });
+            if let Some(idx) = fixed_idx {
+                *mod_ref = ModRef::Installed(idx);
+                available_set.set(idx, false);
+            } else {
+                fixed_all = false;
+            }
+        }
+
+        fixed_all
     }
 
     fn config(&self) -> Ref<Config> {

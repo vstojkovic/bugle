@@ -34,6 +34,7 @@ pub enum ModManagerAction {
     ImportModList,
     ExportModList(Vec<ModRef>),
     UpdateMods,
+    FixModListErrors(Vec<ModRef>),
 }
 
 pub enum ModManagerUpdate {
@@ -108,6 +109,7 @@ pub(super) struct ModManager {
     available_list: DataTable<ModRow>,
     active_list: DataTable<ModRow>,
     details_table: PropertiesTable<ModEntry, ()>,
+    fix_errors_button: Button,
     activate_button: Button,
     deactivate_button: Button,
     move_top_button: Button,
@@ -207,6 +209,14 @@ impl ModManager {
             .wrap(Button::default())
             .with_label("@clipboard_data")
             .with_tooltip("Copy the server launcher mod list to clipboard");
+        button_grid.row().add();
+        let mut fix_errors_button = button_grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("@fix_errors")
+            .with_tooltip("Try to fix the errors in the mod list");
+        fix_errors_button.deactivate();
         button_grid.row().add();
         button_grid.cell().unwrap().with_top_padding(8).skip();
         button_grid.row().add();
@@ -409,6 +419,7 @@ impl ModManager {
             available_list: available_list.clone(),
             active_list: active_list.clone(),
             details_table,
+            fix_errors_button: fix_errors_button.clone(),
             activate_button: activate_button.clone(),
             deactivate_button: deactivate_button.clone(),
             move_top_button: move_top_button.clone(),
@@ -460,6 +471,7 @@ impl ModManager {
         import_button.set_callback(manager.weak_cb(Self::import_clicked));
         export_button.set_callback(manager.weak_cb(Self::export_clicked));
         copy_modlist_button.set_callback(manager.weak_cb(Self::copy_modlist_clicked));
+        fix_errors_button.set_callback(manager.weak_cb(Self::fix_errors_clicked));
         activate_button.set_callback(manager.weak_cb(Self::activate_clicked));
         deactivate_button.set_callback(manager.weak_cb(Self::deactivate_clicked));
         move_top_button.set_callback(manager.weak_cb(Self::move_top_clicked));
@@ -500,9 +512,13 @@ impl ModManager {
         state.active = Vec::with_capacity(mod_count);
 
         let mut available_set = BitVec::from_elem(mod_count, true);
+        let mut errors_found = false;
         for mod_ref in active_mods {
             if let ModRef::Installed(mod_idx) = mod_ref {
                 available_set.set(mod_idx, false);
+            }
+            if let ModRef::UnknownPakPath(_) = mod_ref {
+                errors_found = true;
             }
             state.active.push(mod_ref);
         }
@@ -516,6 +532,8 @@ impl ModManager {
         drop(state);
 
         self.populate_tables();
+
+        self.fix_errors_button.clone().set_activated(errors_found);
     }
 
     fn populate_tables(&self) {
@@ -649,6 +667,17 @@ impl ModManager {
             fltk::app::copy("");
         } else {
             fltk::app::copy(&text[1..]);
+        }
+    }
+
+    fn fix_errors_clicked(&self) {
+        let mod_list = {
+            let state = self.state.borrow();
+            state.active.clone()
+        };
+        if let Err(err) = (self.on_action)(ModManagerAction::FixModListErrors(mod_list)) {
+            error!(self.logger, "Error saving mod list"; "error" => %err);
+            alert_error(ERR_SAVING_MOD_LIST, &err);
         }
     }
 

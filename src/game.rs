@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
@@ -30,7 +29,7 @@ pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::Maps;
 pub use self::launch::Launch;
-pub use self::mod_info::{ModEntry, ModProvenance, ModRef, Mods};
+pub use self::mod_info::{ModEntry, ModLibraryBuilder, ModProvenance, ModRef, Mods};
 
 pub struct Game {
     logger: Logger,
@@ -91,7 +90,7 @@ impl Game {
         game_path: PathBuf,
         branch: Branch,
         needs_update: bool,
-        mut installed_mods: Vec<ModEntry>,
+        mut installed_mods: ModLibraryBuilder,
     ) -> Result<Self> {
         let save_path = game_path.join_all(["ConanSandbox", "Saved"]);
         let config_path = save_path.join_all(["Config", "WindowsNoEditor"]);
@@ -101,9 +100,9 @@ impl Game {
 
         debug!(logger, "Collecting local mods");
         collect_local_mods(&game_path, &mut installed_mods)?;
+        let installed_mods = installed_mods.build();
 
         let mod_list_path = game_path.join_all(["ConanSandbox", "Mods", "modlist.txt"]);
-        installed_mods.sort_by(mod_sort_cmp);
 
         let mut maps = Maps::new();
         let map_extractor = MapExtractor::new(logger.clone());
@@ -198,7 +197,7 @@ impl Game {
             save_path,
             game_ini_path,
             mod_list_path,
-            installed_mods: Arc::new(Mods::new(installed_mods)),
+            installed_mods: Arc::new(installed_mods),
             maps: Arc::new(maps),
             last_session: Mutex::new(last_session),
             battleye_installed,
@@ -505,25 +504,18 @@ const KEY_SERVERS_LIST: &str = "ServersList";
 const KEY_STARTED_LISTEN_SERVER_SESSION: &str = "StartedListenServerSession";
 const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";
 
-fn collect_local_mods(game_path: &Path, mods: &mut Vec<ModEntry>) -> Result<()> {
-    for entry in WalkDir::new(game_path.join_all(["ConanSandbox", "Mods"])) {
+fn collect_local_mods(game_path: &Path, mods: &mut ModLibraryBuilder) -> Result<()> {
+    let root = game_path.join_all(["ConanSandbox", "Mods"]);
+    for entry in WalkDir::new(&root) {
         let pak_path = entry?.path().to_path_buf();
         match pak_path.extension() {
             Some(ext) if ext == "pak" => {
-                mods.push(ModEntry::new(pak_path, ModProvenance::Local)?);
+                mods.add(pak_path, ModProvenance::Local)?;
             }
             _ => (),
         };
     }
+    mods.map_root(ModProvenance::Local, root);
 
     Ok(())
-}
-
-fn mod_sort_cmp(lhs: &ModEntry, rhs: &ModEntry) -> Ordering {
-    match (lhs.info.as_ref(), rhs.info.as_ref()) {
-        (Ok(linfo), Ok(rinfo)) => linfo.name.cmp(&rinfo.name),
-        (Ok(_), Err(_)) => Ordering::Less,
-        (Err(_), Ok(_)) => Ordering::Greater,
-        (Err(_), Err(_)) => lhs.pak_path.cmp(&rhs.pak_path),
-    }
 }

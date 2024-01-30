@@ -8,6 +8,7 @@ pub fn add_symbols() {
     fltk::app::add_symbol("error", true, draw_svg_symbol!(SVG_ERROR)).unwrap();
     fltk::app::add_symbol("eye", true, draw_svg_symbol!(SVG_EYE)).unwrap();
     fltk::app::add_symbol("file_clear", true, draw_svg_symbol!(SVG_FILE_CLEAR)).unwrap();
+    fltk::app::add_symbol("fix_errors", true, draw_svg_symbol!(SVG_FIX_ERRORS)).unwrap();
     fltk::app::add_symbol("flag", true, draw_svg_symbol!(SVG_FLAG)).unwrap();
     fltk::app::add_symbol("floppy", true, draw_svg_symbol!(SVG_FLOPPY)).unwrap();
     fltk::app::add_symbol("folder", true, draw_svg_symbol!(SVG_FOLDER)).unwrap();
@@ -34,7 +35,8 @@ pub const TOOLS: &str = "@-1tools";
 pub const UNSORTED: &str = "@sort_no";
 
 mod boost_icons {
-    // The SVGs in this module are all sourced from the Boost Icons project under the MIT license:
+    // The SVGs in this module are all sourced or derived from the Boost Icons project under the
+    // MIT license:
 
     /*
     The MIT License (MIT)
@@ -92,6 +94,14 @@ mod boost_icons {
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-x" viewBox="0 0 16 16">
       <path d="M6.854 7.146a.5.5 0 1 0-.708.708L7.293 9l-1.147 1.146a.5.5 0 0 0 .708.708L8 9.707l1.146 1.147a.5.5 0 0 0 .708-.708L8.707 9l1.147-1.146a.5.5 0 0 0-.708-.708L8 8.293z"/>
       <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2M9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5z"/>
+    </svg>
+    "###;
+
+    pub(super) const SVG_FIX_ERRORS: &str = r###"
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-circle" viewBox="0 0 16 16">
+      <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+      <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z"/>
+      <path fill-rule="evenodd" d="M13.854 2.146a.5.5 0 0 1 0 .708l-11 11a.5.5 0 0 1-.708-.708l11-11a.5.5 0 0 1 .708 0"/>
     </svg>
     "###;
 
