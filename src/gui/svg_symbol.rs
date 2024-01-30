@@ -55,7 +55,7 @@ impl SvgSymbol {
 }
 
 lazy_static! {
-    static ref PLACEHOLDER_REGEX: Regex = Regex::new("\\{\\}").unwrap();
+    static ref PLACEHOLDER_REGEX: Regex = Regex::new("currentColor").unwrap();
 }
 
 macro_rules! draw_svg_symbol {
