@@ -12,7 +12,7 @@ that isn't there, feel free to open a GitHub issue about it, or contact me on Fu
 
 ## Installation
 
-Go to the v1.2.1 release and download the `bugle-v1.2.1-x86_64-pc-windows-msvc.zip` file. Unpack it
+Go to the v1.3.0 release and download the `bugle-v1.3.0-x86_64-pc-windows-msvc.zip` file. Unpack it
 into a directory where you're allowed to write files. It's a good idea to put it in its own
 directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
@@ -28,8 +28,7 @@ list to load up, and selecting the server you want to play, you can do it straig
 launcher itself.
 * **Persistent server filter.** You don't have to reconfigure the filter every time you open the
 server browser. If you filtered the server list to look at only PVE-C server in Oceania region, the
-next time you open BUGLE, the filter will be in effect. The only filters BUGLE does not persist are
-server name and map name.
+next time you open BUGLE, the filter will be in effect.
 * **Ping an individual server.** If your ping seems to be too high or you want to see whether the
 number of connected players changed, you can ping the selected server again and get updated results,
 without having to restart the whole server browser.
@@ -41,7 +40,19 @@ and restore them whenever you want.
 * **Mod list management.** You can not only activate and deactivate mods, and change their order,
 but you can also save a mod list and open it again later. This should make it easier to switch
 between the mods you use in your single-player game and those on your favorite server; or you can
-use this to switch easily between mod lists for different servers.
+use this to switch easily between mod lists for different servers. If you're hosting a server using
+Funcom's Dedicated Server Launcher, you can copy the mod list from BUGLE with one click and paste
+it into the server launcher.
+* **Local mod library.** If you download non-Steam mods and put them inside the `Mods` directory
+in your Conan Exiles installation (or in any subdirectory nested as deep as you want), BUGLE will
+show them in the list of available mods and allow you to add them to your mod list without having
+to edit your `modlist.txt` file yourself.
+* **Moving installations and sharing mod lists.** If you move your Conan Exiles installation from
+one place to another, your mod list is normally left with a bunch of entries pointing to where
+your mods used to be. Similarly, if another player gives you their `modlist.txt` and their game
+isn't installed on the same path as yours, that mod list will be full of errors. BUGLE has a feature
+that can look through your mod list and the list of mods you have on your system, and try to fix
+broken entries in your mod list if they match an installed mod.
 * **Single-player mod mismatch detection.** The launcher will do its best to detect whether there
 are any mods missing in your list when you decide to continue your single-player game. It cannot
 detect if mods are in the correct order, but at least it can warn you about missing mods. It also

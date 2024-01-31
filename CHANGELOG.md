@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.3.0 (2024-01-30)
+
+Mod manager QoL features and a few visual improvements.
+
+### Added
+
+- You can now place mod files anywhere in the `Mods` directory, nested as deep as you want, and
+BUGLE will detect them and display them in the list of available mods so you can add them to your
+mod list.
+- The list of mods in the mod manager now shows the provenance of each mod: Steam or local library.
+- The mod manager now has a table that displays the details of the selected mod, such as filename,
+size, Steam IDs (if applicable), and similar.
+- If you want to host a server using the Dedicated Server Launcher, you can now copy your mod list
+to clipboard to paste it into the server launcher.
+- If you have a mod list with invalid entries, BUGLE can try to fix it by going through the list
+and trying to match the entries with the mods you have installed on your system. This can be useful
+if you moved your Conan Exiles installation to a different location, or if you got your mod list
+from a friend who has their game installed on a path different from yours.
+- BUGLE now detects whether you have BattlEye installed and displays that information on its home
+screen. If BattlEye is not installed and your BUGLE is configured to launch the game with BattlEye
+enabled, BUGLE will warn you and offer to change that setting to disabled.
+
+### Changed
+
+- The main menu buttons on the left have been shrunk to leave more space for the rest of the UI.
+- BUGLE window can now be resized and maximized.
+- Mod manager now has separate buttons for displaying the mod description and the mod change notes.
+- The BUGLE logo on the home screen is now a smidge more colorful.
+- The glyphs used by BUGLE are now all sourced or derived from Boost Icons project.
+
+### Fixed
+
+- Having a mod file that BUGLE cannot parse will no longer make BUGLE complain about a "problem
+with your installation of Conan Exiles". Affected mod files will be displayed among available mods,
+but with an error icon and no details other than filename and size.
+- Dragging BUGLE between displays with different scaling will no longer mess up the UI.
+- The README no longer says that BUGLE won't save the server name or map name in the persistent
+server filter.
+- BUGLE should no longer mix backslashes and forward slashes in paths.
+
 ## 1.2.1 (2023-12-21)
 
 Bugfix for problems with "Tot!" mods.
