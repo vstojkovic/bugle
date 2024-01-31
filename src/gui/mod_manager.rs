@@ -13,7 +13,7 @@ use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
-use fltk_float::{LayoutElement, SimpleWrapper};
+use fltk_float::{EmptyElement, LayoutElement, SimpleWrapper};
 use fltk_webview::Webview;
 use lazy_static::lazy_static;
 use size::Size;
@@ -175,7 +175,7 @@ impl ModManager {
         let mut button_grid = Grid::builder_with_factory(wrapper_factory())
             .with_padding(10, 0, 10, 0)
             .with_col_spacing(10)
-            .with_row_spacing(10);
+            .with_row_spacing(6);
         button_grid.col().add();
 
         button_grid.row().with_stretch(1).add();
@@ -218,7 +218,11 @@ impl ModManager {
             .with_tooltip("Try to fix the errors in the mod list");
         fix_errors_button.deactivate();
         button_grid.row().add();
-        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid
+            .cell()
+            .unwrap()
+            .with_top_padding(6)
+            .add(EmptyElement);
         button_grid.row().add();
         let mut activate_button = button_grid
             .cell()
@@ -234,7 +238,11 @@ impl ModManager {
             .with_label("@<")
             .with_tooltip("Deactivate the selected mod");
         button_grid.row().add();
-        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid
+            .cell()
+            .unwrap()
+            .with_top_padding(6)
+            .add(EmptyElement);
         button_grid.row().add();
         let mut move_top_button = button_grid
             .cell()
@@ -264,7 +272,11 @@ impl ModManager {
             .with_label("@#2>|")
             .with_tooltip("Move the selected mod to the bottom");
         button_grid.row().add();
-        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid
+            .cell()
+            .unwrap()
+            .with_top_padding(6)
+            .add(EmptyElement);
         button_grid.row().add();
         let mut description_button = button_grid
             .cell()
@@ -282,7 +294,11 @@ impl ModManager {
             .with_tooltip("Show selected mod's change notes");
         change_notes_button.deactivate();
         button_grid.row().add();
-        button_grid.cell().unwrap().with_top_padding(8).skip();
+        button_grid
+            .cell()
+            .unwrap()
+            .with_top_padding(6)
+            .add(EmptyElement);
         button_grid.row().add();
         let mut update_mods_button = button_grid
             .cell()
