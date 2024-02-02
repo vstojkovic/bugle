@@ -3,6 +3,7 @@ use super::svg_symbol::draw_svg_symbol;
 use self::boost_icons::*;
 
 pub fn add_symbols() {
+    fltk::app::add_symbol("arrow_repeat", true, draw_svg_symbol!(SVG_ARROW_REPEAT)).unwrap();
     fltk::app::add_symbol("clipboard_data", true, draw_svg_symbol!(SVG_CLIPBOARD_DATA)).unwrap();
     fltk::app::add_symbol("cloud_download", true, draw_svg_symbol!(SVG_CLOUD_DOWNLOAD)).unwrap();
     fltk::app::add_symbol("error", true, draw_svg_symbol!(SVG_ERROR)).unwrap();
@@ -29,6 +30,7 @@ pub const ERROR: &str = "@-1error";
 pub const FAVORITE: &str = "@-1heart";
 pub const LOCK: &str = "@-1lock";
 pub const OFFICIAL: &str = "@-1flag";
+pub const RELOAD: &str = "@arrow_repeat";
 pub const SORT_ASC: &str = "@sort_asc";
 pub const SORT_DESC: &str = "@sort_desc";
 pub const TOOLS: &str = "@-1tools";
@@ -61,6 +63,13 @@ mod boost_icons {
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
     THE SOFTWARE.
     */
+
+    pub(super) const SVG_ARROW_REPEAT: &str = r###"
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16">
+      <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9"/>
+      <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z"/>
+    </svg>
+    "###;
 
     pub(super) const SVG_CLIPBOARD_DATA: &str = r###"
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-clipboard-data" viewBox="0 0 16 16">

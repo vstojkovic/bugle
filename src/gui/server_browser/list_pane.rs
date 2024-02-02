@@ -5,7 +5,6 @@ use std::ffi::CString;
 use std::rc::Rc;
 
 use fltk::enums::{Align, Event};
-use fltk::frame::Frame;
 use fltk::misc::Tooltip;
 use fltk::prelude::*;
 use fltk::table::TableContext;
@@ -22,7 +21,6 @@ type ServerRow = [Cow<'static, str>; NUM_COLS];
 
 pub(super) struct ListPane {
     table: DataTable<ServerRow>,
-    loading_label: Frame,
     sort_criteria: RefCell<SortCriteria>,
     server_list: RefCell<Rc<RefCell<dyn TableSource<Output = Server>>>>,
     on_sort_changed: RefCell<Box<dyn Fn(SortCriteria)>>,
@@ -61,13 +59,8 @@ impl ListPane {
         table.end();
         table.hide();
 
-        let loading_label = Frame::default_fill()
-            .with_label("Fetching server list...")
-            .with_align(Align::Center);
-
         let list_pane = Rc::new(Self {
             table: table.clone(),
-            loading_label,
             sort_criteria: RefCell::new(*initial_sort),
             server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
             on_sort_changed: RefCell::new(Box::new(|_| ())),
@@ -110,11 +103,9 @@ impl ListPane {
     pub fn mark_refreshing(&self) {
         self.set_server_list(Rc::new(RefCell::new(Vec::new())));
         self.table.clone().hide();
-        self.loading_label.clone().show();
     }
 
     pub fn clear_refreshing(&self) {
-        self.loading_label.clone().hide();
         self.table.clone().show();
     }
 
@@ -421,32 +412,35 @@ fn str_if(condition: bool, str_true: &'static str) -> Cow<'static, str> {
 }
 
 fn players_col_value(server: &Server) -> String {
-    match server.connected_players {
-        Some(players) => format!("{}/{}{}", players, server.max_players, pong_suffix(server)),
-        None => format!("?/{}{}", server.max_players, pong_suffix(server)),
-    }
+    let prefix = match server.connected_players {
+        Some(players) => format!("{}/{}", players, server.max_players),
+        None => format!("?/{}", server.max_players),
+    };
+    with_pong_suffix(prefix, server)
 }
 
 fn age_col_value(server: &Server) -> String {
-    match server.age {
-        Some(age) => format!("{}{}", age.as_secs() / 86400, pong_suffix(server)),
-        None => format!("????{}", pong_suffix(server)),
-    }
+    let prefix = match server.age {
+        Some(age) => format!("{}", age.as_secs() / 86400),
+        None => "????".to_string(),
+    };
+    with_pong_suffix(prefix, server)
 }
 
 fn ping_col_value(server: &Server) -> String {
-    match server.ping {
-        Some(ping) => format!("{}{}", ping.as_millis(), pong_suffix(server)),
-        None => format!("????{}", pong_suffix(server)),
-    }
+    let prefix = match server.ping {
+        Some(ping) => format!("{}", ping.as_millis()),
+        None => "????".to_string(),
+    };
+    with_pong_suffix(prefix, server)
 }
 
-fn pong_suffix(server: &Server) -> &str {
+fn with_pong_suffix(mut prefix: String, server: &Server) -> String {
     if server.waiting_for_pong {
-        " @-1reload"
-    } else {
-        ""
+        prefix.push(' ');
+        prefix.push_str(glyph::RELOAD);
     }
+    prefix
 }
 
 fn make_server_row(server: &Server) -> ServerRow {

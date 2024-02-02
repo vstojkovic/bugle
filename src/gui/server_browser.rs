@@ -10,6 +10,7 @@ use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
+use fltk_float::overlay::Overlay;
 use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 use strum::IntoEnumIterator;
@@ -31,7 +32,7 @@ use self::list_pane::ListPane;
 use self::state::{Filter, SortOrder};
 
 use super::data::IterableTableSource;
-use super::{alert_error, wrapper_factory, Handler};
+use super::{alert_error, glyph, wrapper_factory, Handler};
 
 mod actions_pane;
 mod connect_dialog;
@@ -95,8 +96,10 @@ pub(super) struct ServerBrowser {
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
     actions_pane: Rc<ActionsPane>,
+    stats_group: Group,
     total_players: Cell<usize>,
     total_players_text: Frame,
+    loading_label: Frame,
     pending_update: Rc<Cell<Option<ServerBrowserUpdate>>>,
     state: Rc<RefCell<ServerBrowserState>>,
     filter_dirty: Cell<bool>,
@@ -129,6 +132,7 @@ impl ServerBrowser {
             .add_shared(Rc::<FilterPane>::clone(&filter_pane));
 
         grid.row().add();
+        let mut status_overlay = Overlay::builder_with_factory(wrapper_factory());
         let mut stats_grid = Grid::builder_with_factory(wrapper_factory())
             .with_col_spacing(10)
             .with_row_spacing(10)
@@ -156,10 +160,16 @@ impl ServerBrowser {
             .with_label("?")
             .with_align(Align::Left | Align::Inside);
         let stats_grid = stats_grid.end();
-        stats_grid
-            .group()
-            .set_frame(fltk::enums::FrameType::BorderBox);
-        grid.cell().unwrap().add(stats_grid);
+        let mut stats_group = stats_grid.group();
+        stats_group.set_frame(fltk::enums::FrameType::EngravedBox);
+        stats_group.hide();
+        status_overlay.add(stats_grid);
+        let mut loading_label = status_overlay
+            .wrap(Frame::default())
+            .with_label(&format!("Fetching server list... {}", glyph::RELOAD));
+        loading_label.set_frame(fltk::enums::FrameType::EngravedBox);
+        let status_overlay = status_overlay.end();
+        grid.cell().unwrap().add(status_overlay);
 
         let mut tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
         tiles.col().with_stretch(1).add();
@@ -215,8 +225,10 @@ impl ServerBrowser {
             list_pane: Rc::clone(&list_pane),
             details_pane,
             actions_pane: Rc::clone(&actions_pane),
+            stats_group,
             total_players: Cell::new(0),
             total_players_text,
+            loading_label,
             pending_update: Rc::new(Cell::new(None)),
             state: Rc::clone(&state),
             filter_dirty: Cell::new(false),
@@ -362,6 +374,8 @@ impl ServerBrowser {
                             }
                             browser.list_pane.mark_refreshing();
                             browser.list_pane.set_selected_index(None, false);
+                            browser.loading_label.clone().show();
+                            browser.stats_group.clone().hide();
                             let mut total_players_text = browser.total_players_text.clone();
                             total_players_text.set_label("?");
                             total_players_text.redraw();
@@ -407,6 +421,8 @@ impl ServerBrowser {
             ServerBrowserUpdate::PopulateServers(payload) => {
                 if self.root.visible() {
                     self.refreshing.set(false);
+                    self.loading_label.clone().hide();
+                    self.stats_group.clone().show();
                     match payload {
                         Ok(all_servers) => self.populate_servers(all_servers),
                         Err(err) => {
