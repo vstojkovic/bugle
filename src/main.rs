@@ -15,9 +15,6 @@ use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, Transie
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::prelude::WindowExt;
-use game::platform::steam::{SteamClient, SteamModDirectory};
-use game::platform::ModDirectory;
-use game::{LaunchOptions, MapRef};
 use regex::Regex;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 
@@ -34,12 +31,14 @@ mod servers;
 mod util;
 mod workers;
 
-use crate::config::ModMismatchChecks;
-use crate::game::ModEntry;
-
 use self::auth::{Account, AuthState, Capability, PlatformUser};
-use self::game::platform::steam::Steam;
-use self::game::{list_mod_controllers, Branch, Game, Launch, ModRef, Mods, ServerRef, Session};
+use self::config::ModMismatchChecks;
+use self::game::platform::steam::{Steam, SteamClient, SteamModDirectory};
+use self::game::platform::ModDirectory;
+use self::game::{
+    list_mod_controllers, Branch, Game, Launch, LaunchOptions, MapRef, ModEntry, ModRef, Mods,
+    ServerRef, Session,
+};
 use self::gui::theme::Theme;
 use self::gui::{
     prompt_confirm, Action, Dialog, HomeAction, HomeUpdate, LauncherWindow, ModManagerAction,
