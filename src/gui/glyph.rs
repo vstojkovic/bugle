@@ -1,6 +1,6 @@
 use super::svg_symbol::draw_svg_symbol;
 
-use self::boost_icons::*;
+use self::bootstrap_icons::*;
 
 pub fn add_symbols() {
     fltk::app::add_symbol("arrow_repeat", true, draw_svg_symbol!(SVG_ARROW_REPEAT)).unwrap();
@@ -36,8 +36,8 @@ pub const SORT_DESC: &str = "@sort_desc";
 pub const TOOLS: &str = "@-1tools";
 pub const UNSORTED: &str = "@sort_no";
 
-mod boost_icons {
-    // The SVGs in this module are all sourced or derived from the Boost Icons project under the
+mod bootstrap_icons {
+    // The SVGs in this module are all sourced or derived from the Bootstrap Icons project under the
     // MIT license:
 
     /*

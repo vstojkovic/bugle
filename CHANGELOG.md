@@ -30,7 +30,7 @@ enabled, BUGLE will warn you and offer to change that setting to disabled.
 - BUGLE window can now be resized and maximized.
 - Mod manager now has separate buttons for displaying the mod description and the mod change notes.
 - The BUGLE logo on the home screen is now a smidge more colorful.
-- The glyphs used by BUGLE are now all sourced or derived from Boost Icons project.
+- The glyphs used by BUGLE are now all sourced or derived from Bootstrap Icons project.
 
 ### Fixed
 
