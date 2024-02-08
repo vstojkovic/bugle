@@ -7,7 +7,7 @@ use tokio::task::JoinHandle;
 
 use crate::game::Game;
 use crate::gui::{ServerBrowserUpdate, Update};
-use crate::servers::{fetch_server_list, DeserializationContext, PingClient, PingRequest, Server};
+use crate::servers::{fetch_server_list, PingClient, PingRequest, Server};
 use crate::Message;
 
 pub struct ServerLoaderWorker {
@@ -99,15 +99,6 @@ impl ServerLoaderWorker {
     }
 
     async fn fetch_servers(&self) -> Result<Vec<Server>> {
-        let favorites = self.game.load_favorites()?;
-        Ok(fetch_server_list(
-            self.logger.clone(),
-            &*self.game,
-            DeserializationContext {
-                build_id: self.game.build_id(),
-                favorites: &favorites,
-            },
-        )
-        .await?)
+        Ok(fetch_server_list(self.logger.clone(), &*self.game).await?)
     }
 }

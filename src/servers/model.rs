@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
+use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 use bitflags::bitflags;
@@ -7,13 +9,27 @@ use serde::de::{MapAccess, Visitor};
 use serde::Deserialize;
 use serde_repr::Deserialize_repr;
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
+use uuid::Uuid;
 
 use crate::net::{is_valid_ip, is_valid_port};
 
 use super::FavoriteServers;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct Server {
+    data: ServerData,
+    pub ip: IpAddr,
+    pub connected_players: Option<usize>,
+    pub age: Option<Duration>,
+    pub ping: Option<Duration>,
+    pub waiting_for_pong: bool,
+    pub favorite: bool,
+    pub saved_id: Option<Uuid>,
+    pub validity: Validity,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ServerData {
     #[serde(rename = "EXTERNAL_SERVER_UID")]
     pub id: String,
 
@@ -49,9 +65,6 @@ pub struct Server {
 
     #[serde(rename = "kdsObservedServerAddress")]
     pub observed_ip: Option<IpAddr>,
-
-    #[serde(skip, default = "crate::net::default_ip")]
-    pub ip: IpAddr,
 
     #[serde(rename = "Port")]
     pub port: u32,
@@ -91,82 +104,38 @@ pub struct Server {
 
     #[serde(flatten)]
     pub raid_hours: RaidHours,
-
-    #[serde(skip)]
-    pub connected_players: Option<usize>,
-
-    #[serde(skip)]
-    pub age: Option<Duration>,
-
-    #[serde(skip)]
-    pub ping: Option<Duration>,
-
-    #[serde(skip)]
-    pub waiting_for_pong: bool,
-
-    #[serde(skip)]
-    pub favorite: bool,
-
-    #[serde(skip)]
-    pub validity: Validity,
 }
 
-pub struct DeserializationContext<'dc> {
-    pub build_id: u32,
-    pub favorites: &'dc FavoriteServers,
+impl Deref for Server {
+    type Target = ServerData;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl DerefMut for Server {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
 }
 
 impl Server {
-    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
-        deserializer: D,
-        ctx: &DeserializationContext,
-    ) -> Result<Self, D::Error> {
-        let mut server = <Server as Deserialize>::deserialize(deserializer)?;
-
-        server.ip = if is_valid_ip(&server.reported_ip) || server.observed_ip.is_none() {
-            server.reported_ip
-        } else {
-            server.observed_ip.unwrap()
-        };
-
-        if server.name.is_empty() {
-            server.name = server.host();
-        }
-
-        server.favorite = ctx.favorites.contains(&server);
-
-        if server.build_id != ctx.build_id {
-            server.validity.insert(Validity::INVALID_BUILD);
-        }
-        if !is_valid_ip(server.ip()) {
-            server.validity.insert(Validity::INVALID_ADDR);
-        }
-        if !is_valid_port(server.port) {
-            server.validity.insert(Validity::INVALID_PORT);
-        }
-
-        server.waiting_for_pong = server.is_valid();
-
-        Ok(server)
-    }
-
-    pub fn mode(&self) -> Mode {
-        if self.pvp_enabled {
-            match self.kind {
-                Kind::Conflict => Mode::PVEC,
-                Kind::Other => Mode::PVP,
-            }
-        } else {
-            Mode::PVE
+    pub fn validate_build(&mut self, build_id: u32) {
+        if self.build_id != build_id {
+            self.validity.insert(Validity::INVALID_BUILD);
         }
     }
 
-    pub fn ip(&self) -> &IpAddr {
-        &self.ip
+    pub fn check_favorites(&mut self, favorites: &FavoriteServers) {
+        self.favorite = favorites.contains(&self);
+    }
+
+    pub fn prepare_for_ping(&mut self) {
+        self.waiting_for_pong = self.is_valid();
     }
 
     pub fn host(&self) -> String {
-        format!("{}:{}", self.ip(), self.port)
+        format!("{}:{}", self.ip, self.port)
     }
 
     pub fn game_addr(&self) -> Option<SocketAddr> {
@@ -187,6 +156,67 @@ impl Server {
 
     pub fn is_valid(&self) -> bool {
         self.validity.is_valid()
+    }
+
+    pub fn is_saved(&self) -> bool {
+        self.saved_id.is_some()
+    }
+
+    pub fn preference(&self, rhs: &Self) -> Ordering {
+        match rhs.is_saved().cmp(&self.is_saved()) {
+            Ordering::Equal => rhs.favorite.cmp(&self.favorite),
+            ord @ _ => ord,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Server {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let data = ServerData::deserialize(deserializer)?;
+
+        let ip = if is_valid_ip(&data.reported_ip) || data.observed_ip.is_none() {
+            data.reported_ip
+        } else {
+            data.observed_ip.unwrap()
+        };
+
+        let mut server = Server {
+            data,
+            ip,
+            connected_players: None,
+            age: None,
+            ping: None,
+            waiting_for_pong: false,
+            favorite: false,
+            saved_id: None,
+            validity: Validity::VALID,
+        };
+
+        if server.name.is_empty() {
+            server.name = server.host();
+        }
+
+        if !is_valid_ip(&server.ip) {
+            server.validity.insert(Validity::INVALID_ADDR);
+        }
+        if !is_valid_port(server.port) {
+            server.validity.insert(Validity::INVALID_PORT);
+        }
+
+        Ok(server)
+    }
+}
+
+impl ServerData {
+    pub fn mode(&self) -> Mode {
+        if self.pvp_enabled {
+            match self.kind {
+                Kind::Conflict => Mode::PVEC,
+                Kind::Other => Mode::PVP,
+            }
+        } else {
+            Mode::PVE
+        }
     }
 
     pub fn is_official(&self) -> bool {

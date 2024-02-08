@@ -7,13 +7,9 @@ use slog::{debug, info, warn, Logger};
 
 use crate::game::{Branch, Game};
 use crate::net::http_client_builder;
-use crate::servers::{DeserializationContext, Server};
+use crate::servers::Server;
 
-pub async fn fetch_server_list<'dc>(
-    logger: Logger,
-    game: &Game,
-    ctx: DeserializationContext<'dc>,
-) -> anyhow::Result<Vec<Server>> {
+pub async fn fetch_server_list<'dc>(logger: Logger, game: &Game) -> anyhow::Result<Vec<Server>> {
     let url = directory_url(game.branch());
 
     debug!(logger, "Fetching server list");
@@ -42,7 +38,7 @@ pub async fn fetch_server_list<'dc>(
     let servers = try_join_all(
         responses
             .into_iter()
-            .map(|response| parse_servers(&logger, response, &ctx)),
+            .map(|response| parse_servers(&logger, response)),
     )
     .await?
     .into_iter()
@@ -85,11 +81,7 @@ fn make_client(game: &Game) -> Result<Client> {
         .build()
 }
 
-async fn parse_servers<'dc>(
-    logger: &Logger,
-    response: Response,
-    ctx: &'dc DeserializationContext<'dc>,
-) -> anyhow::Result<Vec<Server>> {
+async fn parse_servers<'dc>(logger: &Logger, response: Response) -> anyhow::Result<Vec<Server>> {
     let json = response.json::<serde_json::Value>().await?;
     let json = json
         .as_object()
@@ -101,7 +93,7 @@ async fn parse_servers<'dc>(
 
     let mut result = Vec::with_capacity(json.len());
     for server in json {
-        match Server::deserialize(server, ctx) {
+        match <Server as Deserialize>::deserialize(server) {
             Ok(server) => result.push(server),
             Err(err) => warn!(logger, "Error parsing server"; "error" => %err, "server" => %server),
         }

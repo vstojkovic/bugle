@@ -86,8 +86,7 @@ impl RowOrder<Server> for SortOrder {
         };
         let tie_breaker = cmp_values!(self.criteria.ascending, id);
         Box::new(move |lhs: &Server, rhs: &Server| {
-            rhs.favorite
-                .cmp(&lhs.favorite)
+            lhs.preference(&rhs)
                 .then_with(|| cmp(lhs, rhs).then_with(|| tie_breaker(lhs, rhs)))
         })
     }

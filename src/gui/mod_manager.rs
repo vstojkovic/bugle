@@ -200,7 +200,7 @@ impl ModManager {
             .cell()
             .unwrap()
             .wrap(Button::default())
-            .with_label("@floppy")
+            .with_label("@floppy_line")
             .with_tooltip("Export the mod list into a file");
         button_grid.row().add();
         let mut copy_modlist_button = button_grid

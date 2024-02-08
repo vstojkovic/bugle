@@ -46,7 +46,7 @@ use self::gui::{
     ServerBrowserUpdate, SinglePlayerAction, Update,
 };
 use self::logger::create_root_logger;
-use self::servers::Server;
+use self::servers::{SavedServers, Server};
 use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
 
 pub enum Message {
@@ -66,6 +66,7 @@ struct Launcher {
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
+    saved_servers: Option<SavedServers>,
     tx: app::Sender<Message>,
     rx: app::Receiver<Message>,
     mod_directory: Rc<dyn ModDirectory>,
@@ -89,6 +90,7 @@ impl Launcher {
         game: Game,
         config: Config,
         config_persister: Box<dyn ConfigPersister + Send + Sync>,
+        saved_servers: Option<SavedServers>,
     ) -> Rc<Self> {
         let game = Arc::new(game);
         let (tx, rx) = app::channel();
@@ -138,6 +140,7 @@ impl Launcher {
             game,
             config: RefCell::new(config),
             config_persister,
+            saved_servers,
             tx,
             rx,
             mod_directory,
@@ -172,7 +175,7 @@ impl Launcher {
             self.main_window
                 .handle_update(ServerBrowserUpdate::PrefetchDisabled.into());
         } else {
-            self.server_loader_worker.load_servers();
+            self.load_server_list();
         }
 
         self.check_mod_updates();
@@ -228,9 +231,28 @@ impl Launcher {
     fn process_message(&self, message: Message) -> Option<Update> {
         match message {
             Message::Update(update) => Some(update),
-            Message::ServerList(servers) => {
-                match &servers {
+            Message::ServerList(mut servers) => {
+                match servers.as_mut() {
                     Ok(servers) => {
+                        self.merge_server_list(servers);
+
+                        match self.game.load_favorites() {
+                            Err(err) => {
+                                warn!(self.logger, "Failed to load favorites"; "error" => %err);
+                            }
+                            Ok(favorites) => {
+                                for server in servers.iter_mut() {
+                                    server.check_favorites(&favorites);
+                                }
+                            }
+                        }
+
+                        let build_id = self.game.build_id();
+                        for server in servers.iter_mut() {
+                            server.validate_build(build_id);
+                            server.prepare_for_ping();
+                        }
+
                         let mut last_session = self.game.last_session();
                         if let Some(Session::Online(server_ref)) = &mut *last_session {
                             let addr = match server_ref {
@@ -246,7 +268,7 @@ impl Launcher {
                                 None => ServerRef::Unknown(addr),
                             };
                             debug!(
-                                &self.logger,
+                                self.logger,
                                 "Determined last session server";
                                 "server" => ?server_ref
                             );
@@ -257,9 +279,12 @@ impl Launcher {
                 self.waiting_for_server_load.set(false);
                 self.tx
                     .send(Message::Update(Update::HomeUpdate(HomeUpdate::LastSession)));
-                Some(Update::ServerBrowser(ServerBrowserUpdate::PopulateServers(
-                    servers,
-                )))
+                Some(Update::ServerBrowser(
+                    ServerBrowserUpdate::PopulateServers {
+                        payload: servers,
+                        done: true,
+                    },
+                ))
             }
             Message::Account(account) => {
                 if let Ok(account) = &account {
@@ -336,7 +361,7 @@ impl Launcher {
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
-                self.server_loader_worker.load_servers();
+                self.load_server_list();
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::JoinServer {
@@ -605,6 +630,28 @@ impl Launcher {
             self.show_offline_singleplayer_bug_warning();
         }
         self.launch_single_player(map_id, false)
+    }
+
+    fn load_server_list(&self) {
+        if let Some(servers) = self.saved_servers.as_ref() {
+            if !servers.is_empty() {
+                self.main_window.handle_update(Update::ServerBrowser(
+                    ServerBrowserUpdate::PopulateServers {
+                        payload: Ok(servers.iter().cloned().collect()),
+                        done: false,
+                    },
+                ));
+            }
+        }
+        self.server_loader_worker.load_servers();
+    }
+
+    fn merge_server_list(&self, servers: &mut Vec<Server>) {
+        let saved_servers = match self.saved_servers.as_ref() {
+            Some(saved) => saved,
+            None => return,
+        };
+        servers.extend(saved_servers.iter().cloned());
     }
 
     fn check_auth_state(&self) -> AuthState {
@@ -1284,6 +1331,24 @@ async fn main() {
         }
     }
 
+    let saved_servers = match SavedServers::new() {
+        Ok(mut servers) => {
+            if let Err(err) = servers.load() {
+                warn!(
+                    root_logger,
+                    "Error loading the saved servers list";
+                    "path" => servers.path().display(),
+                    "error" => %err,
+                );
+            }
+            Some(servers)
+        }
+        Err(err) => {
+            warn!(root_logger, "Error opening the saved servers list"; "error" => %err);
+            None
+        }
+    };
+
     let launcher = Launcher::new(
         root_logger.clone(),
         if log_level_override.is_none() { Some(log_level) } else { None },
@@ -1293,6 +1358,7 @@ async fn main() {
         game,
         config,
         config_persister,
+        saved_servers,
     );
     launcher.run(disable_prefetch);
 

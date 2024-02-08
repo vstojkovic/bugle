@@ -223,6 +223,7 @@ dependencies = [
  "tokio",
  "ucs2",
  "urlencoding",
+ "uuid",
  "walkdir",
  "winapi",
 ]
@@ -2479,6 +2480,15 @@ name = "utf8-width"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5190c9442dcdaf0ddd50f37420417d219ae5261bbf5db120d0f9bab996c9cba1"
+
+[[package]]
+name = "uuid"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f00cc9702ca12d3c81455259621e676d0f7251cec66a21e98fe2e9a37db93b2a"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "vcpkg"

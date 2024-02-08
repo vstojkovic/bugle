@@ -48,6 +48,7 @@ tempfile = "3"
 tokio = { version = "1", features = ["full"] }
 ucs2 = "0.3.2"
 urlencoding = "2"
+uuid = { version = "1.7", features = ["serde"] }
 walkdir = "2"
 
 [target.'cfg(windows)'.dependencies]

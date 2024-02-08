@@ -58,7 +58,10 @@ pub enum ServerBrowserAction {
 
 pub enum ServerBrowserUpdate {
     PrefetchDisabled,
-    PopulateServers(Result<Vec<Server>>),
+    PopulateServers {
+        payload: Result<Vec<Server>>,
+        done: bool,
+    },
     UpdateServer(PingResponse),
     BatchUpdateServers(Vec<PingResponse>),
     RefreshDetails,
@@ -418,13 +421,20 @@ impl ServerBrowser {
                         .set(Some(ServerBrowserUpdate::PrefetchDisabled));
                 }
             }
-            ServerBrowserUpdate::PopulateServers(payload) => {
+            ServerBrowserUpdate::PopulateServers { payload, done } => {
                 if self.root.visible() {
-                    self.refreshing.set(false);
-                    self.loading_label.clone().hide();
-                    self.stats_group.clone().show();
+                    if done {
+                        self.refreshing.set(false);
+                        self.loading_label.clone().hide();
+                        self.stats_group.clone().show();
+                    }
                     match payload {
-                        Ok(all_servers) => self.populate_servers(all_servers),
+                        Ok(all_servers) => {
+                            self.populate_servers(all_servers);
+                            if done {
+                                self.ping_servers();
+                            }
+                        }
                         Err(err) => {
                             self.list_pane.clear_refreshing();
                             alert_error(ERR_LOADING_SERVERS, &err);
@@ -432,7 +442,7 @@ impl ServerBrowser {
                     }
                 } else {
                     self.pending_update
-                        .set(Some(ServerBrowserUpdate::PopulateServers(payload)));
+                        .set(Some(ServerBrowserUpdate::PopulateServers { payload, done }));
                 }
             }
             ServerBrowserUpdate::UpdateServer(response) => {
@@ -467,6 +477,11 @@ impl ServerBrowser {
             });
         }
 
+        let state = Rc::clone(&self.state);
+        self.list_pane.populate(state);
+    }
+
+    fn ping_servers(&self) {
         let ping_requests = {
             let state = self.state.borrow();
             let mut requests = Vec::with_capacity(state.source().len());
@@ -486,9 +501,6 @@ impl ServerBrowser {
 
             requests
         };
-
-        let state = Rc::clone(&self.state);
-        self.list_pane.populate(state);
 
         self.set_total_player_count(0);
 

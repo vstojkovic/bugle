@@ -22,7 +22,7 @@ impl FavoriteServer {
     pub fn from_server(server: &Server) -> Self {
         Self {
             name: Some(server.name.clone()),
-            ip: Some(*server.ip()),
+            ip: Some(server.ip),
             port: Some(server.port),
             id: Some(server.id.clone()),
         }
@@ -85,7 +85,7 @@ impl FavoriteServers {
     }
 
     pub fn contains(&self, server: &Server) -> bool {
-        self.by_addr.contains(&(*server.ip(), server.port)) || self.by_id.contains(&server.id)
+        self.by_addr.contains(&(server.ip, server.port)) || self.by_id.contains(&server.id)
     }
 }
 
