@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use bitflags::bitflags;
 use serde::de::{MapAccess, Visitor};
-use serde::Deserialize;
-use serde_repr::Deserialize_repr;
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
 use uuid::Uuid;
 
@@ -26,9 +27,10 @@ pub struct Server {
     pub favorite: bool,
     pub saved_id: Option<Uuid>,
     pub validity: Validity,
+    pub tombstone: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ServerData {
     #[serde(rename = "EXTERNAL_SERVER_UID")]
     pub id: String,
@@ -64,6 +66,7 @@ pub struct ServerData {
     pub reported_ip: IpAddr,
 
     #[serde(rename = "kdsObservedServerAddress")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_ip: Option<IpAddr>,
 
     #[serde(rename = "Port")]
@@ -76,12 +79,15 @@ pub struct ServerData {
     pub community: Community,
 
     #[serde(rename = "S17")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mods: Option<String>,
 
     #[serde(rename = "S20")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_ping: Option<u32>, // TODO: What's the default?
 
     #[serde(rename = "Sx")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_clan_size: Option<u16>, // TODO: What's the default?
 
     #[serde(rename = "Sz")]
@@ -190,6 +196,7 @@ impl<'de> Deserialize<'de> for Server {
             favorite: false,
             saved_id: None,
             validity: Validity::VALID,
+            tombstone: false,
         };
 
         if server.name.is_empty() {
@@ -204,6 +211,12 @@ impl<'de> Deserialize<'de> for Server {
         }
 
         Ok(server)
+    }
+}
+
+impl Serialize for Server {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.data.serialize(serializer)
     }
 }
 
@@ -233,6 +246,7 @@ impl ServerData {
     Copy,
     Debug,
     Deserialize_repr,
+    Serialize_repr,
     AsRefStr,
     EnumIter,
     EnumString,
@@ -254,14 +268,14 @@ pub enum Region {
     Japan,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize_repr, Serialize_repr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Ownership {
     Private,
     Official,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Deserialize_repr, Serialize_repr, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Community {
     Unspecified,
@@ -272,7 +286,7 @@ pub enum Community {
     Experimental,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize_repr, Serialize_repr, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Kind {
     Conflict = 1,
@@ -306,7 +320,7 @@ impl Validity {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct Multiplier(f64);
 
@@ -322,7 +336,7 @@ impl Multiplier {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DaylightSettings {
     #[serde(rename = "Sb", default)]
     pub day_cycle_speed_mult: Multiplier,
@@ -334,7 +348,7 @@ pub struct DaylightSettings {
     pub use_catch_up_time: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SurvivalSettings {
     #[serde(rename = "Sj", default)]
     pub stamina_cost_mult: Multiplier,
@@ -361,12 +375,13 @@ pub struct SurvivalSettings {
     pub offline_chars_in_world: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CombatSettings {
     #[serde(rename = "S6", default)]
     pub durability_mult: Multiplier,
 
     #[serde(rename = "So")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     thrall_wakeup_time_secs: Option<f64>,
 }
 
@@ -376,7 +391,7 @@ impl CombatSettings {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct HarvestingSettings {
     #[serde(rename = "Sl")]
     pub harvest_amount_mult: Multiplier,
@@ -388,7 +403,7 @@ pub struct HarvestingSettings {
     pub rsrc_respawn_speed_mult: Multiplier,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CraftingSettings {
     #[serde(rename = "S8")]
     pub crafting_time_mult: Multiplier,
@@ -397,7 +412,8 @@ pub struct CraftingSettings {
     pub thrall_crafting_time_mult: Multiplier,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize_repr)]
+#[repr(u8)]
 pub enum DropOnDeath {
     Nothing,
     All,
@@ -567,6 +583,19 @@ impl<'de> Deserialize<'de> for RaidHours {
         }
 
         deserializer.deserialize_map(MapVisitor)
+    }
+}
+
+impl Serialize for RaidHours {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.hours.len() * 3))?;
+        for (day, (RaidTime(start), RaidTime(end))) in self.hours.iter() {
+            let offset = *day as isize;
+            map.serialize_entry(&format!("S{}", 92 + offset), start)?;
+            map.serialize_entry(&format!("S{}", 99 + offset), end)?;
+            map.serialize_entry(&format!("S{}", 106 + offset), &true)?;
+        }
+        map.end()
     }
 }
 

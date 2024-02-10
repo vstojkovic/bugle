@@ -41,6 +41,7 @@ impl LauncherWindow {
         mod_resolver: Rc<dyn ModDirectory>,
         log_level_overridden: bool,
         can_switch_branch: bool,
+        can_save_servers: bool,
     ) -> Self {
         let on_action: Rc<RefCell<Box<dyn Handler<Action>>>> =
             Rc::new(RefCell::new(Box::new(|_| {
@@ -87,6 +88,7 @@ impl LauncherWindow {
                 Arc::clone(game.maps()),
                 &config.server_browser,
                 mod_resolver,
+                can_save_servers,
                 move |browser_action| on_action.borrow()(Action::ServerBrowser(browser_action)),
             )
         };

@@ -54,6 +54,10 @@ pub enum ServerBrowserAction {
     PingServers(Vec<PingRequest>),
     UpdateFavorites(Vec<FavoriteServer>),
     UpdateConfig(ServerBrowserConfig),
+    ToggleSavedServer {
+        server: Server,
+        idx: usize,
+    },
 }
 
 pub enum ServerBrowserUpdate {
@@ -62,8 +66,12 @@ pub enum ServerBrowserUpdate {
         payload: Result<Vec<Server>>,
         done: bool,
     },
-    UpdateServer(PingResponse),
-    BatchUpdateServers(Vec<PingResponse>),
+    ProcessPong(PingResponse),
+    BatchProcessPongs(Vec<PingResponse>),
+    UpdateServer {
+        idx: usize,
+        server: Server,
+    },
     RefreshDetails,
 }
 
@@ -73,12 +81,12 @@ impl ServerBrowserUpdate {
         other: ServerBrowserUpdate,
     ) -> std::result::Result<Self, (Self, Self)> {
         match (self, other) {
-            (Self::BatchUpdateServers(mut consolidated), Self::UpdateServer(response)) => {
+            (Self::BatchProcessPongs(mut consolidated), Self::ProcessPong(response)) => {
                 consolidated.push(response);
-                Ok(Self::BatchUpdateServers(consolidated))
+                Ok(Self::BatchProcessPongs(consolidated))
             }
-            (Self::UpdateServer(first), Self::UpdateServer(second)) => {
-                Ok(Self::BatchUpdateServers(vec![first, second]))
+            (Self::ProcessPong(first), Self::ProcessPong(second)) => {
+                Ok(Self::BatchProcessPongs(vec![first, second]))
             }
             (this, other) => Err((this, other)),
         }
@@ -115,6 +123,7 @@ impl ServerBrowser {
         maps: Arc<Maps>,
         config: &ServerBrowserConfig,
         mod_resolver: Rc<dyn ModDirectory>,
+        can_save_servers: bool,
         on_action: impl Handler<ServerBrowserAction> + 'static,
     ) -> Rc<Self> {
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
@@ -211,7 +220,7 @@ impl ServerBrowser {
             .add(tiles);
 
         grid.row().add();
-        let actions_pane = ActionsPane::new(config.scroll_lock);
+        let actions_pane = ActionsPane::new(config.scroll_lock, can_save_servers);
         grid.cell().unwrap().add(actions_pane.element());
 
         let grid = grid.end();
@@ -333,8 +342,28 @@ impl ServerBrowser {
                                 }
                             }
                         }
+                        Action::ToggleSaved => {
+                            if let Some(server_idx) = browser.list_pane.selected_index() {
+                                let state = browser.state.borrow();
+                                let src_idx = state.to_source_index(server_idx);
+                                let server = &state[server_idx];
+                                let action = ServerBrowserAction::ToggleSavedServer {
+                                    server: server.clone(),
+                                    idx: src_idx,
+                                };
+                                if let Err(err) = (browser.on_action)(action) {
+                                    error!(
+                                        browser.logger,
+                                        "Error updating saved servers";
+                                        "error" => %err,
+                                    );
+                                    alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
+                                }
+                            }
+                        }
                         Action::ToggleFavorite => {
                             if let Some(server_idx) = browser.list_pane.selected_index() {
+                                // TODO: Only update if action was performed without error
                                 let src_idx = browser.state.borrow().to_source_index(server_idx);
                                 browser.update_servers(
                                     1,
@@ -445,11 +474,23 @@ impl ServerBrowser {
                         .set(Some(ServerBrowserUpdate::PopulateServers { payload, done }));
                 }
             }
-            ServerBrowserUpdate::UpdateServer(response) => {
+            ServerBrowserUpdate::ProcessPong(response) => {
                 self.update_pinged_servers(&[response]);
             }
-            ServerBrowserUpdate::BatchUpdateServers(responses) => {
+            ServerBrowserUpdate::BatchProcessPongs(responses) => {
                 self.update_pinged_servers(&responses);
+            }
+            ServerBrowserUpdate::UpdateServer { idx, server } => {
+                self.update_servers(
+                    1,
+                    move |all_servers, updated_indices, filter, _sort_criteria| {
+                        let matched_before = filter.matches(&all_servers[idx]);
+                        let matches_after = filter.matches(&server);
+                        all_servers[idx] = server;
+                        updated_indices.push(idx);
+                        Reindex::Order.filter_if(matched_before != matches_after)
+                    },
+                );
             }
             ServerBrowserUpdate::RefreshDetails => {
                 if self.root.visible() {
@@ -526,7 +567,7 @@ impl ServerBrowser {
                         None => continue,
                     };
                     updated_indices.push(update.server_idx);
-                    if Self::update_server(server, update, filter, &mut total_players) {
+                    if Self::update_pinged_server(server, update, filter, &mut total_players) {
                         reindex = Reindex::Filter;
                     }
                 }
@@ -573,7 +614,7 @@ impl ServerBrowser {
         };
     }
 
-    fn update_server(
+    fn update_pinged_server(
         server: &mut Server,
         update: &PingResponse,
         filter: &Filter,
@@ -669,6 +710,7 @@ const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
 const ERR_PINGING_SERVERS: &str = "Error while pinging servers.";
 const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
 const ERR_UPDATING_FAVORITES: &str = "Error while updating favorites.";
+const ERR_UPDATING_SAVED_SERVERS: &str = "Error while updating saved servers.";
 
 fn mode_name(mode: Mode) -> &'static str {
     match mode {

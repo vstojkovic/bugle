@@ -92,7 +92,7 @@ impl ServerLoaderWorker {
                     return;
                 }
                 self.tx.send(Message::Update(Update::ServerBrowser(
-                    ServerBrowserUpdate::UpdateServer(response),
+                    ServerBrowserUpdate::ProcessPong(response),
                 )));
             },
         )?)

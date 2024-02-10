@@ -13,6 +13,7 @@ use crate::servers::Server;
 pub enum Action {
     DirectConnect,
     Refresh,
+    ToggleSaved,
     ToggleFavorite,
     Ping,
     Join,
@@ -23,6 +24,7 @@ pub(super) struct ActionsPane {
     grid: Grid,
     direct_conn_button: Button,
     refresh_button: Button,
+    toggle_saved_button: Option<Button>,
     toggle_favorite_button: Button,
     ping_button: Button,
     join_button: Button,
@@ -30,7 +32,7 @@ pub(super) struct ActionsPane {
 }
 
 impl ActionsPane {
-    pub fn new(scroll_lock: bool) -> Rc<Self> {
+    pub fn new(scroll_lock: bool, can_save_servers: bool) -> Rc<Self> {
         let mut grid = Grid::builder_with_factory(wrapper_factory())
             .with_col_spacing(10)
             .with_row_spacing(10);
@@ -63,6 +65,15 @@ impl ActionsPane {
         scroll_lock_check.set_checked(scroll_lock);
 
         grid.col().add();
+        let mut toggle_saved_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Unsave")
+            .with_tooltip("Toggle whether the selected server is in your saved servers");
+        toggle_saved_button.deactivate();
+        grid.col().add();
+
         let mut toggle_favorite_button = grid
             .cell()
             .unwrap()
@@ -70,7 +81,6 @@ impl ActionsPane {
             .with_label("Unfavorite")
             .with_tooltip("Toggle whether the selected server is in your favorites");
         toggle_favorite_button.deactivate();
-        toggle_favorite_button.set_label("Favorite");
 
         grid.col().add();
         let mut ping_button = grid
@@ -95,10 +105,27 @@ impl ActionsPane {
 
         let grid = grid.end();
 
+        {
+            let mut first_show = true;
+            let mut toggle_saved_button = toggle_saved_button.clone();
+            let mut toggle_favorite_button = toggle_favorite_button.clone();
+            grid.group().handle(move |_, event| {
+                if first_show && event == fltk::enums::Event::Show {
+                    toggle_saved_button.set_label("Save");
+                    toggle_favorite_button.set_label("Favorite");
+                    first_show = false;
+                }
+                false
+            });
+        }
+
+        let toggle_saved_button = if can_save_servers { Some(toggle_saved_button) } else { None };
+
         Rc::new(Self {
             grid,
             direct_conn_button,
             refresh_button,
+            toggle_saved_button,
             toggle_favorite_button,
             ping_button,
             join_button,
@@ -113,20 +140,32 @@ impl ActionsPane {
     }
 
     pub fn server_selected(&self, server: Option<&Server>) {
+        let toggle_saved_button = self.toggle_saved_button.clone();
         let mut toggle_favorite_button = self.toggle_favorite_button.clone();
         let mut ping_button = self.ping_button.clone();
         let mut join_button = self.join_button.clone();
 
         if let Some(server) = server {
+            if let Some(mut button) = toggle_saved_button {
+                button.activate();
+                button.set_label(if server.is_saved() { "Unsave" } else { "Save" });
+            }
+
             toggle_favorite_button.activate();
             toggle_favorite_button.set_label(if server.favorite {
                 "Unfavorite"
             } else {
                 "Favorite"
             });
+
             ping_button.set_activated(server.is_valid());
             join_button.set_activated(server.is_valid());
         } else {
+            if let Some(mut button) = toggle_saved_button {
+                button.set_label("Save");
+                button.deactivate();
+            }
+            toggle_favorite_button.set_label("Favorite");
             toggle_favorite_button.deactivate();
             ping_button.deactivate();
             join_button.deactivate();
@@ -144,6 +183,11 @@ impl ActionsPane {
             let mut refresh_button = self.refresh_button.clone();
             let on_action = Rc::clone(&on_action);
             refresh_button.set_callback(move |_| on_action(Action::Refresh));
+        }
+        if let Some(button) = self.toggle_saved_button.as_ref() {
+            let mut toggle_saved_button = button.clone();
+            let on_action = Rc::clone(&on_action);
+            toggle_saved_button.set_callback(move |_| on_action(Action::ToggleSaved));
         }
         {
             let mut toggle_favorite_button = self.toggle_favorite_button.clone();

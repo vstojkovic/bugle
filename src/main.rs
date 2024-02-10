@@ -66,7 +66,7 @@ struct Launcher {
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
-    saved_servers: Option<SavedServers>,
+    saved_servers: Option<RefCell<SavedServers>>,
     tx: app::Sender<Message>,
     rx: app::Receiver<Message>,
     mod_directory: Rc<dyn ModDirectory>,
@@ -110,6 +110,7 @@ impl Launcher {
             Rc::clone(&mod_directory),
             log_level.is_none(),
             can_switch_branch,
+            saved_servers.is_some(),
         );
 
         let (cached_users, cached_users_persister) = match game.load_cached_users() {
@@ -140,7 +141,7 @@ impl Launcher {
             game,
             config: RefCell::new(config),
             config_persister,
-            saved_servers,
+            saved_servers: saved_servers.map(RefCell::new),
             tx,
             rx,
             mod_directory,
@@ -381,6 +382,13 @@ impl Launcher {
             Action::ServerBrowser(ServerBrowserAction::UpdateConfig(sb_cfg)) => {
                 self.update_config(|config| config.server_browser = sb_cfg);
                 Ok(())
+            }
+            Action::ServerBrowser(ServerBrowserAction::ToggleSavedServer { server, idx }) => {
+                if server.is_saved() {
+                    self.unsave_server(server, idx)
+                } else {
+                    self.save_server(server, idx)
+                }
             }
             Action::SinglePlayer(SinglePlayerAction::ListSavedGames) => {
                 Arc::clone(&self.saved_games_worker).list_games()
@@ -634,6 +642,7 @@ impl Launcher {
 
     fn load_server_list(&self) {
         if let Some(servers) = self.saved_servers.as_ref() {
+            let servers = servers.borrow();
             if !servers.is_empty() {
                 self.main_window.handle_update(Update::ServerBrowser(
                     ServerBrowserUpdate::PopulateServers {
@@ -651,7 +660,33 @@ impl Launcher {
             Some(saved) => saved,
             None => return,
         };
-        servers.extend(saved_servers.iter().cloned());
+        servers.extend(saved_servers.borrow().iter().cloned());
+    }
+
+    fn save_server(&self, server: Server, idx: usize) -> Result<()> {
+        let servers = self.saved_servers.as_ref().unwrap();
+        let mut servers = servers.borrow_mut();
+        let id = servers.add(server);
+        servers.save()?;
+        self.tx.send(Message::Update(Update::ServerBrowser(
+            ServerBrowserUpdate::UpdateServer {
+                idx,
+                server: servers[id].clone(),
+            },
+        )));
+        Ok(())
+    }
+
+    fn unsave_server(&self, mut server: Server, idx: usize) -> Result<()> {
+        let servers = self.saved_servers.as_ref().unwrap();
+        let mut servers = servers.borrow_mut();
+        servers.remove(server.saved_id.unwrap());
+        servers.save()?;
+        server.saved_id = None;
+        self.tx.send(Message::Update(Update::ServerBrowser(
+            ServerBrowserUpdate::UpdateServer { idx, server },
+        )));
+        Ok(())
     }
 
     fn check_auth_state(&self) -> AuthState {
