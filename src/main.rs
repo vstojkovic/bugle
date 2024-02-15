@@ -16,7 +16,9 @@ use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::prelude::WindowExt;
 use regex::Regex;
+use servers::Confidence;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
+use uuid::Uuid;
 
 mod auth;
 mod battleye;
@@ -30,6 +32,8 @@ mod parser_utils;
 mod servers;
 mod util;
 mod workers;
+
+use crate::servers::Similarity;
 
 use self::auth::{Account, AuthState, Capability, PlatformUser};
 use self::config::ModMismatchChecks;
@@ -235,7 +239,7 @@ impl Launcher {
             Message::ServerList(mut servers) => {
                 match servers.as_mut() {
                     Ok(servers) => {
-                        self.merge_server_list(servers);
+                        self.merge_server_list(servers, Confidence::High);
 
                         match self.game.load_favorites() {
                             Err(err) => {
@@ -655,12 +659,76 @@ impl Launcher {
         self.server_loader_worker.load_servers();
     }
 
-    fn merge_server_list(&self, servers: &mut Vec<Server>) {
+    fn merge_server_list(&self, servers: &mut Vec<Server>, min_confidence: Confidence) {
+        struct MergeCandidate {
+            list_idx: usize,
+            saved_id: Uuid,
+            similarity: Similarity,
+        }
+
         let saved_servers = match self.saved_servers.as_ref() {
             Some(saved) => saved,
             None => return,
         };
-        servers.extend(saved_servers.borrow().iter().cloned());
+        let mut saved_servers = saved_servers.borrow_mut();
+
+        debug!(
+            self.logger,
+            "Merging server lists";
+            "num_listed" => servers.len(),
+            "num_saved" => saved_servers.len(),
+        );
+
+        let mut merge_candidates = Vec::new();
+        let mut matches = HashSet::new();
+        for (list_idx, list_server) in servers.iter().enumerate() {
+            matches.extend(saved_servers.by_id(&list_server.id));
+            matches.extend(saved_servers.by_name(&list_server.name));
+            matches.extend(saved_servers.by_addr(list_server.ip, list_server.port));
+            for saved_id in matches.drain() {
+                let score = saved_servers[saved_id].similarity(list_server);
+                merge_candidates.push(MergeCandidate {
+                    list_idx,
+                    saved_id,
+                    similarity: score,
+                });
+            }
+        }
+
+        merge_candidates.sort_by(|lhs, rhs| rhs.similarity.cmp(&lhs.similarity));
+        let mut tombstones = Vec::new();
+        for candidate in merge_candidates {
+            if !candidate.similarity.satisfies(min_confidence) {
+                break;
+            }
+            let list_server = &mut servers[candidate.list_idx];
+            let saved_server = &mut saved_servers[candidate.saved_id];
+            if list_server.tombstone || saved_server.merged {
+                continue;
+            }
+            trace!(
+                self.logger,
+                "Merging servers";
+                "listed" => ?list_server,
+                "saved" => ?saved_server,
+                "similarity" => ?candidate.similarity,
+            );
+            saved_server.merge_from(list_server);
+            tombstones.push(candidate.list_idx);
+        }
+
+        if !tombstones.is_empty() {
+            if let Err(err) = saved_servers.save() {
+                warn!(self.logger, "Error saving merged servers"; "error" => %err);
+            }
+        }
+
+        tombstones.sort();
+        for tombstone_idx in tombstones.into_iter().rev() {
+            servers.swap_remove(tombstone_idx);
+        }
+
+        servers.extend(saved_servers.iter().cloned());
     }
 
     fn save_server(&self, server: Server, idx: usize) -> Result<()> {

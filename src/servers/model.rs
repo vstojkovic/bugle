@@ -27,6 +27,7 @@ pub struct Server {
     pub favorite: bool,
     pub saved_id: Option<Uuid>,
     pub validity: Validity,
+    pub merged: bool,
     pub tombstone: bool,
 }
 
@@ -174,6 +175,31 @@ impl Server {
             ord @ _ => ord,
         }
     }
+
+    pub fn similarity(&self, rhs: &Self) -> Similarity {
+        let mut score = 0;
+        if self.id == rhs.id {
+            score += 6;
+        }
+        if self.name == rhs.name {
+            score += 5;
+        }
+        if (self.ip == rhs.ip) && (self.port == rhs.port) {
+            score += 3;
+        }
+        if self.map == rhs.map {
+            score += 2;
+        }
+        Similarity(score)
+    }
+
+    pub fn merge_from(&mut self, source: &mut Self) {
+        let saved_id = self.saved_id;
+        self.clone_from(source);
+        self.saved_id = saved_id;
+        self.merged = true;
+        source.tombstone = true;
+    }
 }
 
 impl<'de> Deserialize<'de> for Server {
@@ -196,6 +222,7 @@ impl<'de> Deserialize<'de> for Server {
             favorite: false,
             saved_id: None,
             validity: Validity::VALID,
+            merged: false,
             tombstone: false,
         };
 
@@ -218,6 +245,23 @@ impl Serialize for Server {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.data.serialize(serializer)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Similarity(isize);
+
+impl Similarity {
+    pub fn satisfies(&self, confidence: Confidence) -> bool {
+        self.0 >= (confidence as isize)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(isize)]
+pub enum Confidence {
+    Low = 6,
+    High = 10,
+    Full = 16,
 }
 
 impl ServerData {

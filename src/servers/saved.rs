@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::ops::Index;
+use std::net::IpAddr;
+use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -15,6 +16,9 @@ use super::Server;
 pub struct SavedServers {
     path: PathBuf,
     servers: HashMap<Uuid, Server>,
+    by_id: HashMap<String, HashSet<Uuid>>,
+    by_name: HashMap<String, HashSet<Uuid>>,
+    by_addr: HashMap<(IpAddr, u32), HashSet<Uuid>>,
 }
 
 impl SavedServers {
@@ -34,12 +38,29 @@ impl SavedServers {
 
     pub fn load(&mut self) -> Result<()> {
         let json = std::fs::read_to_string(&self.path)?;
-        let mut servers: HashMap<Uuid, Server> =
-            if json.is_empty() { HashMap::new() } else { serde_json::from_str(&json)? };
-        for (id, server) in servers.iter_mut() {
+        self.servers = if json.is_empty() { HashMap::new() } else { serde_json::from_str(&json)? };
+        self.by_name.clear();
+        self.by_addr.clear();
+        for (id, server) in self.servers.iter_mut() {
             server.saved_id = Some(*id);
+
+            let by_id = match self.by_id.get_mut(&server.id) {
+                Some(set) => set,
+                None => self.by_id.entry(server.id.clone()).or_default(),
+            };
+            by_id.insert(*id);
+
+            let by_name = match self.by_name.get_mut(&server.name) {
+                Some(set) => set,
+                None => self.by_name.entry(server.name.clone()).or_default(),
+            };
+            by_name.insert(*id);
+
+            self.by_addr
+                .entry((server.ip, server.port))
+                .or_default()
+                .insert(*id);
         }
-        self.servers = servers;
         Ok(())
     }
 
@@ -62,15 +83,48 @@ impl SavedServers {
     }
 
     pub fn remove(&mut self, id: Uuid) {
-        self.servers.remove(&id);
+        let server = match self.servers.remove(&id) {
+            Some(server) => server,
+            None => return,
+        };
+        self.by_id.get_mut(&server.id).unwrap().remove(&id);
+        self.by_name.get_mut(&server.name).unwrap().remove(&id);
+        self.by_addr
+            .get_mut(&(server.ip, server.port))
+            .unwrap()
+            .remove(&id);
     }
 
     pub fn is_empty(&self) -> bool {
         self.servers.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.servers.len()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Server> {
         self.servers.values()
+    }
+
+    pub fn get(&self, id: &Uuid) -> Option<&Server> {
+        self.servers.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: &Uuid) -> Option<&mut Server> {
+        self.servers.get_mut(&id)
+    }
+
+    pub fn by_id(&self, id: &str) -> impl Iterator<Item = Uuid> + '_ {
+        self.by_id.get(id).into_iter().flatten().copied()
+    }
+
+    pub fn by_name(&self, name: &str) -> impl Iterator<Item = Uuid> + '_ {
+        self.by_name.get(name).into_iter().flatten().copied()
+    }
+
+    pub fn by_addr(&self, ip: IpAddr, port: u32) -> impl Iterator<Item = Uuid> + '_ {
+        self.by_addr.get(&(ip, port)).into_iter().flatten().copied()
     }
 
     fn for_current_exe() -> Result<Self> {
@@ -98,13 +152,22 @@ impl SavedServers {
         Ok(Self {
             path,
             servers: HashMap::new(),
+            by_id: HashMap::new(),
+            by_name: HashMap::new(),
+            by_addr: HashMap::new(),
         })
     }
 }
 
 impl Index<Uuid> for SavedServers {
     type Output = Server;
-    fn index(&self, index: Uuid) -> &Self::Output {
-        &self.servers[&index]
+    fn index(&self, id: Uuid) -> &Self::Output {
+        self.get(&id).unwrap()
+    }
+}
+
+impl IndexMut<Uuid> for SavedServers {
+    fn index_mut(&mut self, id: Uuid) -> &mut Self::Output {
+        self.get_mut(&id).unwrap()
     }
 }
