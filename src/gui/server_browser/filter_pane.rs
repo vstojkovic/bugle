@@ -13,6 +13,7 @@ use fltk_float::LayoutElement;
 use strum::IntoEnumIterator;
 
 use crate::game::Maps;
+use crate::gui::widgets::DropDownList;
 use crate::gui::{glyph, wrapper_factory};
 use crate::servers::{Mode, Region, TypeFilter};
 
@@ -29,13 +30,13 @@ pub(super) struct FilterPane {
     grid: Grid,
     name_input: Input,
     map_input: InputChoice,
-    type_input: InputChoice,
-    mode_input: InputChoice,
-    region_input: InputChoice,
-    battleye_input: InputChoice,
+    type_input: DropDownList,
+    mode_input: DropDownList,
+    region_input: DropDownList,
+    battleye_input: DropDownList,
     invalid_check: CheckButton,
     pwd_prot_check: CheckButton,
-    mods_input: InputChoice,
+    mods_input: DropDownList,
 }
 
 impl FilterPane {
@@ -72,25 +73,21 @@ impl FilterPane {
             .unwrap()
             .wrap(Frame::default())
             .with_label("Type:");
-        let mut type_input = grid.cell().unwrap().wrap(InputChoice::default());
-        type_input.input().set_readonly(true);
-        type_input.input().clear_visible_focus();
+        let mut type_input = grid.cell().unwrap().wrap(DropDownList::default());
         for type_filter in TypeFilter::iter() {
             type_input.add(type_name(type_filter).as_ref());
         }
-        type_input.set_value_index(0);
+        type_input.set_value(0);
         grid.cell()
             .unwrap()
             .wrap(Frame::default())
             .with_label("Mode:");
-        let mut mode_input = grid.cell().unwrap().wrap(InputChoice::default());
-        mode_input.input().set_readonly(true);
-        mode_input.input().clear_visible_focus();
+        let mut mode_input = grid.cell().unwrap().wrap(DropDownList::default());
         mode_input.add("All");
         for mode in Mode::iter() {
             mode_input.add(mode_name(mode));
         }
-        mode_input.set_value_index(0);
+        mode_input.set_value(0);
         let invalid_check = grid
             .cell()
             .unwrap()
@@ -102,36 +99,30 @@ impl FilterPane {
             .unwrap()
             .wrap(Frame::default())
             .with_label("Region:");
-        let mut region_input = grid.cell().unwrap().wrap(InputChoice::default());
-        region_input.input().set_readonly(true);
-        region_input.input().clear_visible_focus();
+        let mut region_input = grid.cell().unwrap().wrap(DropDownList::default());
         region_input.add("All");
         for region in Region::iter() {
             region_input.add(region_name(region));
         }
-        region_input.set_value_index(0);
+        region_input.set_value(0);
         grid.cell()
             .unwrap()
             .wrap(Frame::default())
             .with_label("Mods:");
-        let mut mods_input = grid.cell().unwrap().wrap(InputChoice::default());
-        mods_input.input().set_readonly(true);
-        mods_input.input().clear_visible_focus();
+        let mut mods_input = grid.cell().unwrap().wrap(DropDownList::default());
         mods_input.add("All");
         mods_input.add("Unmodded");
         mods_input.add(&format!("Modded {}", glyph::TOOLS));
-        mods_input.set_value_index(0);
+        mods_input.set_value(0);
         grid.cell()
             .unwrap()
             .wrap(Frame::default())
             .with_label("BattlEye:");
-        let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default());
-        battleye_input.input().set_readonly(true);
-        battleye_input.input().clear_visible_focus();
+        let mut battleye_input = grid.cell().unwrap().wrap(DropDownList::default());
         battleye_input.add("All");
         battleye_input.add(&format!("Required {}", glyph::BATTLEYE));
         battleye_input.add("Not Required");
-        battleye_input.set_value_index(0);
+        battleye_input.set_value(0);
         let pwd_prot_check = grid
             .cell()
             .unwrap()
@@ -162,24 +153,18 @@ impl FilterPane {
     fn populate(&self, filter: &Filter) {
         self.name_input.clone().set_value(filter.name());
         self.map_input.clone().set_value(filter.map());
-        self.type_input
-            .clone()
-            .set_value_index(filter.type_filter() as _);
-        self.mode_input
-            .clone()
-            .set_value_index(match filter.mode() {
-                Some(mode) => (mode as i32) + 1,
-                None => 0,
-            });
-        self.region_input
-            .clone()
-            .set_value_index(match filter.region() {
-                Some(region) => (region as i32) + 1,
-                None => 0,
-            });
+        self.type_input.clone().set_value(filter.type_filter() as _);
+        self.mode_input.clone().set_value(match filter.mode() {
+            Some(mode) => (mode as i32) + 1,
+            None => 0,
+        });
+        self.region_input.clone().set_value(match filter.region() {
+            Some(region) => (region as i32) + 1,
+            None => 0,
+        });
         self.battleye_input
             .clone()
-            .set_value_index(match filter.battleye_required() {
+            .set_value(match filter.battleye_required() {
                 None => 0,
                 Some(true) => 1,
                 Some(false) => 2,
@@ -190,13 +175,11 @@ impl FilterPane {
         self.pwd_prot_check
             .clone()
             .set_checked(filter.include_password_protected());
-        self.mods_input
-            .clone()
-            .set_value_index(match filter.mods() {
-                None => 0,
-                Some(false) => 1,
-                Some(true) => 2,
-            });
+        self.mods_input.clone().set_value(match filter.mods() {
+            None => 0,
+            Some(false) => 1,
+            Some(true) => 2,
+        });
     }
 
     fn set_callbacks(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
@@ -235,10 +218,9 @@ impl FilterPane {
         {
             let filter_holder = Rc::downgrade(&filter_holder);
             let mut type_input = self.type_input.clone();
-            type_input.set_trigger(CallbackTrigger::Changed);
             type_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    let repr = input.menu_button().value();
+                    let repr = input.value();
                     let type_filter = TypeFilter::from_repr(repr as _).unwrap();
                     filter_holder.mutate_filter(|filter| filter.set_type_filter(type_filter));
                     filter_holder.persist_filter();
@@ -248,11 +230,10 @@ impl FilterPane {
         {
             let filter_holder = Rc::downgrade(&filter_holder);
             let mut mode_input = self.mode_input.clone();
-            mode_input.set_trigger(CallbackTrigger::Changed);
             mode_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
                     let mode = {
-                        let repr = input.menu_button().value() - 1;
+                        let repr = input.value() - 1;
                         if repr < 0 {
                             None
                         } else {
@@ -267,11 +248,10 @@ impl FilterPane {
         {
             let filter_holder = Rc::downgrade(&filter_holder);
             let mut region_input = self.region_input.clone();
-            region_input.set_trigger(CallbackTrigger::Changed);
             region_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
                     let region = {
-                        let repr = input.menu_button().value() - 1;
+                        let repr = input.value() - 1;
                         if repr < 0 {
                             None
                         } else {
@@ -286,10 +266,9 @@ impl FilterPane {
         {
             let filter_holder = Rc::downgrade(&filter_holder);
             let mut battleye_input = self.battleye_input.clone();
-            battleye_input.set_trigger(CallbackTrigger::Changed);
             battleye_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    let required = match input.menu_button().value() {
+                    let required = match input.value() {
                         1 => Some(true),
                         2 => Some(false),
                         _ => None,
@@ -327,10 +306,9 @@ impl FilterPane {
         {
             let filter_holder = Rc::downgrade(&filter_holder);
             let mut mods_input = self.mods_input.clone();
-            mods_input.set_trigger(CallbackTrigger::Changed);
             mods_input.set_callback(move |input| {
                 if let Some(filter_holder) = filter_holder.upgrade() {
-                    let mods = match input.menu_button().value() {
+                    let mods = match input.value() {
                         1 => Some(false),
                         2 => Some(true),
                         _ => None,

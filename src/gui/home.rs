@@ -7,7 +7,6 @@ use fltk::enums::{Align, CallbackTrigger, Color, Event, FrameType};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::input::Input;
-use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk_float::button::ButtonElement;
 use fltk_float::grid::Grid;
@@ -22,7 +21,7 @@ use crate::workers::TaskState;
 use super::assets::Assets;
 use super::prelude::*;
 use super::theme::Theme;
-use super::widgets::ReadOnlyText;
+use super::widgets::{DropDownList, ReadOnlyText};
 use super::{alert_error, wrapper_factory, Handler};
 
 pub enum HomeAction {
@@ -200,7 +199,10 @@ impl Home {
         grid.cell()
             .unwrap()
             .wrap(create_info_label("Enable BattlEye:"));
-        let mut battleye_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        let mut battleye_input = grid.cell().unwrap().wrap(DropDownList::default_fill());
+        battleye_input.add("Always");
+        battleye_input.add("Never");
+        battleye_input.add("Only when required");
         grid.cell()
             .unwrap()
             .wrap(create_info_label("Use all CPU cores:"));
@@ -223,9 +225,18 @@ impl Home {
         grid.cell()
             .unwrap()
             .wrap(create_info_label("BUGLE Logging Level:"));
-        let mut log_level_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
+        let mut log_level_input = grid.cell().unwrap().wrap(DropDownList::default_fill());
+        log_level_input.add("Off");
+        log_level_input.add("Trace");
+        log_level_input.add("Debug");
+        log_level_input.add("Info");
+        log_level_input.add("Warning");
+        log_level_input.add("Error");
+        log_level_input.add("Critical");
         grid.cell().unwrap().wrap(create_info_label("Theme:"));
-        let mut theme_input = grid.span(1, 2).unwrap().wrap(InputChoice::default_fill());
+        let mut theme_input = grid.span(1, 2).unwrap().wrap(DropDownList::default_fill());
+        theme_input.add("Light");
+        theme_input.add("Dark");
 
         grid.row().add();
         grid.cell()
@@ -300,21 +311,15 @@ impl Home {
         refresh_platform_button.deactivate();
         refresh_fls_button.deactivate();
 
-        battleye_input.input().set_readonly(true);
-        battleye_input.input().clear_visible_focus();
-        battleye_input.add("Always");
-        battleye_input.add("Never");
-        battleye_input.add("Only when required");
-        battleye_input.set_value_index(match config.use_battleye {
+        battleye_input.set_value(match config.use_battleye {
             BattlEyeUsage::Always(true) => 0,
             BattlEyeUsage::Always(false) => 1,
             BattlEyeUsage::Auto => 2,
         });
-        battleye_input.set_trigger(CallbackTrigger::Changed);
         battleye_input.set_callback({
             let on_action = Rc::clone(&on_action);
             move |input| {
-                let use_battleye = match input.menu_button().value() {
+                let use_battleye = match input.value() {
                     0 => BattlEyeUsage::Always(true),
                     1 => BattlEyeUsage::Always(false),
                     2 => BattlEyeUsage::Auto,
@@ -367,37 +372,24 @@ impl Home {
             }
         });
 
-        log_level_input.input().set_readonly(true);
-        log_level_input.input().clear_visible_focus();
-        log_level_input.add("Off");
-        log_level_input.add("Trace");
-        log_level_input.add("Debug");
-        log_level_input.add("Info");
-        log_level_input.add("Warning");
-        log_level_input.add("Error");
-        log_level_input.add("Critical");
-        log_level_input.set_value_index(log_level_to_index(&config.log_level));
+        log_level_input.set_value(log_level_to_index(&config.log_level));
         log_level_input.set_callback({
             let on_action = Rc::clone(&on_action);
             move |input| {
-                let log_level = index_to_log_level(input.menu_button().value());
+                let log_level = index_to_log_level(input.value());
                 on_action(HomeAction::ConfigureLogLevel(log_level)).unwrap();
             }
         });
         log_level_input.set_activated(!log_level_overridden);
 
-        theme_input.input().set_readonly(true);
-        theme_input.input().clear_visible_focus();
-        theme_input.add("Light");
-        theme_input.add("Dark");
-        theme_input.set_value_index(match config.theme {
+        theme_input.set_value(match config.theme {
             ThemeChoice::Light => 0,
             ThemeChoice::Dark => 1,
         });
         theme_input.set_callback({
             let on_action = Rc::clone(&on_action);
             move |input| {
-                let theme = match input.menu_button().value() {
+                let theme = match input.value() {
                     0 => ThemeChoice::Light,
                     1 => ThemeChoice::Dark,
                     _ => unreachable!(),

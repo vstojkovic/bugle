@@ -87,10 +87,11 @@ pub fn prompt_confirm(prompt: &str) -> bool {
 
 thread_local! {
     static WRAPPER_FACTORY: Rc<WrapperFactory> = {
-        use self::widgets::{ReadOnlyText, ReadOnlyTextElement};
+        use self::widgets::{DropDownList, DropDownListElement, ReadOnlyText, ReadOnlyTextElement};
         let mut factory = WrapperFactory::new();
         factory.set_wrapper::<Button, ButtonElement<Button>>();
         factory.set_wrapper::<CheckButton, ButtonElement<CheckButton>>();
+        factory.set_wrapper::<DropDownList, DropDownListElement>();
         factory.set_wrapper::<Frame, FrameElement>();
         factory.set_wrapper::<Input, InputElement<Input>>();
         factory.set_wrapper::<InputChoice, InputChoiceElement>();
