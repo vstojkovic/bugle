@@ -1,3 +1,4 @@
+use fltk::button::Button;
 use fltk::enums::{Align, Color, FrameType};
 use fltk::frame::Frame;
 use fltk::group::Group;
@@ -14,8 +15,15 @@ use crate::gui::prelude::WidgetConvenienceExt;
 pub struct DropDownList {
     group: Group,
     text: Frame,
-    button: MenuButton,
+    menu: MenuButton,
+    button: Button,
 }
+
+// Explanation for posterity: why do we need a Button and a MenuButton? In FLTK, menus are arrays
+// of Fl_Menu_Item structs, dynamically allocated. In fltk-rs, MenuItem is currently an Arc or a Rc
+// (depending on configuration) to a wrapper around a *mut Fl_Menu_Item, and there is no way to
+// dynamically allocate Fl_Menu_Item array without leaking memory. FLTK menu widgets manage menu
+// items properly, so we use a hidden MenuButton to hold menu items, for now.
 
 pub struct DropDownListElement {
     widget: DropDownList,
@@ -25,30 +33,32 @@ impl DropDownList {
     pub fn default_fill() -> Self {
         let group = Group::default_fill();
         let text = Frame::default_fill();
-        let button = MenuButton::default();
+        let button = Button::default();
+        let menu = MenuButton::default();
         group.end();
         Self {
             group,
             text,
             button,
+            menu,
         }
         .init_children()
     }
 
     pub fn add(&mut self, option: &str) {
-        self.button.add_choice(option);
+        self.menu.add_choice(option);
     }
 
     pub fn choice(&self) -> Option<String> {
-        self.button.choice()
+        self.menu.choice()
     }
 
     pub fn value(&self) -> i32 {
-        self.button.value()
+        self.menu.value()
     }
 
     pub fn set_value(&mut self, value: i32) {
-        self.button.set_value(value);
+        self.menu.set_value(value);
         self.text.set_label(&self.choice().unwrap_or_default());
     }
 
@@ -56,8 +66,21 @@ impl DropDownList {
         self.button.set_callback({
             let mut this = self.clone();
             move |_| {
+                let menu = this.menu.menu().unwrap();
+                let picked = menu.pulldown(
+                    this.group.x(),
+                    this.group.y(),
+                    this.group.w(),
+                    this.group.h(),
+                    None,
+                    Some(&this.menu),
+                );
+                if picked.is_some() {
+                    this.menu.set_item(&picked.unwrap());
+                }
                 let text = this.choice().unwrap_or_default();
                 this.text.set_label(&text);
+                this.button.redraw();
                 cb(&mut this);
             }
         });
@@ -68,6 +91,10 @@ impl DropDownList {
         self.text.set_frame(FrameType::DownBox);
         self.text.set_color(Color::Background2);
         self.text.set_label_color(Color::Foreground);
+
+        self.button.set_label("@#-12>");
+
+        self.menu.hide();
 
         self.on_resize(
             self.group.x(),
@@ -103,12 +130,14 @@ impl Default for DropDownList {
     fn default() -> Self {
         let group = Group::default();
         let text = Frame::default();
-        let button = MenuButton::default();
+        let button = Button::default();
+        let menu = MenuButton::default();
         group.end();
         Self {
             group,
             text,
             button,
+            menu,
         }
         .init_children()
     }
@@ -147,9 +176,9 @@ impl LayoutElement for DropDownListElement {
         let frame_w = frame_dx + frame_dw;
         let frame_h = frame_dy + frame_dh;
 
-        let widest_option = (0..self.widget.button.size())
+        let widest_option = (0..self.widget.menu.size())
             .into_iter()
-            .map(|idx| self.widget.button.text(idx).unwrap_or_default())
+            .map(|idx| self.widget.menu.text(idx).unwrap_or_default())
             .max_by_key(|s| s.len())
             .unwrap_or_default();
         fltk::draw::set_font(self.widget.text.label_font(), self.widget.text.label_size());
