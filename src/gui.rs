@@ -117,7 +117,6 @@ fn is_table_nav_event() -> bool {
 }
 
 fn color_rgb(color: Color) -> u32 {
-    let bits = color.bits();
-    let rgbi = if bits > 255 { bits } else { unsafe { fltk_sys::fl::Fl_cmap(bits) } };
-    rgbi >> 8
+    let (r, g, b) = color.to_rgb();
+    ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }
