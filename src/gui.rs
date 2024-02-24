@@ -87,10 +87,11 @@ pub fn prompt_confirm(prompt: &str) -> bool {
 
 thread_local! {
     static WRAPPER_FACTORY: Rc<WrapperFactory> = {
-        use self::widgets::{ReadOnlyText, ReadOnlyTextElement};
+        use self::widgets::{DropDownList, DropDownListElement, ReadOnlyText, ReadOnlyTextElement};
         let mut factory = WrapperFactory::new();
         factory.set_wrapper::<Button, ButtonElement<Button>>();
         factory.set_wrapper::<CheckButton, ButtonElement<CheckButton>>();
+        factory.set_wrapper::<DropDownList, DropDownListElement>();
         factory.set_wrapper::<Frame, FrameElement>();
         factory.set_wrapper::<Input, InputElement<Input>>();
         factory.set_wrapper::<InputChoice, InputChoiceElement>();
@@ -116,7 +117,6 @@ fn is_table_nav_event() -> bool {
 }
 
 fn color_rgb(color: Color) -> u32 {
-    let bits = color.bits();
-    let rgbi = if bits > 255 { bits } else { unsafe { fltk_sys::fl::Fl_cmap(bits) } };
-    rgbi >> 8
+    let (r, g, b) = color.to_rgb();
+    ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
 }

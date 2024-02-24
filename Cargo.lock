@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "bugle"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "anyhow",
  "bbscope",
@@ -189,7 +189,6 @@ dependencies = [
  "flate2",
  "fltk",
  "fltk-float",
- "fltk-sys",
  "fltk-webview",
  "futures",
  "governor",
@@ -565,9 +564,9 @@ checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 
 [[package]]
 name = "fltk"
-version = "1.4.17"
+version = "1.4.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec753c280c9613be22fb95484c68f103bf77f3a7ddbedff8788e61e95cb5a07e"
+checksum = "59fa214b5ad440215f11c6099697c7118c63c08c140636b405d6a14712640491"
 dependencies = [
  "bitflags 2.4.2",
  "crossbeam-channel",
@@ -587,9 +586,9 @@ dependencies = [
 
 [[package]]
 name = "fltk-sys"
-version = "1.4.17"
+version = "1.4.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19a692af744b3c7d39c670c427786be2288467925b1b6c1d8fb7f3d3ce779b2a"
+checksum = "e0af8e28f3915d1362de406f05f5b917d5ce678e818ee403b32edc18fc25708b"
 dependencies = [
  "cmake",
 ]

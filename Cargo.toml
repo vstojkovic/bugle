@@ -1,6 +1,6 @@
 [package]
 name = "bugle"
-version = "1.3.0"
+version = "1.3.1"
 edition = "2021"
 
 [dependencies]
@@ -13,8 +13,7 @@ chrono = "0.4.23"
 crc32fast = "1"
 dlopen = "0.1.8"
 flate2 = "1"
-fltk = { version = "=1.4.17" } # use exact version until Color::from_rgbi is fixed
-fltk-sys = { version = "1.4.17" }
+fltk = { version = "1.4.25" } # use exact version until Color::from_rgbi is fixed
 fltk-float = "0.1.4"
 fltk-webview = "0.2.16"
 futures = "0.3"
