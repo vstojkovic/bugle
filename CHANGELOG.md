@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.3.1 (2024-02-24)
+
+Hotfix for a GUI bug.
+
+### Fixed
+
+- Drop down list widgets now render glyphs properly.
+
 ## 1.3.0 (2024-01-30)
 
 Mod manager QoL features and a few visual improvements.
