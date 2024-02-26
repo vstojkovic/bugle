@@ -85,11 +85,11 @@ pub struct ServerData {
 
     #[serde(rename = "S20")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_ping: Option<u32>, // TODO: What's the default?
+    pub max_ping: Option<u32>,
 
     #[serde(rename = "Sx")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_clan_size: Option<u16>, // TODO: What's the default?
+    pub max_clan_size: Option<u16>,
 
     #[serde(rename = "Sz")]
     pub xp_rate_mult: Multiplier,

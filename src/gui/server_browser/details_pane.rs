@@ -141,12 +141,8 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
     inspect_attr!("Map Name", |server| server.map.clone().into()),
     inspect_attr!("Mode", |server| mode_name(server.mode()).into()),
     inspect_attr!("Region", |server| region_name(server.region).into()),
-    inspect_attr!("Max Clan Size", |server| {
-        server
-            .max_clan_size
-            .map(|size| size.to_string())
-            .unwrap_or_default()
-            .into()
+    inspect_opt_attr!("Max Clan Size", |server| {
+        server.max_clan_size.map(|size| size.to_string().into())
     }),
     inspect_attr!("On Death", |server| {
         match server.survival.drop_items_on_death {
@@ -224,12 +220,8 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
     inspect_attr!("Community", |server| {
         community_name(server.community).into()
     }),
-    inspect_attr!("Max Ping", |server| {
-        server
-            .max_ping
-            .map(|ping| ping.to_string())
-            .unwrap_or_default()
-            .into()
+    inspect_opt_attr!("Max Ping", |server| {
+        server.max_ping.map(|ping| ping.to_string().into())
     }),
     InspectorCtx::inspect_mods,
     inspect_opt_attr!("Problems", problems_cell_value),
