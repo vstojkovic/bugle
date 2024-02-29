@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::net::IpAddr;
@@ -16,6 +17,11 @@ use super::Server;
 pub struct SavedServers {
     path: PathBuf,
     servers: HashMap<Uuid, Server>,
+    indexes: Indexes,
+}
+
+#[derive(Default)]
+struct Indexes {
     by_id: HashMap<String, HashSet<Uuid>>,
     by_name: HashMap<String, HashSet<Uuid>>,
     by_addr: HashMap<(IpAddr, u32), HashSet<Uuid>>,
@@ -39,28 +45,7 @@ impl SavedServers {
     pub fn load(&mut self) -> Result<()> {
         let json = std::fs::read_to_string(&self.path)?;
         self.servers = if json.is_empty() { HashMap::new() } else { serde_json::from_str(&json)? };
-        self.by_name.clear();
-        self.by_addr.clear();
-        for (id, server) in self.servers.iter_mut() {
-            server.saved_id = Some(*id);
-
-            let by_id = match self.by_id.get_mut(&server.id) {
-                Some(set) => set,
-                None => self.by_id.entry(server.id.clone()).or_default(),
-            };
-            by_id.insert(*id);
-
-            let by_name = match self.by_name.get_mut(&server.name) {
-                Some(set) => set,
-                None => self.by_name.entry(server.name.clone()).or_default(),
-            };
-            by_name.insert(*id);
-
-            self.by_addr
-                .entry((server.ip, server.port))
-                .or_default()
-                .insert(*id);
-        }
+        self.reindex();
         Ok(())
     }
 
@@ -78,7 +63,11 @@ impl SavedServers {
     pub fn add(&mut self, mut server: Server) -> Uuid {
         let id = Uuid::new_v4();
         server.saved_id = Some(id);
-        self.servers.insert(id, server);
+        let entry = match self.servers.entry(id) {
+            Entry::Vacant(entry) => entry,
+            _ => unreachable!(),
+        };
+        self.indexes.add(entry.insert(server));
         id
     }
 
@@ -87,12 +76,15 @@ impl SavedServers {
             Some(server) => server,
             None => return,
         };
-        self.by_id.get_mut(&server.id).unwrap().remove(&id);
-        self.by_name.get_mut(&server.name).unwrap().remove(&id);
-        self.by_addr
-            .get_mut(&(server.ip, server.port))
-            .unwrap()
-            .remove(&id);
+        self.indexes.remove(&server);
+    }
+
+    pub fn reindex(&mut self) {
+        self.indexes.clear();
+        for (id, server) in self.servers.iter_mut() {
+            server.saved_id = Some(*id);
+            self.indexes.add(server);
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -116,15 +108,25 @@ impl SavedServers {
     }
 
     pub fn by_id(&self, id: &str) -> impl Iterator<Item = Uuid> + '_ {
-        self.by_id.get(id).into_iter().flatten().copied()
+        self.indexes.by_id.get(id).into_iter().flatten().copied()
     }
 
     pub fn by_name(&self, name: &str) -> impl Iterator<Item = Uuid> + '_ {
-        self.by_name.get(name).into_iter().flatten().copied()
+        self.indexes
+            .by_name
+            .get(name)
+            .into_iter()
+            .flatten()
+            .copied()
     }
 
     pub fn by_addr(&self, ip: IpAddr, port: u32) -> impl Iterator<Item = Uuid> + '_ {
-        self.by_addr.get(&(ip, port)).into_iter().flatten().copied()
+        self.indexes
+            .by_addr
+            .get(&(ip, port))
+            .into_iter()
+            .flatten()
+            .copied()
     }
 
     fn for_current_exe() -> Result<Self> {
@@ -152,9 +154,7 @@ impl SavedServers {
         Ok(Self {
             path,
             servers: HashMap::new(),
-            by_id: HashMap::new(),
-            by_name: HashMap::new(),
-            by_addr: HashMap::new(),
+            indexes: Default::default(),
         })
     }
 }
@@ -169,5 +169,44 @@ impl Index<Uuid> for SavedServers {
 impl IndexMut<Uuid> for SavedServers {
     fn index_mut(&mut self, id: Uuid) -> &mut Self::Output {
         self.get_mut(&id).unwrap()
+    }
+}
+
+impl Indexes {
+    fn clear(&mut self) {
+        self.by_id.clear();
+        self.by_name.clear();
+        self.by_addr.clear();
+    }
+
+    fn add(&mut self, server: &Server) {
+        let id = server.saved_id.unwrap();
+
+        let by_id = match self.by_id.get_mut(&server.id) {
+            Some(set) => set,
+            None => self.by_id.entry(server.id.clone()).or_default(),
+        };
+        by_id.insert(id);
+
+        let by_name = match self.by_name.get_mut(&server.name) {
+            Some(set) => set,
+            None => self.by_name.entry(server.name.clone()).or_default(),
+        };
+        by_name.insert(id);
+
+        self.by_addr
+            .entry((server.ip, server.port))
+            .or_default()
+            .insert(id);
+    }
+
+    fn remove(&mut self, server: &Server) {
+        let id = server.saved_id.unwrap();
+        self.by_id.get_mut(&server.id).unwrap().remove(&id);
+        self.by_name.get_mut(&server.name).unwrap().remove(&id);
+        self.by_addr
+            .get_mut(&(server.ip, server.port))
+            .unwrap()
+            .remove(&id);
     }
 }

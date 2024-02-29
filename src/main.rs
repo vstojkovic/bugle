@@ -718,6 +718,7 @@ impl Launcher {
         }
 
         if !tombstones.is_empty() {
+            saved_servers.reindex();
             if let Err(err) = saved_servers.save() {
                 warn!(self.logger, "Error saving merged servers"; "error" => %err);
             }
