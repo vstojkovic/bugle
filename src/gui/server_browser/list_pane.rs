@@ -146,21 +146,22 @@ impl ListPane {
     }
 
     pub fn set_selected_index(&self, index: Option<usize>, override_scroll_lock: bool) {
-        {
+        let index_changed = {
             let mut selection = self.selection.borrow_mut();
-            if index == selection.index {
-                return;
+            let index_changed = index != selection.index;
+            if index_changed {
+                selection.index = index;
+                let mut table = self.table.clone();
+                if let Some(index) = index {
+                    let row = index as _;
+                    table.set_selection(row, 0, row, (SERVER_LIST_COLS.len() - 1) as _);
+                } else {
+                    table.unset_selection();
+                }
             }
-            selection.index = index;
-            let mut table = self.table.clone();
-            if let Some(index) = index {
-                let row = index as _;
-                table.set_selection(row, 0, row, (SERVER_LIST_COLS.len() - 1) as _);
-            } else {
-                table.unset_selection();
-            }
-        }
-        if override_scroll_lock || self.selection.borrow().scroll_lock {
+            index_changed
+        };
+        if index_changed && (override_scroll_lock || self.selection.borrow().scroll_lock) {
             self.ensure_selection_visible();
         }
         if let Some(index) = index {
