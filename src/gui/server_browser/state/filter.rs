@@ -110,7 +110,8 @@ impl AsRef<crate::servers::Filter> for Filter {
 
 impl RowFilter<Server> for Filter {
     fn matches(&self, server: &Server) -> bool {
-        self.name_re.is_match(&server.name)
+        !server.tombstone
+            && self.name_re.is_match(&server.name)
             && self.map_re.is_match(&server.map)
             && self.values.type_filter.matches(server)
             && self.values.mode.map_or(true, |mode| server.mode() == mode)
