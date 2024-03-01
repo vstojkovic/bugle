@@ -13,6 +13,7 @@ use crate::servers::Server;
 pub enum Action {
     DirectConnect,
     Refresh,
+    AddSaved,
     ToggleSaved,
     ToggleFavorite,
     Ping,
@@ -24,6 +25,7 @@ pub(super) struct ActionsPane {
     grid: Grid,
     direct_conn_button: Button,
     refresh_button: Button,
+    add_server_button: Button,
     toggle_saved_button: Option<Button>,
     toggle_favorite_button: Button,
     ping_button: Button,
@@ -53,6 +55,14 @@ impl ActionsPane {
             .wrap(Button::default())
             .with_label("Refresh")
             .with_tooltip("Reload the server list");
+
+        grid.col().add();
+        let add_server_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Add...")
+            .with_tooltip("Manually add a server to your saved servers");
 
         grid.col().with_stretch(1).add();
         let scroll_lock_check = grid
@@ -125,6 +135,7 @@ impl ActionsPane {
             grid,
             direct_conn_button,
             refresh_button,
+            add_server_button,
             toggle_saved_button,
             toggle_favorite_button,
             ping_button,
@@ -183,6 +194,11 @@ impl ActionsPane {
             let mut refresh_button = self.refresh_button.clone();
             let on_action = Rc::clone(&on_action);
             refresh_button.set_callback(move |_| on_action(Action::Refresh));
+        }
+        {
+            let mut add_server_button = self.add_server_button.clone();
+            let on_action = Rc::clone(&on_action);
+            add_server_button.set_callback(move |_| on_action(Action::AddSaved));
         }
         if let Some(button) = self.toggle_saved_button.as_ref() {
             let mut toggle_saved_button = button.clone();

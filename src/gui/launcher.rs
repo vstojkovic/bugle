@@ -85,7 +85,7 @@ impl LauncherWindow {
             let on_action = Rc::clone(&on_action);
             ServerBrowser::new(
                 logger.clone(),
-                Arc::clone(game.maps()),
+                Arc::clone(&game),
                 &config.server_browser,
                 mod_resolver,
                 can_save_servers,

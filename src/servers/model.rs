@@ -127,6 +127,41 @@ impl DerefMut for Server {
 }
 
 impl Server {
+    pub fn new(data: ServerData) -> Self {
+        let ip = if is_valid_ip(&data.reported_ip) || data.observed_ip.is_none() {
+            data.reported_ip
+        } else {
+            data.observed_ip.unwrap()
+        };
+
+        let mut server = Server {
+            data,
+            ip,
+            connected_players: None,
+            age: None,
+            ping: None,
+            waiting_for_pong: false,
+            favorite: false,
+            saved_id: None,
+            validity: Validity::VALID,
+            merged: false,
+            tombstone: false,
+        };
+
+        if server.name.is_empty() {
+            server.name = server.host();
+        }
+
+        if !is_valid_ip(&server.ip) {
+            server.validity.insert(Validity::INVALID_ADDR);
+        }
+        if !is_valid_port(server.port) {
+            server.validity.insert(Validity::INVALID_PORT);
+        }
+
+        server
+    }
+
     pub fn validate_build(&mut self, build_id: u32) {
         if self.build_id != build_id {
             self.validity.insert(Validity::INVALID_BUILD);
@@ -205,39 +240,7 @@ impl Server {
 impl<'de> Deserialize<'de> for Server {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let data = ServerData::deserialize(deserializer)?;
-
-        let ip = if is_valid_ip(&data.reported_ip) || data.observed_ip.is_none() {
-            data.reported_ip
-        } else {
-            data.observed_ip.unwrap()
-        };
-
-        let mut server = Server {
-            data,
-            ip,
-            connected_players: None,
-            age: None,
-            ping: None,
-            waiting_for_pong: false,
-            favorite: false,
-            saved_id: None,
-            validity: Validity::VALID,
-            merged: false,
-            tombstone: false,
-        };
-
-        if server.name.is_empty() {
-            server.name = server.host();
-        }
-
-        if !is_valid_ip(&server.ip) {
-            server.validity.insert(Validity::INVALID_ADDR);
-        }
-        if !is_valid_port(server.port) {
-            server.validity.insert(Validity::INVALID_PORT);
-        }
-
-        Ok(server)
+        Ok(Server::new(data))
     }
 }
 
@@ -380,7 +383,7 @@ impl Multiplier {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct DaylightSettings {
     #[serde(rename = "Sb", default)]
     pub day_cycle_speed_mult: Multiplier,
@@ -392,7 +395,7 @@ pub struct DaylightSettings {
     pub use_catch_up_time: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct SurvivalSettings {
     #[serde(rename = "Sj", default)]
     pub stamina_cost_mult: Multiplier,
@@ -419,7 +422,7 @@ pub struct SurvivalSettings {
     pub offline_chars_in_world: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct CombatSettings {
     #[serde(rename = "S6", default)]
     pub durability_mult: Multiplier,
@@ -435,7 +438,7 @@ impl CombatSettings {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct HarvestingSettings {
     #[serde(rename = "Sl")]
     pub harvest_amount_mult: Multiplier,
@@ -447,7 +450,7 @@ pub struct HarvestingSettings {
     pub rsrc_respawn_speed_mult: Multiplier,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct CraftingSettings {
     #[serde(rename = "S8")]
     pub crafting_time_mult: Multiplier,
@@ -462,6 +465,12 @@ pub enum DropOnDeath {
     Nothing,
     All,
     Backpack,
+}
+
+impl Default for DropOnDeath {
+    fn default() -> Self {
+        Self::Nothing
+    }
 }
 
 impl<'de> Deserialize<'de> for DropOnDeath {
@@ -544,7 +553,7 @@ impl From<u16> for RaidTime {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RaidHours {
     hours: HashMap<Weekday, (RaidTime, RaidTime)>,
 }

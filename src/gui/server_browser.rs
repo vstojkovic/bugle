@@ -17,31 +17,31 @@ use strum::IntoEnumIterator;
 
 use crate::config::ServerBrowserConfig;
 use crate::game::platform::ModDirectory;
-use crate::game::Maps;
+use crate::game::Game;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
     Community, FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server,
     SortCriteria, SortKey, TypeFilter, Weekday,
 };
 
-use self::actions_pane::{Action, ActionsPane};
-use self::connect_dialog::ConnectDialog;
-use self::details_pane::DetailsPane;
-use self::filter_pane::{FilterHolder, FilterPane};
-use self::list_pane::ListPane;
-use self::state::{Filter, SortOrder};
-
 use super::data::IterableTableSource;
 use super::{alert_error, glyph, wrapper_factory, Handler};
 
 mod actions_pane;
+mod add_server_dialog;
 mod connect_dialog;
 mod details_pane;
 mod filter_pane;
 mod list_pane;
 mod state;
 
-use state::ServerBrowserState;
+use self::actions_pane::{Action, ActionsPane};
+use self::add_server_dialog::AddServerDialog;
+use self::connect_dialog::ConnectDialog;
+use self::details_pane::DetailsPane;
+use self::filter_pane::{FilterHolder, FilterPane};
+use self::list_pane::ListPane;
+use self::state::{Filter, ServerBrowserState, SortOrder};
 
 pub enum ServerBrowserAction {
     LoadServers,
@@ -56,7 +56,7 @@ pub enum ServerBrowserAction {
     UpdateConfig(ServerBrowserConfig),
     ToggleSavedServer {
         server: Server,
-        idx: usize,
+        idx: Option<usize>,
     },
 }
 
@@ -69,7 +69,7 @@ pub enum ServerBrowserUpdate {
     ProcessPong(PingResponse),
     BatchProcessPongs(Vec<PingResponse>),
     UpdateServer {
-        idx: usize,
+        idx: Option<usize>,
         server: Server,
     },
     RefreshDetails,
@@ -101,6 +101,7 @@ impl From<ServerBrowserUpdate> for super::Update {
 
 pub(super) struct ServerBrowser {
     logger: Logger,
+    game: Arc<Game>,
     grid: Grid,
     root: Group,
     on_action: Box<dyn Handler<ServerBrowserAction>>,
@@ -120,7 +121,7 @@ pub(super) struct ServerBrowser {
 impl ServerBrowser {
     pub fn new(
         logger: Logger,
-        maps: Arc<Maps>,
+        game: Arc<Game>,
         config: &ServerBrowserConfig,
         mod_resolver: Rc<dyn ModDirectory>,
         can_save_servers: bool,
@@ -138,7 +139,7 @@ impl ServerBrowser {
         grid.col().with_stretch(1).add();
 
         grid.row().add();
-        let filter_pane = FilterPane::new(maps);
+        let filter_pane = FilterPane::new(Arc::clone(game.maps()));
         grid.cell()
             .unwrap()
             .add_shared(Rc::<FilterPane>::clone(&filter_pane));
@@ -231,6 +232,7 @@ impl ServerBrowser {
 
         let browser = Rc::new(Self {
             logger,
+            game,
             grid,
             root: root.clone(),
             on_action: Box::new(on_action),
@@ -346,10 +348,13 @@ impl ServerBrowser {
                             if let Some(server_idx) = browser.list_pane.selected_index() {
                                 let state = browser.state.borrow();
                                 let src_idx = state.to_source_index(server_idx);
-                                let server = &state[server_idx];
+                                let mut server = state[server_idx].clone();
+                                if !server.is_saved() {
+                                    server.merged = true;
+                                }
                                 let action = ServerBrowserAction::ToggleSavedServer {
-                                    server: server.clone(),
-                                    idx: src_idx,
+                                    server,
+                                    idx: Some(src_idx),
                                 };
                                 if let Err(err) = (browser.on_action)(action) {
                                     error!(
@@ -424,6 +429,17 @@ impl ServerBrowser {
                                 alert_error(ERR_JOINING_SERVER, &err);
                             }
                         }
+                        Action::AddSaved => {
+                            let dialog = AddServerDialog::new(&browser.root, Arc::clone(&browser.game));
+                            let action = match dialog.run() {
+                                Some(action) => action,
+                                None => return,
+                            };
+                            if let Err(err) = (browser.on_action)(action) {
+                                error!(browser.logger, "Error on adding saved server"; "error" => %err);
+                                alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
+                            }
+                        }
                         Action::ScrollLock(scroll_lock) => {
                             browser.list_pane.set_scroll_lock(scroll_lock);
                             browser.update_config();
@@ -484,10 +500,20 @@ impl ServerBrowser {
                 self.update_servers(
                     1,
                     move |all_servers, updated_indices, filter, _sort_criteria| {
-                        let matched_before = filter.matches(&all_servers[idx]);
+                        let matched_before = idx
+                            .map(|idx| filter.matches(&all_servers[idx]))
+                            .unwrap_or_default();
                         let matches_after = filter.matches(&server);
-                        all_servers[idx] = server;
-                        updated_indices.push(idx);
+                        match idx {
+                            Some(idx) => {
+                                all_servers[idx] = server;
+                                updated_indices.push(idx);
+                            }
+                            None => {
+                                all_servers.push(server);
+                                updated_indices.push(all_servers.len() - 1);
+                            }
+                        }
                         Reindex::Order.filter_if(matched_before != matches_after)
                     },
                 );

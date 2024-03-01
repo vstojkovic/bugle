@@ -732,10 +732,9 @@ impl Launcher {
         servers.extend(saved_servers.iter().cloned());
     }
 
-    fn save_server(&self, mut server: Server, idx: usize) -> Result<()> {
+    fn save_server(&self, server: Server, idx: Option<usize>) -> Result<()> {
         let servers = self.saved_servers.as_ref().unwrap();
         let mut servers = servers.borrow_mut();
-        server.merged = true;
         let id = servers.add(server);
         servers.save()?;
         self.tx.send(Message::Update(Update::ServerBrowser(
@@ -747,7 +746,7 @@ impl Launcher {
         Ok(())
     }
 
-    fn unsave_server(&self, mut server: Server, idx: usize) -> Result<()> {
+    fn unsave_server(&self, mut server: Server, idx: Option<usize>) -> Result<()> {
         let servers = self.saved_servers.as_ref().unwrap();
         let mut servers = servers.borrow_mut();
         servers.remove(server.saved_id.unwrap());

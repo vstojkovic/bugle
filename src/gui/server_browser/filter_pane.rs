@@ -65,8 +65,8 @@ impl FilterPane {
             .wrap(Frame::default())
             .with_label("Map:");
         let mut map_input = grid.cell().unwrap().wrap(InputChoice::default());
+        map_input.add("<clear map filter>");
         for map in maps.iter() {
-            map_input.add("<clear map filter>");
             map_input.add(&map.display_name);
         }
         grid.cell()
