@@ -506,6 +506,10 @@ const KEY_WAS_COOP_ENABLED: &str = "WasCoopEnabled";
 
 fn collect_local_mods(game_path: &Path, mods: &mut ModLibraryBuilder) -> Result<()> {
     let root = game_path.join_all(["ConanSandbox", "Mods"]);
+    if !root.exists() {
+        return Ok(());
+    }
+
     for entry in WalkDir::new(&root) {
         let pak_path = entry?.path().to_path_buf();
         match pak_path.extension() {
