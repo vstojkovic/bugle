@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## 1.3.1 (2024-02-24)
+## 1.3.2 (2024-03-07)
 
 Hotfix for a mod library bug.
 
