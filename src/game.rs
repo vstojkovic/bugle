@@ -17,6 +17,7 @@ mod engine;
 mod launch;
 mod mod_info;
 pub mod platform;
+pub mod settings;
 
 use crate::auth::{CachedUser, CachedUsers};
 use crate::battleye::is_battleye_installed;

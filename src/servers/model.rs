@@ -12,6 +12,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
 use uuid::Uuid;
 
+use crate::game::settings::Multiplier;
 use crate::net::{is_valid_ip, is_valid_port};
 
 use super::FavoriteServers;
@@ -364,22 +365,6 @@ bitflags! {
 impl Validity {
     pub fn is_valid(self) -> bool {
         self == Self::VALID
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct Multiplier(f64);
-
-impl Default for Multiplier {
-    fn default() -> Self {
-        Self(1.0)
-    }
-}
-
-impl Multiplier {
-    pub fn to_string(&self) -> String {
-        format!("{:.2}", self.0)
     }
 }
 
