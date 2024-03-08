@@ -21,13 +21,13 @@ pub mod platform;
 use crate::auth::{CachedUser, CachedUsers};
 use crate::battleye::is_battleye_installed;
 use crate::config;
-use crate::game::engine::version::get_game_version;
 use crate::servers::{FavoriteServer, FavoriteServers, Server};
 use crate::util::PathExt;
 
 pub use self::engine::db::{create_empty_db, list_mod_controllers, GameDB};
 use self::engine::map::MapExtractor;
 pub use self::engine::map::Maps;
+use self::engine::version::get_game_version;
 pub use self::launch::Launch;
 pub use self::mod_info::{ModEntry, ModLibraryBuilder, ModProvenance, ModRef, Mods};
 
