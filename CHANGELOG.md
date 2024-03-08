@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## 1.3.1 (2024-02-24)
 
+Hotfix for a mod library bug.
+
+### Fixed
+
+- If the `Mods` directory is missing, BUGLE will no longer treat that as a problem with the game
+installation.
+
+## 1.3.1 (2024-02-24)
+
 Hotfix for a GUI bug.
 
 ### Fixed
