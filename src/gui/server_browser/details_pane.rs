@@ -5,11 +5,11 @@ use nom::character::complete::{char, digit1};
 use nom::combinator::map_res;
 use nom::sequence::{separated_pair, terminated};
 use nom::IResult;
-use strum::IntoEnumIterator;
 
 use crate::game::platform::ModDirectory;
+use crate::gui::weekday_iter;
 use crate::gui::widgets::{use_inspector_macros, Inspector, PropertiesTable, PropertyRow};
-use crate::servers::{DropOnDeath, Server, Validity, Weekday};
+use crate::servers::{DropOnDeath, Server, Validity};
 
 use super::{community_name, mode_name, region_name, weekday_name};
 
@@ -45,8 +45,8 @@ impl InspectorCtx {
         let mut consumer_called = false;
 
         if let Some(server) = server {
-            for weekday in Weekday::iter() {
-                if let Some((start, end)) = server.raid_hours.get(weekday) {
+            for weekday in weekday_iter() {
+                if let Some((start, end)) = server.raid_hours.get(&weekday) {
                     row_consumer([
                         header.into(),
                         format!(

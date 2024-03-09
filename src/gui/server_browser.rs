@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use chrono::Weekday;
 use fltk::enums::{Align, Event};
 use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
@@ -21,7 +22,7 @@ use crate::game::Game;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
     Community, FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server,
-    SortCriteria, SortKey, TypeFilter, Weekday,
+    SortCriteria, SortKey, TypeFilter,
 };
 
 use super::data::IterableTableSource;

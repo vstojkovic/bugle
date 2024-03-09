@@ -1,18 +1,16 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 use bitflags::bitflags;
-use serde::de::{MapAccess, Visitor};
-use serde::ser::SerializeMap;
+use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
 use uuid::Uuid;
 
-use crate::game::settings::Multiplier;
+use crate::game::settings::{Multiplier, WeeklyHours};
 use crate::net::{is_valid_ip, is_valid_port};
 
 use super::FavoriteServers;
@@ -110,8 +108,8 @@ pub struct ServerData {
     #[serde(flatten)]
     pub crafting: CraftingSettings,
 
-    #[serde(flatten)]
-    pub raid_hours: RaidHours,
+    #[serde(flatten, with = "raid_hours_serde")]
+    pub raid_hours: WeeklyHours,
 }
 
 impl Deref for Server {
@@ -504,53 +502,34 @@ impl<'de> Deserialize<'de> for DropOnDeath {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumIter)]
-pub enum Weekday {
-    Mon,
-    Tue,
-    Wed,
-    Thu,
-    Fri,
-    Sat,
-    Sun,
-}
+mod raid_hours_serde {
+    use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug)]
-pub struct RaidTime(u16);
+    use chrono::Weekday;
+    use serde::de::{MapAccess, Visitor};
+    use serde::ser::SerializeMap;
 
-impl RaidTime {
-    pub fn hours(&self) -> u8 {
-        (self.0 / 100) as _
+    use crate::game::settings::HourMinute;
+
+    use super::WeeklyHours;
+
+    pub fn serialize<S: serde::Serializer>(
+        hours: &WeeklyHours,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(hours.len() * 3))?;
+        for (day, (HourMinute(start), HourMinute(end))) in hours.iter() {
+            let offset = *day as isize;
+            map.serialize_entry(&format!("S{}", 92 + offset), start)?;
+            map.serialize_entry(&format!("S{}", 99 + offset), end)?;
+            map.serialize_entry(&format!("S{}", 106 + offset), &true)?;
+        }
+        map.end()
     }
 
-    pub fn minutes(&self) -> u8 {
-        (self.0 % 100) as _
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("{:02}:{:02}", self.hours(), self.minutes())
-    }
-}
-
-impl From<u16> for RaidTime {
-    fn from(time: u16) -> Self {
-        Self(time)
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct RaidHours {
-    hours: HashMap<Weekday, (RaidTime, RaidTime)>,
-}
-
-impl RaidHours {
-    pub fn get(&self, day: Weekday) -> Option<&(RaidTime, RaidTime)> {
-        self.hours.get(&day)
-    }
-}
-
-impl<'de> Deserialize<'de> for RaidHours {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<WeeklyHours, D::Error> {
         fn hours_entry_index(key: &str) -> Option<(Weekday, usize)> {
             match key {
                 "S92" => Some((Weekday::Mon, 0)),
@@ -587,7 +566,7 @@ impl<'de> Deserialize<'de> for RaidHours {
         struct MapVisitor;
 
         impl<'de> Visitor<'de> for MapVisitor {
-            type Value = RaidHours;
+            type Value = WeeklyHours;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("map")
@@ -607,33 +586,18 @@ impl<'de> Deserialize<'de> for RaidHours {
                     }
                 }
 
-                Ok(RaidHours {
-                    hours: defined_days
-                        .into_iter()
-                        .filter_map(|day| {
-                            hours
-                                .get(&day)
-                                .map(|values| (day, (values[0].into(), values[1].into())))
-                        })
-                        .collect(),
-                })
+                Ok(defined_days
+                    .into_iter()
+                    .filter_map(|day| {
+                        hours
+                            .get(&day)
+                            .map(|values| (day, (values[0].into(), values[1].into())))
+                    })
+                    .collect())
             }
         }
 
         deserializer.deserialize_map(MapVisitor)
-    }
-}
-
-impl Serialize for RaidHours {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(self.hours.len() * 3))?;
-        for (day, (RaidTime(start), RaidTime(end))) in self.hours.iter() {
-            let offset = *day as isize;
-            map.serialize_entry(&format!("S{}", 92 + offset), start)?;
-            map.serialize_entry(&format!("S{}", 99 + offset), end)?;
-            map.serialize_entry(&format!("S{}", 106 + offset), &true)?;
-        }
-        map.end()
     }
 }
 
