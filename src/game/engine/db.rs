@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
-use chrono::NaiveDateTime;
+use chrono::{DateTime, Local, NaiveDateTime};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::Connection;
 
@@ -13,8 +13,8 @@ pub struct UnixTimestamp(NaiveDateTime);
 impl FromSql for UnixTimestamp {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
         let millis = i64::column_result(value)? * 1000;
-        if let Some(ts) = NaiveDateTime::from_timestamp_millis(millis) {
-            Ok(Self(ts))
+        if let Some(ts) = DateTime::from_timestamp_millis(millis) {
+            Ok(Self(ts.with_timezone(&Local).naive_local()))
         } else {
             Err(FromSqlError::OutOfRange(millis))
         }
