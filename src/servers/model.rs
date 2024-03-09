@@ -47,20 +47,11 @@ pub struct ServerData {
     #[serde(rename = "CSF")]
     pub ownership: Ownership,
 
-    #[serde(rename = "S05")]
-    pub battleye_required: bool,
-
     #[serde(rename = "Sy")]
     pub region: Region,
 
     #[serde(rename = "maxplayers")]
     pub max_players: usize,
-
-    #[serde(rename = "S0")]
-    pub pvp_enabled: bool,
-
-    #[serde(rename = "S30")]
-    pub kind: Kind,
 
     #[serde(rename = "ip")]
     pub reported_ip: IpAddr,
@@ -75,23 +66,15 @@ pub struct ServerData {
     #[serde(rename = "buildId")]
     pub build_id: u32,
 
-    #[serde(rename = "Su")]
-    pub community: Community,
-
     #[serde(rename = "S17")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mods: Option<String>,
 
-    #[serde(rename = "S20")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_ping: Option<u32>,
+    #[serde(flatten)]
+    pub general: GeneralSettings,
 
-    #[serde(rename = "Sx")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_clan_size: Option<u16>,
-
-    #[serde(rename = "Sz")]
-    pub xp_rate_mult: Multiplier,
+    #[serde(flatten)]
+    pub progression: ProgressionSettings,
 
     #[serde(flatten)]
     pub daylight: DaylightSettings,
@@ -268,10 +251,10 @@ pub enum Confidence {
 
 impl ServerData {
     pub fn mode(&self) -> Mode {
-        if self.pvp_enabled {
-            match self.kind {
-                Kind::Conflict => Mode::PVEC,
-                Kind::Other => Mode::PVP,
+        if self.general.pvp_enabled {
+            match self.general.mode_modifier {
+                CombatModeModifier::Conflict => Mode::PVEC,
+                CombatModeModifier::Other => Mode::PVP,
             }
         } else {
             Mode::PVE
@@ -334,7 +317,7 @@ pub enum Community {
 
 #[derive(Clone, Copy, Debug, Deserialize_repr, Serialize_repr, PartialEq, Eq)]
 #[repr(u8)]
-pub enum Kind {
+pub enum CombatModeModifier {
     Conflict = 1,
     #[serde(other)]
     Other,
@@ -364,6 +347,35 @@ impl Validity {
     pub fn is_valid(self) -> bool {
         self == Self::VALID
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct GeneralSettings {
+    #[serde(rename = "S05")]
+    pub battleye_required: bool,
+
+    #[serde(rename = "S0")]
+    pub pvp_enabled: bool,
+
+    #[serde(rename = "S30")]
+    pub mode_modifier: CombatModeModifier,
+
+    #[serde(rename = "Su")]
+    pub community: Community,
+
+    #[serde(rename = "S20")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ping: Option<u32>,
+
+    #[serde(rename = "Sx")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_clan_size: Option<u16>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct ProgressionSettings {
+    #[serde(rename = "Sz")]
+    pub xp_rate_mult: Multiplier,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

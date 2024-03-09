@@ -368,7 +368,7 @@ const SERVER_LIST_COLS: &[Column] = &[
     col!(glyph::LOCK, 20, Center, None, |server| str_if(server.password_protected, glyph::LOCK)),
     col!(glyph::TOOLS, 20, Center, None, |server| str_if(server.is_modded(), glyph::TOOLS)),
     col!(glyph::OFFICIAL, 20, Center, None, |server| str_if(server.is_official(), glyph::OFFICIAL)),
-    col!(glyph::BATTLEYE, 20, Center, None, |server| str_if(server.battleye_required, glyph::BATTLEYE)),
+    col!(glyph::BATTLEYE, 20, Center, None, |server| str_if(server.general.battleye_required, glyph::BATTLEYE)),
     col!(glyph::FAVORITE, 20, Center, None, |server| str_if(server.favorite, glyph::FAVORITE)),
     col!(glyph::SAVED, 20, Center, None, |server| str_if(server.is_saved(), glyph::SAVED)),
     col!("Server Name", 450, Left, Some(SortKey::Name), |server| server.name.clone().into()),

@@ -314,7 +314,7 @@ impl ServerBrowser {
                                         ServerBrowserAction::JoinServer {
                                             addr: server.game_addr().unwrap(),
                                             password: None,
-                                            battleye_required: Some(server.battleye_required),
+                                            battleye_required: Some(server.general.battleye_required),
                                         }
                                     }
                                 };

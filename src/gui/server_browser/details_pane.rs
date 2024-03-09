@@ -142,7 +142,10 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
     inspect_attr!("Mode", |server| mode_name(server.mode()).into()),
     inspect_attr!("Region", |server| region_name(server.region).into()),
     inspect_opt_attr!("Max Clan Size", |server| {
-        server.max_clan_size.map(|size| size.to_string().into())
+        server
+            .general
+            .max_clan_size
+            .map(|size| size.to_string().into())
     }),
     inspect_attr!("On Death", |server| {
         match server.survival.drop_items_on_death {
@@ -172,7 +175,7 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
         server.harvesting.harvest_amount_mult.to_string().into()
     }),
     inspect_attr!("XP Rate Multiplier", |server| {
-        server.xp_rate_mult.to_string().into()
+        server.progression.xp_rate_mult.to_string().into()
     }),
     inspect_attr!("Crafting Time Multiplier", |server| {
         server.crafting.crafting_time_mult.to_string().into()
@@ -218,10 +221,10 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
         if server.daylight.use_catch_up_time { "Yes" } else { "No" }.into()
     }),
     inspect_attr!("Community", |server| {
-        community_name(server.community).into()
+        community_name(server.general.community).into()
     }),
     inspect_opt_attr!("Max Ping", |server| {
-        server.max_ping.map(|ping| ping.to_string().into())
+        server.general.max_ping.map(|ping| ping.to_string().into())
     }),
     InspectorCtx::inspect_mods,
     inspect_opt_attr!("Problems", problems_cell_value),

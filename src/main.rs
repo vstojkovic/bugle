@@ -929,7 +929,7 @@ impl Launcher {
             BattlEyeUsage::Auto => match &*self.game.last_session() {
                 Some(Session::Online(server_ref)) => match server_ref {
                     ServerRef::Known(server) => {
-                        SessionBattlEyeUsage::Resolved(server.battleye_required)
+                        SessionBattlEyeUsage::Resolved(server.general.battleye_required)
                     }
                     _ => {
                         if self.server_loader_worker.is_loading()

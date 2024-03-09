@@ -69,7 +69,7 @@ impl ConnectDialog {
 
         ok_button.set_callback({
             let addr = server.game_addr().unwrap();
-            let battleye_required = Some(server.battleye_required);
+            let battleye_required = Some(server.general.battleye_required);
             let password_text = password_text.clone();
             let result = Rc::clone(&result);
             let mut window = window.clone();

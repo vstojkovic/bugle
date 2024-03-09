@@ -119,10 +119,9 @@ impl RowFilter<Server> for Filter {
                 .values
                 .region
                 .map_or(true, |region| server.region == region)
-            && self
-                .values
-                .battleye_required
-                .map_or(true, |required| server.battleye_required == required)
+            && self.values.battleye_required.map_or(true, |required| {
+                server.general.battleye_required == required
+            })
             && self.values.include_invalid >= !server.is_valid()
             && !(self.values.exclude_password_protected && server.password_protected)
             && self

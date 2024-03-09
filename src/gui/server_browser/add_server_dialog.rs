@@ -20,7 +20,9 @@ use crate::game::Game;
 use crate::gui::prelude::declare_weak_cb;
 use crate::gui::widgets::DropDownList;
 use crate::gui::{alert_error, wrapper_factory};
-use crate::servers::{Community, Kind, Mode, Ownership, Region, Server, ServerData};
+use crate::servers::{
+    CombatModeModifier, Community, GeneralSettings, Mode, Ownership, Region, Server, ServerData,
+};
 
 use super::{mode_name, region_name, ServerBrowserAction};
 
@@ -207,8 +209,8 @@ impl AddServerDialog {
         }
         let mode = Mode::from_repr(self.mode_input.value() as _).unwrap();
         let kind = match mode {
-            Mode::PVEC => Kind::Conflict,
-            _ => Kind::Other,
+            Mode::PVEC => CombatModeModifier::Conflict,
+            _ => CombatModeModifier::Other,
         };
 
         if self.region_input.value() < 0 {
@@ -222,20 +224,22 @@ impl AddServerDialog {
             map,
             password_protected: self.pwd_prot_check.is_checked(),
             ownership: Ownership::Private,
-            battleye_required: self.battleye_check.is_checked(),
             region,
             max_players: 0,
-            pvp_enabled: mode != Mode::PVE,
-            kind,
             reported_ip: host.ip(),
             observed_ip: None,
             port: host.port() as _,
             build_id: self.build_id,
-            community: Community::Unspecified,
             mods: None,
-            max_ping: None,
-            max_clan_size: None,
-            xp_rate_mult: Default::default(),
+            general: GeneralSettings {
+                battleye_required: self.battleye_check.is_checked(),
+                pvp_enabled: mode != Mode::PVE,
+                mode_modifier: kind,
+                community: Community::Unspecified,
+                max_ping: None,
+                max_clan_size: None,
+            },
+            progression: Default::default(),
             daylight: Default::default(),
             survival: Default::default(),
             combat: Default::default(),
