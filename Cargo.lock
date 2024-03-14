@@ -1013,6 +1013,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ini-persist"
+version = "0.1.0"
+dependencies = [
+ "rust-ini",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"

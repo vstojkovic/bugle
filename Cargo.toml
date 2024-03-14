@@ -1,7 +1,5 @@
 [workspace]
-members = [
-    "bugle",
-]
+members = ["bugle", "ini-persist"]
 resolver = "2"
 
 [profile.dist]
