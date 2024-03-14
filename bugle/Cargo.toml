@@ -1,0 +1,70 @@
+[package]
+name = "bugle"
+version = "1.3.2"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+bbscope = "0.2.0"
+binread = "2.2"
+bitflags = "2"
+bit-vec = "0.6.3"
+chrono = "0.4.35"
+crc32fast = "1"
+dlopen = "0.1.8"
+flate2 = "1"
+fltk = { version = "1.4.25" }
+fltk-float = "0.1.4"
+fltk-webview = "0.2.16"
+futures = "0.3"
+governor = "0.4.2"
+humansize = "2"
+hex = "0.4"
+keyvalues-parser = "0.1.0"
+lazy_static = "1"
+linked-hash-map = "0.5.6"
+md5 = "0.7.0"
+network-interface = "1"
+nom = "7"
+pico-args = "0.5.0"
+regex = "1.6"
+reqwest = { version = "0.11", features = ["gzip", "json"] }
+rusqlite = { version = "0.28", features = ["bundled"] }
+rust-ini = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_repr = "0.1"
+shlex = "1.2"
+size = "0.4.1"
+slog = { version = "2", features = ["release_max_level_trace"] }
+slog-async = "2"
+slog-term = "2"
+steamlocate = "2.0.0-alpha.0"
+steamworks = { git = "https://github.com/vstojkovic/steamworks-rs" }
+strum = "0.24"
+strum_macros = "0.24"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+ucs2 = "0.3.2"
+urlencoding = "2"
+uuid = { version = "1.7", features = ["serde", "v4"] }
+walkdir = "2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["combaseapi", "mswsock", "shlobj", "tlhelp32", "wincon", "winsock2", "winsvc", "winuser"] }
+
+[features]
+default = ["fltk-static-crt"]
+fltk-bundled = ["fltk/fltk-bundled"]
+fltk-static-crt = ["fltk/static-msvcrt"]
+
+[build-dependencies]
+anyhow = "1"
+resvg = "0.38.0"
+
+# Config for 'cargo dist'
+[package.metadata.dist]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["x86_64-pc-windows-msvc"]
+# Include the redistributable
+include = ["redist/steam_api64.dll"]
