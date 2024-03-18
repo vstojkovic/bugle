@@ -5,3 +5,8 @@ edition = "2021"
 
 [dependencies]
 rust-ini = "0.18"
+ini-persist-derive = { version = "0.1.0", path = "../ini-persist-derive", optional = true }
+
+[features]
+default = ["derive"]
+derive = ["ini-persist-derive"]

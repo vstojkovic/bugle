@@ -1016,6 +1016,7 @@ dependencies = [
 name = "ini-persist"
 version = "0.1.0"
 dependencies = [
+ "ini-persist-derive",
  "rust-ini",
 ]
 
