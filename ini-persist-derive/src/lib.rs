@@ -1,6 +1,7 @@
 use load::expand_load;
 use syn::{parse_macro_input, DeriveInput, Error};
 
+mod attr;
 mod load;
 
 #[proc_macro_derive(IniLoad, attributes(ini))]
