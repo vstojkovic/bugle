@@ -42,7 +42,7 @@ struct RenamedSection {
 
 mod helpers {
     use ini::Properties;
-    use ini_persist::load::SimpleProperty;
+    use ini_persist::load::ParsedProperty;
     use ini_persist::Result;
 
     pub fn my_load_in(field: &mut i32, _section: &Properties, _key: &str) -> Result<()> {

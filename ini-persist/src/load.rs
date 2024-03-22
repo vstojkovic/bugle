@@ -23,11 +23,11 @@ impl<P: ConstructedProperty> Property for P {
     }
 }
 
-pub trait SimpleProperty: Sized {
+pub trait ParsedProperty: Sized {
     fn parse(text: &str) -> Result<Self>;
 }
 
-impl<P: SimpleProperty> ConstructedProperty for P {
+impl<P: ParsedProperty> ConstructedProperty for P {
     fn load(section: &Properties, key: &str) -> Result<Option<Self>> {
         match section.get(key) {
             Some(text) => Ok(Some(P::parse(text)?)),
@@ -36,7 +36,7 @@ impl<P: SimpleProperty> ConstructedProperty for P {
     }
 }
 
-impl SimpleProperty for String {
+impl ParsedProperty for String {
     fn parse(text: &str) -> Result<Self> {
         Ok(text.to_string())
     }
@@ -45,7 +45,7 @@ impl SimpleProperty for String {
 macro_rules! impl_from_str_properties {
     ($($type:ty),+ $(,)?) => {
         $(
-        impl SimpleProperty for $type {
+        impl ParsedProperty for $type {
             fn parse(text: &str) -> $crate::Result<Self> {
                 use std::str::FromStr;
                 Self::from_str(text).map_err(|err| {
