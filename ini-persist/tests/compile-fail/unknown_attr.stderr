@@ -1,0 +1,5 @@
+error: unknown ini attribute `bogus`
+ --> tests/compile-fail/unknown_attr.rs:4:7
+  |
+4 | #[ini(bogus)]
+  |       ^^^^^

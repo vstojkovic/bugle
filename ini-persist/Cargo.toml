@@ -10,3 +10,6 @@ ini-persist-derive = { version = "0.1.0", path = "../ini-persist-derive", option
 [features]
 default = ["derive"]
 derive = ["ini-persist-derive"]
+
+[dev-dependencies]
+trybuild = "1"

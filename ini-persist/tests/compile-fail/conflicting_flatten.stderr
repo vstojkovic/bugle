@@ -1,0 +1,23 @@
+error: cannot define a key for a flattened field
+  --> tests/compile-fail/conflicting_flatten.rs:11:11
+   |
+11 |     #[ini(key = "Glop")]
+   |           ^^^^^^^^^^^^
+
+error: cannot define a load function for a flattened field
+  --> tests/compile-fail/conflicting_flatten.rs:15:11
+   |
+15 |     #[ini(parse_with = my_parse)]
+   |           ^^^^^^^^^^^^^^^^^^^^^
+
+error: cannot flatten a field with a defined key
+  --> tests/compile-fail/conflicting_flatten.rs:19:11
+   |
+19 |     #[ini(flatten)]
+   |           ^^^^^^^
+
+error: cannot flatten a field with a defined load function
+  --> tests/compile-fail/conflicting_flatten.rs:23:11
+   |
+23 |     #[ini(flatten)]
+   |           ^^^^^^^

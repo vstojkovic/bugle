@@ -1,0 +1,17 @@
+error: conflicting load function specified
+ --> tests/compile-fail/conflicting_load_fn.rs:7:11
+  |
+7 |     #[ini(load_in_with = my_load_in)]
+  |           ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: conflicting load function specified
+  --> tests/compile-fail/conflicting_load_fn.rs:11:11
+   |
+11 |     #[ini(load_with = my_load)]
+   |           ^^^^^^^^^^^^^^^^^^^
+
+error: conflicting load function specified
+  --> tests/compile-fail/conflicting_load_fn.rs:15:11
+   |
+15 |     #[ini(parse_with = my_parse)]
+   |           ^^^^^^^^^^^^^^^^^^^^^

@@ -104,6 +104,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
+name = "basic-toml"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c0de75129aa8d0cceaf750b89013f0e08804d6ec61416da787b35ad0d7cddf1"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bbscope"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -798,6 +807,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+
+[[package]]
 name = "governor"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1018,6 +1033,7 @@ version = "0.1.0"
 dependencies = [
  "ini-persist-derive",
  "rust-ini",
+ "trybuild",
 ]
 
 [[package]]
@@ -2317,6 +2333,21 @@ name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
+
+[[package]]
+name = "trybuild"
+version = "1.0.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "501dbdbb99861e4ab6b60eb6a7493956a9defb644fd034bc4a5ef27c693c8a3a"
+dependencies = [
+ "basic-toml",
+ "glob",
+ "once_cell",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "termcolor",
+]
 
 [[package]]
 name = "ttf-parser"
