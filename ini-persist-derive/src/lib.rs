@@ -1,8 +1,9 @@
-use load::expand_load;
 use syn::{parse_macro_input, DeriveInput, Error};
 
 mod attr;
 mod load;
+
+use self::load::expand_load;
 
 #[proc_macro_derive(IniLoad, attributes(ini))]
 pub fn derive_ini_load(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
