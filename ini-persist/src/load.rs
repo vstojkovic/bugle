@@ -3,7 +3,7 @@ use ini::{Ini, Properties};
 use crate::Result;
 
 pub trait IniLoad {
-    fn load_from_ini(&mut self, ini: Ini) -> Result<()>;
+    fn load_from_ini(&mut self, ini: &Ini) -> Result<()>;
 }
 
 pub trait Property {

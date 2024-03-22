@@ -42,7 +42,7 @@ pub fn expand_load(input: DeriveInput) -> Result<TokenStream> {
     let output = quote! {
         #[automatically_derived]
         impl ini_persist::load::IniLoad for #struct_name {
-            fn load_from_ini(&mut self, ini: ini::Ini) -> ini_persist::Result<()> {
+            fn load_from_ini(&mut self, ini: &ini::Ini) -> ini_persist::Result<()> {
                 use ini_persist::load::Property;
                 if let Some(props) = ini.section(#section_quote) {
                     #(#load_calls)*
