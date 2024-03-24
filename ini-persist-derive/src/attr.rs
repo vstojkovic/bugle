@@ -24,7 +24,9 @@ impl StructAttr {
     pub fn from_ast<'a, I: Iterator<Item = &'a Attribute>>(attrs: I) -> Result<Self> {
         let mut result = Self::default();
         for attr in attrs {
-            result.update_from_ast(attr)?;
+            if attr.path().is_ident("ini") {
+                result.update_from_ast(attr)?;
+            }
         }
         Ok(result)
     }
@@ -59,7 +61,9 @@ impl FieldAttr {
     pub fn from_ast<'a, I: Iterator<Item = &'a Attribute>>(attrs: I) -> Result<Self> {
         let mut result = Self::default();
         for attr in attrs {
-            result.update_from_ast(attr)?;
+            if attr.path().is_ident("ini") {
+                result.update_from_ast(attr)?;
+            }
         }
         Ok(result)
     }
