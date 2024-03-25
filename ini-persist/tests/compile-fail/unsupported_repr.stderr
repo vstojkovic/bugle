@@ -1,0 +1,5 @@
+error: unsupported repr
+ --> tests/compile-fail/unsupported_repr.rs:5:8
+  |
+5 | #[repr(C)]
+  |        ^

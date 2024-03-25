@@ -64,3 +64,9 @@ macro_rules! impl_from_str_properties {
 impl_from_str_properties!(
     i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64, bool, char,
 );
+
+impl<P: ConstructedProperty> ConstructedProperty for Option<P> {
+    fn load(section: &ini::Properties, key: &str) -> Result<Option<Self>> {
+        Ok(Some(P::load(section, key)?))
+    }
+}

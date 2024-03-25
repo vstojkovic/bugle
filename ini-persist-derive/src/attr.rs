@@ -2,6 +2,19 @@ use quote::ToTokens;
 use syn::meta::ParseNestedMeta;
 use syn::{Attribute, Expr, ExprLit, ExprPath, Lit, Path, Result};
 
+pub trait IniAttr: Sized + Default {
+    fn update_from_ast(&mut self, attr: &Attribute) -> Result<()>;
+    fn from_ast<'a, I: Iterator<Item = &'a Attribute>>(attrs: I) -> Result<Self> {
+        let mut result = Self::default();
+        for attr in attrs {
+            if attr.path().is_ident("ini") {
+                result.update_from_ast(attr)?;
+            }
+        }
+        Ok(result)
+    }
+}
+
 #[derive(Default)]
 pub struct StructAttr {
     pub section: Option<Option<String>>,
@@ -14,24 +27,19 @@ pub struct FieldAttr {
     pub load_fn: Option<LoadFn>,
 }
 
+#[derive(Default)]
+pub struct EnumAttr {
+    pub repr: Option<()>,
+}
+
 pub enum LoadFn {
     InPlace(Path),
     Constructed(Path),
     Parsed(Path),
 }
 
-impl StructAttr {
-    pub fn from_ast<'a, I: Iterator<Item = &'a Attribute>>(attrs: I) -> Result<Self> {
-        let mut result = Self::default();
-        for attr in attrs {
-            if attr.path().is_ident("ini") {
-                result.update_from_ast(attr)?;
-            }
-        }
-        Ok(result)
-    }
-
-    pub fn update_from_ast(&mut self, attr: &Attribute) -> Result<()> {
+impl IniAttr for StructAttr {
+    fn update_from_ast(&mut self, attr: &Attribute) -> Result<()> {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("section") {
                 let section = extract_str(&meta)?;
@@ -57,18 +65,8 @@ impl StructAttr {
     }
 }
 
-impl FieldAttr {
-    pub fn from_ast<'a, I: Iterator<Item = &'a Attribute>>(attrs: I) -> Result<Self> {
-        let mut result = Self::default();
-        for attr in attrs {
-            if attr.path().is_ident("ini") {
-                result.update_from_ast(attr)?;
-            }
-        }
-        Ok(result)
-    }
-
-    pub fn update_from_ast(&mut self, attr: &Attribute) -> Result<()> {
+impl IniAttr for FieldAttr {
+    fn update_from_ast(&mut self, attr: &Attribute) -> Result<()> {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("key") {
                 let key = extract_str(&meta)?;
@@ -122,6 +120,25 @@ impl FieldAttr {
                     return Err(meta.error("cannot flatten a field with a defined load function"));
                 }
                 self.flatten = Some(());
+                return Ok(());
+            }
+            Err(meta.error(format_args!(
+                "unknown ini attribute `{}`",
+                meta.path.to_token_stream()
+            )))
+        })?;
+        Ok(())
+    }
+}
+
+impl IniAttr for EnumAttr {
+    fn update_from_ast(&mut self, attr: &Attribute) -> Result<()> {
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("repr") {
+                if self.repr.is_some() {
+                    return Err(meta.error("duplicate ini property `repr`"));
+                }
+                self.repr = Some(());
                 return Ok(());
             }
             Err(meta.error(format_args!(

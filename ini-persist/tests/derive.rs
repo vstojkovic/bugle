@@ -1,6 +1,6 @@
 use ini::Ini;
 use ini_persist::load::IniLoad;
-use ini_persist::IniLoad;
+use ini_persist::{IniLoad, Property};
 
 #[derive(Debug, Default, PartialEq, IniLoad)]
 #[ini(general)]
@@ -17,7 +17,9 @@ struct Root {
 #[derive(Debug, Default, PartialEq, IniLoad)]
 struct Section {
     #[ini(load_in_with = helpers::my_load_in)]
-    glop_glyf: i32,
+    glop: i32,
+
+    glyf: Option<EnumByName>,
 
     #[ini(flatten)]
     general: FlattenedGeneral,
@@ -31,13 +33,29 @@ struct Section {
 struct FlattenedGeneral {
     #[ini(load_with = helpers::my_load)]
     olle_bolle: f64,
+
+    snop: Option<EnumByRepr>,
 }
 
 #[derive(Debug, Default, PartialEq, IniLoad)]
 #[ini(section = "SomethingElse")]
 struct RenamedSection {
     #[ini(parse_with = helpers::my_parse)]
-    snop_snyf: i16,
+    snyf: i16,
+}
+
+#[derive(Debug, Property, PartialEq, Eq)]
+enum EnumByName {
+    Argle,
+    Bargle,
+}
+
+#[derive(Debug, Property, PartialEq, Eq)]
+#[ini(repr)]
+#[repr(u8)]
+enum EnumByRepr {
+    Glop = 42,
+    Glyf = 17,
 }
 
 mod helpers {
@@ -78,9 +96,13 @@ fn comprehensive_test() {
         argle: "Hello, world!".to_string(),
         bargle: 17,
         section: Section {
-            glop_glyf: 386,
-            general: FlattenedGeneral { olle_bolle: 42.0 },
-            renamed: RenamedSection { snop_snyf: 42 },
+            glop: 386,
+            glyf: Some(EnumByName::Bargle),
+            general: FlattenedGeneral {
+                olle_bolle: 42.0,
+                snop: Some(EnumByRepr::Glop),
+            },
+            renamed: RenamedSection { snyf: 42 },
         },
     };
 
@@ -91,10 +113,12 @@ const TEST_INI: &str = r#"
 argle=Hello, world!
 Bargle=17
 olle_bolle=84.0
+snop=42
 
 [Section]
-glop_glyf=123
+glop=123
+glyf=Bargle
 
 [SomethingElse]
-snop_snyf=-42
+snyf=-42
 "#;

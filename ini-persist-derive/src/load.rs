@@ -3,7 +3,7 @@ use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Data, DataStruct, DeriveInput, Error, Fields, Ident, Result};
 
-use crate::attr::{FieldAttr, LoadFn, StructAttr};
+use crate::attr::{FieldAttr, IniAttr, LoadFn, StructAttr};
 
 pub fn expand_load(input: DeriveInput) -> Result<TokenStream> {
     let fields = match &input.data {
@@ -47,7 +47,7 @@ pub fn expand_load(input: DeriveInput) -> Result<TokenStream> {
                 if let Some(props) = ini.section(#section_quote) {
                     #(#load_calls)*
                 }
-                Ok(())
+                ini_persist::Result::Ok(())
             }
         }
     };
