@@ -1,7 +1,7 @@
 use ini::Properties;
-use ini_persist::{IniLoad, Result};
+use ini_persist::{LoadProperty, Result};
 
-#[derive(IniLoad)]
+#[derive(LoadProperty)]
 struct Foo {
     #[ini(load_in_with = my_load_in)]
     #[ini(load_in_with = my_load_in)]

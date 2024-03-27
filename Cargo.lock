@@ -1040,8 +1040,10 @@ dependencies = [
 name = "ini-persist-derive"
 version = "0.1.0"
 dependencies = [
+ "lazy_static",
  "proc-macro2 1.0.79",
  "quote 1.0.35",
+ "regex",
  "syn 2.0.53",
 ]
 

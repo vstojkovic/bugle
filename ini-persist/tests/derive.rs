@@ -1,56 +1,59 @@
 use ini::Ini;
-use ini_persist::load::IniLoad;
-use ini_persist::{IniLoad, Property};
+use ini_persist::{IniLoad, LoadProperty};
 
 #[derive(Debug, Default, PartialEq, IniLoad)]
-#[ini(general)]
 struct Root {
+    #[ini(general)]
+    general: General,
+
+    section: Section,
+
+    #[ini(section = "SomethingElse")]
+    renamed: RenamedSection,
+}
+
+#[derive(Debug, Default, PartialEq, LoadProperty)]
+struct General {
     argle: String,
 
-    #[ini(key = "Bargle")]
+    #[ini(rename = "Bargle")]
     bargle: u8,
 
     #[ini(flatten)]
-    section: Section,
+    inner: Inner,
+
+    prefixed: Inner,
 }
 
-#[derive(Debug, Default, PartialEq, IniLoad)]
-struct Section {
+#[derive(Debug, Default, PartialEq, LoadProperty)]
+struct Inner {
     #[ini(load_in_with = helpers::my_load_in)]
     glop: i32,
 
     glyf: Option<EnumByName>,
-
-    #[ini(flatten)]
-    general: FlattenedGeneral,
-
-    #[ini(flatten)]
-    renamed: RenamedSection,
 }
 
-#[derive(Debug, Default, PartialEq, IniLoad)]
-#[ini(general)]
-struct FlattenedGeneral {
+#[derive(Debug, Default, PartialEq, LoadProperty)]
+struct Section {
     #[ini(load_with = helpers::my_load)]
     olle_bolle: f64,
 
     snop: Option<EnumByRepr>,
 }
 
-#[derive(Debug, Default, PartialEq, IniLoad)]
-#[ini(section = "SomethingElse")]
+#[derive(Debug, Default, PartialEq, LoadProperty)]
 struct RenamedSection {
     #[ini(parse_with = helpers::my_parse)]
     snyf: i16,
 }
 
-#[derive(Debug, Property, PartialEq, Eq)]
+#[derive(Debug, LoadProperty, PartialEq, Eq)]
 enum EnumByName {
     Argle,
     Bargle,
 }
 
-#[derive(Debug, Property, PartialEq, Eq)]
+#[derive(Debug, LoadProperty, PartialEq, Eq)]
 #[ini(repr)]
 #[repr(u8)]
 enum EnumByRepr {
@@ -60,7 +63,7 @@ enum EnumByRepr {
 
 mod helpers {
     use ini::Properties;
-    use ini_persist::load::ParsedProperty;
+    use ini_persist::load::ParseProperty;
     use ini_persist::Result;
 
     pub fn my_load_in(field: &mut i32, _section: &Properties, _key: &str) -> Result<()> {
@@ -93,17 +96,23 @@ fn comprehensive_test() {
     loaded.load_from_ini(&ini).unwrap();
 
     let expected = Root {
-        argle: "Hello, world!".to_string(),
-        bargle: 17,
-        section: Section {
-            glop: 386,
-            glyf: Some(EnumByName::Bargle),
-            general: FlattenedGeneral {
-                olle_bolle: 42.0,
-                snop: Some(EnumByRepr::Glop),
+        general: General {
+            argle: "Hello, world!".to_string(),
+            bargle: 17,
+            inner: Inner {
+                glop: 386,
+                glyf: Some(EnumByName::Bargle),
             },
-            renamed: RenamedSection { snyf: 42 },
+            prefixed: Inner {
+                glop: 386,
+                glyf: Some(EnumByName::Argle),
+            },
         },
+        section: Section {
+            olle_bolle: 42.0,
+            snop: Some(EnumByRepr::Glyf),
+        },
+        renamed: RenamedSection { snyf: 42 },
     };
 
     assert_eq!(loaded, expected);
@@ -112,12 +121,14 @@ fn comprehensive_test() {
 const TEST_INI: &str = r#"
 argle=Hello, world!
 Bargle=17
-olle_bolle=84.0
-snop=42
-
-[Section]
 glop=123
 glyf=Bargle
+prefixedglop=456,
+prefixedglyf=Argle
+
+[section]
+olle_bolle=84.0
+snop=17
 
 [SomethingElse]
 snyf=-42

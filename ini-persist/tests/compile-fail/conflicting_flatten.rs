@@ -1,27 +1,35 @@
-use ini_persist::{IniLoad, Result};
+use ini_persist::{LoadProperty, Result};
 
-#[derive(IniLoad)]
+#[derive(LoadProperty)]
 struct Foo {
-    argle_bargle: u8,
+    argle: u8,
 }
 
-#[derive(IniLoad)]
+#[derive(LoadProperty)]
 struct Bar {
     #[ini(flatten)]
-    #[ini(key = "Glop")]
+    #[ini(rename = "Bargle")]
+    bargle: Foo,
+
+    #[ini(flatten)]
+    #[ini(key_format = "{name}{prefix}")]
     glop: Foo,
 
     #[ini(flatten)]
     #[ini(parse_with = my_parse)]
     glyf: Foo,
 
-    #[ini(key = "Glop")]
+    #[ini(rename = "OlleBolle")]
     #[ini(flatten)]
     olle_bolle: Foo,
 
+    #[ini(key_format = "{name}{prefix}")]
+    #[ini(flatten)]
+    snop: Foo,
+
     #[ini(parse_with = my_parse)]
     #[ini(flatten)]
-    snop_snyf: Foo,
+    snyf: Foo,
 }
 
 fn my_parse(value: &str) -> Result<Foo> {

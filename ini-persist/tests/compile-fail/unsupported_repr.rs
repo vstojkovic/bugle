@@ -1,6 +1,6 @@
-use ini_persist::Property;
+use ini_persist::LoadProperty;
 
-#[derive(Property)]
+#[derive(LoadProperty)]
 #[ini(repr)]
 #[repr(C)]
 enum Foo {

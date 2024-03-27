@@ -1,17 +1,17 @@
 error: conflicting section specified
- --> tests/compile-fail/conflicting_section.rs:5:7
+ --> tests/compile-fail/conflicting_section.rs:6:11
   |
-5 | #[ini(section = "That")]
-  |       ^^^^^^^^^^^^^^^^
+6 |     #[ini(section = "That")]
+  |           ^^^^^^^^^^^^^^^^
 
 error: conflicting section specified
-  --> tests/compile-fail/conflicting_section.rs:13:7
+  --> tests/compile-fail/conflicting_section.rs:13:11
    |
-13 | #[ini(section = "Specific")]
-   |       ^^^^^^^^^^^^^^^^^^^^
+13 |     #[ini(section = "Specific")]
+   |           ^^^^^^^^^^^^^^^^^^^^
 
 error: conflicting section specified
-  --> tests/compile-fail/conflicting_section.rs:21:7
+  --> tests/compile-fail/conflicting_section.rs:20:11
    |
-21 | #[ini(general)]
-   |       ^^^^^^^
+20 |     #[ini(general)]
+   |           ^^^^^^^

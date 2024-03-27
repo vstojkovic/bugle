@@ -1,27 +1,29 @@
-use ini_persist::IniLoad;
+use ini_persist::{IniLoad, LoadProperty};
 
 #[derive(IniLoad)]
-#[ini(section = "This")]
-#[ini(section = "That")]
 struct Foo {
-    argle: u8,
-    bargle: String,
+    #[ini(section = "This")]
+    #[ini(section = "That")]
+    argle: Section,
 }
 
 #[derive(IniLoad)]
-#[ini(general)]
-#[ini(section = "Specific")]
 struct Bar {
-    glop: u8,
-    glyf: String,
+    #[ini(general)]
+    #[ini(section = "Specific")]
+    bargle: Section,
 }
 
 #[derive(IniLoad)]
-#[ini(section = "Specific")]
-#[ini(general)]
 struct Baz {
-    olle: u8,
-    bolle: String,
+    #[ini(section = "Specific")]
+    #[ini(general)]
+    glop: Section,
+}
+
+#[derive(LoadProperty)]
+struct Section {
+    glyf: u8,
 }
 
 fn main() {

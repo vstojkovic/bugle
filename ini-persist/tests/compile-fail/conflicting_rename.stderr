@@ -1,0 +1,5 @@
+error: duplicate ini attribute `rename`
+ --> tests/compile-fail/conflicting_rename.rs:6:11
+  |
+6 |     #[ini(rename = "bargle")]
+  |           ^^^^^^^^^^^^^^^^^

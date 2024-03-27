@@ -1,5 +1,0 @@
-error: duplicate ini_load attribute `key`
- --> tests/compile-fail/conflicting_key.rs:6:11
-  |
-6 |     #[ini(key = "bargle")]
-  |           ^^^^^^^^^^^^^^
