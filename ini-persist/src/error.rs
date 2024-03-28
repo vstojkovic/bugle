@@ -4,7 +4,7 @@ use std::fmt::Display;
 pub struct Error {
     kind: ErrorKind,
     message: String,
-    cause: Option<Box<dyn std::error::Error>>,
+    cause: Option<Box<dyn std::error::Error + Send + Sync>>,
 }
 
 #[derive(Debug)]
@@ -26,7 +26,10 @@ impl Display for Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.cause.as_deref()
+        match self.cause.as_ref() {
+            Some(cause) => Some(cause.as_ref()),
+            None => None,
+        }
     }
 }
 
@@ -43,7 +46,7 @@ impl Error {
         Self::new(ErrorKind::Custom, message.into())
     }
 
-    pub fn with_cause<C: std::error::Error + 'static>(mut self, cause: C) -> Self {
+    pub fn with_cause<C: std::error::Error + Send + Sync + 'static>(mut self, cause: C) -> Self {
         self.cause = Some(Box::new(cause));
         self
     }
