@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use chrono::Weekday;
 use fltk::app;
 use fltk::button::{Button, CheckButton, LightButton, ReturnButton};
 use fltk::dialog as fltk_dialog;
@@ -120,8 +119,4 @@ fn is_table_nav_event() -> bool {
 fn color_rgb(color: Color) -> u32 {
     let (r, g, b) = color.to_rgb();
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
-}
-
-fn weekday_iter() -> impl Iterator<Item = Weekday> {
-    (0..7u8).map(|day| day.try_into().unwrap())
 }

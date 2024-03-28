@@ -209,6 +209,7 @@ dependencies = [
  "governor",
  "hex",
  "humansize",
+ "ini-persist",
  "keyvalues-parser",
  "lazy_static",
  "linked-hash-map",

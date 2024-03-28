@@ -18,11 +18,12 @@ use strum::IntoEnumIterator;
 
 use crate::config::ServerBrowserConfig;
 use crate::game::platform::ModDirectory;
+use crate::game::settings::server::Community;
 use crate::game::Game;
 use crate::gui::data::{Reindex, RowFilter};
 use crate::servers::{
-    Community, FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server,
-    SortCriteria, SortKey, TypeFilter,
+    FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server, SortCriteria,
+    SortKey, TypeFilter,
 };
 
 use super::data::IterableTableSource;

@@ -16,13 +16,12 @@ use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::LayoutElement;
 use strum::IntoEnumIterator;
 
+use crate::game::settings::server::{BaseGeneralSettings, CombatModeModifier};
 use crate::game::Game;
 use crate::gui::prelude::declare_weak_cb;
 use crate::gui::widgets::DropDownList;
 use crate::gui::{alert_error, wrapper_factory};
-use crate::servers::{
-    CombatModeModifier, Community, GeneralSettings, Mode, Ownership, Region, Server, ServerData,
-};
+use crate::servers::{Mode, Ownership, Region, Server, ServerData};
 
 use super::{mode_name, region_name, ServerBrowserAction};
 
@@ -210,7 +209,7 @@ impl AddServerDialog {
         let mode = Mode::from_repr(self.mode_input.value() as _).unwrap();
         let kind = match mode {
             Mode::PVEC => CombatModeModifier::Conflict,
-            _ => CombatModeModifier::Other,
+            _ => CombatModeModifier::Other(0),
         };
 
         if self.region_input.value() < 0 {
@@ -231,13 +230,11 @@ impl AddServerDialog {
             port: host.port() as _,
             build_id: self.build_id,
             mods: None,
-            general: GeneralSettings {
+            general: BaseGeneralSettings {
                 battleye_required: self.battleye_check.is_checked(),
                 pvp_enabled: mode != Mode::PVE,
                 mode_modifier: kind,
-                community: Community::Unspecified,
-                max_ping: None,
-                max_clan_size: None,
+                ..Default::default()
             },
             progression: Default::default(),
             daylight: Default::default(),
@@ -245,7 +242,6 @@ impl AddServerDialog {
             combat: Default::default(),
             harvesting: Default::default(),
             crafting: Default::default(),
-            raid_hours: Default::default(),
         });
 
         Ok(server)

@@ -7,9 +7,11 @@ use nom::sequence::{separated_pair, terminated};
 use nom::IResult;
 
 use crate::game::platform::ModDirectory;
-use crate::gui::weekday_iter;
+use crate::game::settings::server::DropOnDeath;
+use crate::game::settings::Hours;
 use crate::gui::widgets::{use_inspector_macros, Inspector, PropertiesTable, PropertyRow};
-use crate::servers::{DropOnDeath, Server, Validity};
+use crate::servers::{Server, Validity};
+use crate::util::weekday_iter;
 
 use super::{community_name, mode_name, region_name, weekday_name};
 
@@ -46,7 +48,7 @@ impl InspectorCtx {
 
         if let Some(server) = server {
             for weekday in weekday_iter() {
-                if let Some((start, end)) = server.raid_hours.get(&weekday) {
+                if let Some(Hours { start, end }) = server.general.raid_hours.get(&weekday) {
                     row_consumer([
                         header.into(),
                         format!(
@@ -141,12 +143,11 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
     inspect_attr!("Map Name", |server| server.map.clone().into()),
     inspect_attr!("Mode", |server| mode_name(server.mode()).into()),
     inspect_attr!("Region", |server| region_name(server.region).into()),
-    inspect_opt_attr!("Max Clan Size", |server| {
-        server
-            .general
-            .max_clan_size
-            .map(|size| size.to_string().into())
-    }),
+    inspect_attr!("Max Clan Size", |server| server
+        .general
+        .max_clan_size
+        .to_string()
+        .into()),
     inspect_attr!("On Death", |server| {
         match server.survival.drop_items_on_death {
             DropOnDeath::Nothing => "keep all items",
@@ -209,7 +210,7 @@ const SERVER_DETAILS_ROWS: &[Inspector<Server, InspectorCtx>] = &[
         server.combat.durability_mult.to_string().into()
     }),
     inspect_attr!("Thrall Wakeup Time", |server| {
-        format!("{} secs", server.combat.thrall_wakeup_time_secs()).into()
+        format!("{} secs", server.combat.thrall_wakeup_time.num_seconds()).into()
     }),
     inspect_attr!("Day Cycle Speed", |server| {
         server.daylight.day_cycle_speed_mult.to_string().into()

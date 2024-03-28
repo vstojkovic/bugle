@@ -4,13 +4,15 @@ use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 use bitflags::bitflags;
-use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
 use uuid::Uuid;
 
-use crate::game::settings::{Multiplier, WeeklyHours};
+use crate::game::settings::server::{
+    BaseCombatSettings, BaseCraftingSettings, BaseDaylightSettings, BaseGeneralSettings,
+    BaseHarvestingSettings, BaseProgressionSettings, BaseSurvivalSettings, CombatModeModifier,
+};
 use crate::net::{is_valid_ip, is_valid_port};
 
 use super::FavoriteServers;
@@ -71,28 +73,25 @@ pub struct ServerData {
     pub mods: Option<String>,
 
     #[serde(flatten)]
-    pub general: GeneralSettings,
+    pub general: BaseGeneralSettings,
 
     #[serde(flatten)]
-    pub progression: ProgressionSettings,
+    pub progression: BaseProgressionSettings,
 
     #[serde(flatten)]
-    pub daylight: DaylightSettings,
+    pub daylight: BaseDaylightSettings,
 
     #[serde(flatten)]
-    pub survival: SurvivalSettings,
+    pub survival: BaseSurvivalSettings,
 
     #[serde(flatten)]
-    pub combat: CombatSettings,
+    pub combat: BaseCombatSettings,
 
     #[serde(flatten)]
-    pub harvesting: HarvestingSettings,
+    pub harvesting: BaseHarvestingSettings,
 
     #[serde(flatten)]
-    pub crafting: CraftingSettings,
-
-    #[serde(flatten, with = "raid_hours_serde")]
-    pub raid_hours: WeeklyHours,
+    pub crafting: BaseCraftingSettings,
 }
 
 impl Deref for Server {
@@ -254,7 +253,7 @@ impl ServerData {
         if self.general.pvp_enabled {
             match self.general.mode_modifier {
                 CombatModeModifier::Conflict => Mode::PVEC,
-                CombatModeModifier::Other => Mode::PVP,
+                CombatModeModifier::Other(_) => Mode::PVP,
             }
         } else {
             Mode::PVE
@@ -304,25 +303,6 @@ pub enum Ownership {
     Official,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize_repr, Serialize_repr, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(u8)]
-pub enum Community {
-    Unspecified,
-    Purist,
-    Relaxed,
-    Hardcore,
-    RolePlaying,
-    Experimental,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize_repr, Serialize_repr, PartialEq, Eq)]
-#[repr(u8)]
-pub enum CombatModeModifier {
-    Conflict = 1,
-    #[serde(other)]
-    Other,
-}
-
 #[derive(
     Clone, Copy, Debug, AsRefStr, EnumIter, EnumString, FromRepr, PartialEq, Eq, PartialOrd, Ord,
 )]
@@ -346,270 +326,6 @@ bitflags! {
 impl Validity {
     pub fn is_valid(self) -> bool {
         self == Self::VALID
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct GeneralSettings {
-    #[serde(rename = "S05")]
-    pub battleye_required: bool,
-
-    #[serde(rename = "S0")]
-    pub pvp_enabled: bool,
-
-    #[serde(rename = "S30")]
-    pub mode_modifier: CombatModeModifier,
-
-    #[serde(rename = "Su")]
-    pub community: Community,
-
-    #[serde(rename = "S20")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_ping: Option<u32>,
-
-    #[serde(rename = "Sx")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_clan_size: Option<u16>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct ProgressionSettings {
-    #[serde(rename = "Sz")]
-    pub xp_rate_mult: Multiplier,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct DaylightSettings {
-    #[serde(rename = "Sb", default)]
-    pub day_cycle_speed_mult: Multiplier,
-
-    #[serde(rename = "Sg", default)]
-    pub dawn_dusk_speed_mult: Multiplier,
-
-    #[serde(rename = "Sd", default = "default_true")]
-    pub use_catch_up_time: bool,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct SurvivalSettings {
-    #[serde(rename = "Sj", default)]
-    pub stamina_cost_mult: Multiplier,
-
-    #[serde(rename = "S21")]
-    pub idle_thirst_mult: Multiplier,
-
-    #[serde(rename = "S22")]
-    pub active_thirst_mult: Multiplier,
-
-    #[serde(rename = "S23")]
-    pub idle_hunger_mult: Multiplier,
-
-    #[serde(rename = "S24")]
-    pub active_hunger_mult: Multiplier,
-
-    #[serde(rename = "S7")]
-    pub drop_items_on_death: DropOnDeath,
-
-    #[serde(rename = "Sa")]
-    pub anyone_can_loot_corpse: bool,
-
-    #[serde(rename = "S5", default = "default_true")]
-    pub offline_chars_in_world: bool,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct CombatSettings {
-    #[serde(rename = "S6", default)]
-    pub durability_mult: Multiplier,
-
-    #[serde(rename = "So")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    thrall_wakeup_time_secs: Option<f64>,
-}
-
-impl CombatSettings {
-    pub fn thrall_wakeup_time_secs(&self) -> f64 {
-        self.thrall_wakeup_time_secs.unwrap_or(1800.0)
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct HarvestingSettings {
-    #[serde(rename = "Sl")]
-    pub harvest_amount_mult: Multiplier,
-
-    #[serde(rename = "Sk", default)]
-    pub item_spoil_rate_mult: Multiplier,
-
-    #[serde(rename = "Sm", default)]
-    pub rsrc_respawn_speed_mult: Multiplier,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct CraftingSettings {
-    #[serde(rename = "S8")]
-    pub crafting_time_mult: Multiplier,
-
-    #[serde(rename = "S4")]
-    pub thrall_crafting_time_mult: Multiplier,
-}
-
-#[derive(Clone, Copy, Debug, Serialize_repr)]
-#[repr(u8)]
-pub enum DropOnDeath {
-    Nothing,
-    All,
-    Backpack,
-}
-
-impl Default for DropOnDeath {
-    fn default() -> Self {
-        Self::Nothing
-    }
-}
-
-impl<'de> Deserialize<'de> for DropOnDeath {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct DropOnDeathVisitor;
-
-        impl<'de> Visitor<'de> for DropOnDeathVisitor {
-            type Value = DropOnDeath;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("false, true, 0, 1, or 2")
-            }
-
-            fn visit_bool<E: serde::de::Error>(self, v: bool) -> Result<Self::Value, E> {
-                Ok(match v {
-                    false => DropOnDeath::Nothing,
-                    true => DropOnDeath::All,
-                })
-            }
-
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
-                if v >= 0 {
-                    self.visit_u64(v as u64)
-                } else {
-                    Err(E::invalid_value(
-                        serde::de::Unexpected::Signed(v),
-                        &"0, 1, or 2",
-                    ))
-                }
-            }
-
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
-                match v {
-                    0 => Ok(DropOnDeath::Nothing),
-                    1 => Ok(DropOnDeath::All),
-                    2 => Ok(DropOnDeath::Backpack),
-                    _ => Err(E::invalid_value(
-                        serde::de::Unexpected::Unsigned(v),
-                        &"0, 1, or 2",
-                    )),
-                }
-            }
-        }
-
-        deserializer.deserialize_any(DropOnDeathVisitor)
-    }
-}
-
-mod raid_hours_serde {
-    use std::collections::HashMap;
-
-    use chrono::Weekday;
-    use serde::de::{MapAccess, Visitor};
-    use serde::ser::SerializeMap;
-
-    use crate::game::settings::HourMinute;
-
-    use super::WeeklyHours;
-
-    pub fn serialize<S: serde::Serializer>(
-        hours: &WeeklyHours,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(hours.len() * 3))?;
-        for (day, (HourMinute(start), HourMinute(end))) in hours.iter() {
-            let offset = *day as isize;
-            map.serialize_entry(&format!("S{}", 92 + offset), start)?;
-            map.serialize_entry(&format!("S{}", 99 + offset), end)?;
-            map.serialize_entry(&format!("S{}", 106 + offset), &true)?;
-        }
-        map.end()
-    }
-
-    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<WeeklyHours, D::Error> {
-        fn hours_entry_index(key: &str) -> Option<(Weekday, usize)> {
-            match key {
-                "S92" => Some((Weekday::Mon, 0)),
-                "S93" => Some((Weekday::Tue, 0)),
-                "S94" => Some((Weekday::Wed, 0)),
-                "S95" => Some((Weekday::Thu, 0)),
-                "S96" => Some((Weekday::Fri, 0)),
-                "S97" => Some((Weekday::Sat, 0)),
-                "S98" => Some((Weekday::Sun, 0)),
-                "S99" => Some((Weekday::Mon, 1)),
-                "S100" => Some((Weekday::Tue, 1)),
-                "S101" => Some((Weekday::Wed, 1)),
-                "S102" => Some((Weekday::Thu, 1)),
-                "S103" => Some((Weekday::Fri, 1)),
-                "S104" => Some((Weekday::Sat, 1)),
-                "S105" => Some((Weekday::Sun, 1)),
-                _ => None,
-            }
-        }
-
-        fn hours_inclusion_key(key: &str) -> Option<Weekday> {
-            match key {
-                "S106" => Some(Weekday::Mon),
-                "S107" => Some(Weekday::Tue),
-                "S108" => Some(Weekday::Wed),
-                "S109" => Some(Weekday::Thu),
-                "S110" => Some(Weekday::Fri),
-                "S111" => Some(Weekday::Sat),
-                "S112" => Some(Weekday::Sun),
-                _ => None,
-            }
-        }
-
-        struct MapVisitor;
-
-        impl<'de> Visitor<'de> for MapVisitor {
-            type Value = WeeklyHours;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("map")
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-                let mut hours = HashMap::new();
-                let mut defined_days = Vec::new();
-
-                while let Some(key) = map.next_key::<&str>()? {
-                    if let Some((day, idx)) = hours_entry_index(key) {
-                        hours.entry(day).or_insert([0, 0])[idx] = map.next_value()?;
-                    } else if let Some(day) = hours_inclusion_key(key) {
-                        if map.next_value::<bool>()? {
-                            defined_days.push(day);
-                        }
-                    }
-                }
-
-                Ok(defined_days
-                    .into_iter()
-                    .filter_map(|day| {
-                        hours
-                            .get(&day)
-                            .map(|values| (day, (values[0].into(), values[1].into())))
-                    })
-                    .collect())
-            }
-        }
-
-        deserializer.deserialize_map(MapVisitor)
     }
 }
 
@@ -686,9 +402,4 @@ impl SortCriteria {
             ascending: !self.ascending,
         }
     }
-}
-
-#[inline(always)]
-const fn default_true() -> bool {
-    true
 }

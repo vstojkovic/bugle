@@ -20,6 +20,7 @@ futures = "0.3"
 governor = "0.4.2"
 humansize = "2"
 hex = "0.4"
+ini-persist = { version = "0.1.0", path = "../ini-persist" }
 keyvalues-parser = "0.1.0"
 lazy_static = "1"
 linked-hash-map = "0.5.6"
