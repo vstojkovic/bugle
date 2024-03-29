@@ -1,5 +1,8 @@
+use std::str::FromStr;
+
 use ini::{Ini, Properties};
 
+use crate::error::Error;
 use crate::Result;
 
 #[cfg(feature = "derive")]
@@ -45,12 +48,19 @@ impl ParseProperty for String {
     }
 }
 
+impl ParseProperty for bool {
+    fn parse(text: &str) -> Result<Self> {
+        bool::from_str(&text.to_ascii_lowercase()).map_err(|err| {
+            Error::invalid_type(format!("failed to parse bool from: {}", text)).with_cause(err)
+        })
+    }
+}
+
 macro_rules! impl_from_str_properties {
     ($($type:ty),+ $(,)?) => {
         $(
         impl ParseProperty for $type {
             fn parse(text: &str) -> $crate::Result<Self> {
-                use std::str::FromStr;
                 Self::from_str(text).map_err(|err| {
                     $crate::error::Error::invalid_type(format!(
                         concat!("failed to parse ", stringify!($type), " from: {}"),
@@ -65,7 +75,7 @@ macro_rules! impl_from_str_properties {
 }
 
 impl_from_str_properties!(
-    i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64, bool, char,
+    i8, i16, i32, i64, i128, isize, u8, u16, u32, u64, u128, usize, f32, f64, char,
 );
 
 impl<P: ConstructProperty> ConstructProperty for Option<P> {
