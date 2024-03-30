@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use ini_persist::LoadProperty;
+use ini_persist::load::LoadProperty;
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
 

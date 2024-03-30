@@ -1,5 +1,5 @@
 use chrono::TimeDelta;
-use ini_persist::LoadProperty;
+use ini_persist::load::LoadProperty;
 use strum_macros::EnumIter;
 
 use crate::game::settings::{parse_seconds, Multiplier};

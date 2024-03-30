@@ -1,15 +1,24 @@
-use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned};
+use proc_macro2::{Span, TokenStream};
+use quote::quote;
 use syn::spanned::Spanned;
-use syn::{Data, DataStruct, DeriveInput, Error, Fields, Result};
+use syn::{Data, DataStruct, DeriveInput, Error, Fields, Ident, Result, Type};
 
 use crate::attr::{IniAttr, NoAttrSupport};
 
 mod attr;
+pub mod load;
+pub mod save;
 
 use self::attr::FieldAttr;
 
-pub fn expand_ini_load(input: DeriveInput) -> Result<TokenStream> {
+type FieldExpander = fn(name: &Ident, typ: &Type, section: TokenStream, span: Span) -> TokenStream;
+type TraitExpander = fn(struct_name: &Ident, field_expansions: Vec<TokenStream>) -> TokenStream;
+
+fn expand_ini_impl(
+    input: DeriveInput,
+    field_expander: FieldExpander,
+    trait_expander: TraitExpander,
+) -> Result<TokenStream> {
     let fields = match &input.data {
         Data::Struct(DataStruct {
             fields: Fields::Named(fields),
@@ -21,7 +30,7 @@ pub fn expand_ini_load(input: DeriveInput) -> Result<TokenStream> {
     NoAttrSupport::from_ast(input.attrs.iter())?;
 
     let struct_name = input.ident;
-    let load_calls = fields
+    let field_expansions = fields
         .into_iter()
         .map(|field| {
             let attr = FieldAttr::from_ast(field.attrs.iter())?;
@@ -34,24 +43,10 @@ pub fn expand_ini_load(input: DeriveInput) -> Result<TokenStream> {
                 None => quote!(None::<String>),
             };
 
-            Ok(quote_spanned! { span =>
-                if let Some(section) = ini.section(#section) {
-                    self.#field_name.load_in(section, "")?;
-                }
-            })
+            Ok(field_expander(field_name, &field.ty, section, span))
         })
-        .map(|result| result.unwrap_or_else(Error::into_compile_error));
+        .map(|result| result.unwrap_or_else(Error::into_compile_error))
+        .collect();
 
-    let output = quote! {
-        #[automatically_derived]
-        impl ini_persist::load::IniLoad for #struct_name {
-            fn load_from_ini(&mut self, ini: &ini::Ini) -> ini_persist::Result<()> {
-                use ini_persist::load::LoadProperty;
-                #(#load_calls)*
-                ini_persist::Result::Ok(())
-            }
-        }
-    };
-
-    Ok(output)
+    Ok(trait_expander(&struct_name, field_expansions))
 }

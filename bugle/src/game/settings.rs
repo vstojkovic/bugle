@@ -4,8 +4,7 @@ use std::str::FromStr;
 
 use chrono::{TimeDelta, Weekday};
 use ini::Properties;
-use ini_persist::load::ParseProperty;
-use ini_persist::LoadProperty;
+use ini_persist::load::{LoadProperty, ParseProperty};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
@@ -171,9 +170,6 @@ fn parse_delta(value: &str, unit: &str, seconds_per_unit: f64) -> ini_persist::R
     let secs = count as i64;
     let nanos = (count.fract().abs() * NANOS_PER_SEC) as u32;
     TimeDelta::new(secs, nanos).ok_or_else(|| {
-        ini_persist::error::Error::invalid_value(format!(
-            "interval out of range: {} {}",
-            count, unit
-        ))
+        ini_persist::Error::invalid_value(format!("interval out of range: {} {}", count, unit))
     })
 }

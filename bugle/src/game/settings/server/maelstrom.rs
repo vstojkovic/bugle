@@ -1,5 +1,5 @@
 use chrono::TimeDelta;
-use ini_persist::LoadProperty;
+use ini_persist::load::LoadProperty;
 
 use crate::game::settings::{
     parse_minutes, parse_seconds, HourMinute, Hours, Multiplier, WeeklyHours,

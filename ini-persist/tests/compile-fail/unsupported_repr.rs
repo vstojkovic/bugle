@@ -1,4 +1,4 @@
-use ini_persist::LoadProperty;
+use ini_persist::load::LoadProperty;
 
 #[derive(LoadProperty)]
 #[ini(repr)]

@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use ini_persist::LoadProperty;
+use ini_persist::load::LoadProperty;
 use serde::{Deserialize, Serialize};
 
 use crate::game::settings::Multiplier;

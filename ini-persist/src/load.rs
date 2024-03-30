@@ -2,8 +2,7 @@ use std::str::FromStr;
 
 use ini::{Ini, Properties};
 
-use crate::error::Error;
-use crate::Result;
+use crate::{Error, Result};
 
 #[cfg(feature = "derive")]
 pub use ini_persist_derive::{IniLoad, LoadProperty};

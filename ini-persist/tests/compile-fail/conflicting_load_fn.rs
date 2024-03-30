@@ -1,5 +1,6 @@
 use ini::Properties;
-use ini_persist::{LoadProperty, Result};
+use ini_persist::Result;
+use ini_persist::load::LoadProperty;
 
 #[derive(LoadProperty)]
 struct Foo {

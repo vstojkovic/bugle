@@ -1,35 +1,35 @@
 error: cannot rename a flattened field
-  --> tests/compile-fail/conflicting_flatten.rs:11:11
+  --> tests/compile-fail/conflicting_flatten.rs:12:11
    |
-11 |     #[ini(rename = "Bargle")]
+12 |     #[ini(rename = "Bargle")]
    |           ^^^^^^^^^^^^^^^^^
 
 error: cannot define a key format for a flattened field
-  --> tests/compile-fail/conflicting_flatten.rs:15:11
+  --> tests/compile-fail/conflicting_flatten.rs:16:11
    |
-15 |     #[ini(key_format = "{name}{prefix}")]
+16 |     #[ini(key_format = "{name}{prefix}")]
    |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: cannot define a load function for a flattened field
-  --> tests/compile-fail/conflicting_flatten.rs:19:11
+  --> tests/compile-fail/conflicting_flatten.rs:20:11
    |
-19 |     #[ini(parse_with = my_parse)]
+20 |     #[ini(parse_with = my_parse)]
    |           ^^^^^^^^^^^^^^^^^^^^^
 
 error: cannot flatten a renamed field
-  --> tests/compile-fail/conflicting_flatten.rs:23:11
+  --> tests/compile-fail/conflicting_flatten.rs:24:11
    |
-23 |     #[ini(flatten)]
+24 |     #[ini(flatten)]
    |           ^^^^^^^
 
 error: cannot flatten a field with a defined key format
-  --> tests/compile-fail/conflicting_flatten.rs:27:11
+  --> tests/compile-fail/conflicting_flatten.rs:28:11
    |
-27 |     #[ini(flatten)]
+28 |     #[ini(flatten)]
    |           ^^^^^^^
 
 error: cannot flatten a field with a defined load function
-  --> tests/compile-fail/conflicting_flatten.rs:31:11
+  --> tests/compile-fail/conflicting_flatten.rs:32:11
    |
-31 |     #[ini(flatten)]
+32 |     #[ini(flatten)]
    |           ^^^^^^^

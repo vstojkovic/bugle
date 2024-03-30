@@ -1,4 +1,4 @@
-use ini_persist::{IniLoad, LoadProperty};
+use ini_persist::load::{IniLoad, LoadProperty};
 
 #[derive(IniLoad)]
 struct Foo {

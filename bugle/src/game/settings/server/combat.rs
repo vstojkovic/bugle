@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use chrono::TimeDelta;
-use ini_persist::LoadProperty;
+use ini_persist::load::LoadProperty;
 use serde::{Deserialize, Serialize};
 
 use crate::game::settings::{parse_seconds, Multiplier, WeeklyHours};

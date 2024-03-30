@@ -1,5 +1,5 @@
 use ini::Ini;
-use ini_persist::{IniLoad, LoadProperty};
+use ini_persist::load::{IniLoad, LoadProperty};
 
 #[derive(Debug, Default, PartialEq, IniLoad)]
 struct Root {

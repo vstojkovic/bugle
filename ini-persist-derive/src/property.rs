@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use lazy_static::lazy_static;
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -6,32 +8,66 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
     Attribute, Data, DataEnum, DataStruct, DeriveInput, Error, Field, Fields, Ident, Meta, Result,
-    Token, Variant,
+    Token, Type, Variant,
 };
 
 use crate::attr::{IniAttr, NoAttrSupport};
 
 mod attr;
+pub mod load;
+pub mod save;
 
-use self::attr::{EnumAttr, FieldAttr, LoadFn, StructAttr};
+use self::attr::{EnumAttr, FieldAttr, StructAttr};
 
-pub fn expand_load_property(input: DeriveInput) -> Result<TokenStream> {
+type FieldExpander<F> =
+    fn(name: &Ident, typ: &Type, key: TokenStream, attr: FieldAttr, span: Span) -> F;
+type StructTraitExpander<F> =
+    fn(struct_name: &Ident, field_expansions: Vec<Result<F>>) -> TokenStream;
+type VariantExpander = fn(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream;
+type EnumTraitExpander = fn(
+    enum_name: &Ident,
+    repr_type: Option<&Ident>,
+    prelude: TokenStream,
+    match_arms: Vec<TokenStream>,
+) -> TokenStream;
+
+fn expand_property_impl<F>(
+    input: DeriveInput,
+    field_expander: FieldExpander<F>,
+    struct_trait_expander: StructTraitExpander<F>,
+    repr_variant_expander: VariantExpander,
+    named_variant_expander: VariantExpander,
+    enum_trait_expander: EnumTraitExpander,
+) -> Result<TokenStream> {
     match input.data {
         Data::Struct(DataStruct {
             fields: Fields::Named(fields),
             ..
-        }) => expand_struct_impl(input.ident, fields.named.into_iter().collect(), input.attrs),
-        Data::Enum(DataEnum { variants, .. }) => {
-            expand_enum_impl(input.ident, variants.into_iter().collect(), input.attrs)
-        }
+        }) => expand_struct_impl(
+            input.ident,
+            fields.named.into_iter().collect(),
+            input.attrs,
+            field_expander,
+            struct_trait_expander,
+        ),
+        Data::Enum(DataEnum { variants, .. }) => expand_enum_impl(
+            input.ident,
+            variants.into_iter().collect(),
+            input.attrs,
+            repr_variant_expander,
+            named_variant_expander,
+            enum_trait_expander,
+        ),
         _ => panic!("Property can only be derived on an enum or a struct with named fields"),
     }
 }
 
-fn expand_struct_impl(
+fn expand_struct_impl<F>(
     ident: Ident,
     fields: Vec<Field>,
     attrs: Vec<Attribute>,
+    field_expander: FieldExpander<F>,
+    trait_expander: StructTraitExpander<F>,
 ) -> Result<TokenStream> {
     let attr = StructAttr::from_ast(attrs.iter())?;
     let struct_name = &ident;
@@ -41,62 +77,34 @@ fn expand_struct_impl(
         .map(String::as_str)
         .unwrap_or("{prefix}{name}");
 
-    let load_calls = fields
-        .into_iter()
+    let field_expansions = fields
+        .iter()
         .map(|field| {
             let attr = FieldAttr::from_ast(field.attrs.iter())?;
             let field_name = field.ident.as_ref().unwrap();
-            let span = field.ty.span();
+            let span = field.span();
 
-            expand_field(field_name, attr, default_format, span)
+            let key_name = attr
+                .key_name
+                .as_ref()
+                .map(Cow::from)
+                .unwrap_or_else(|| field_name.to_string().into());
+            let key_format = attr
+                .key_format
+                .as_ref()
+                .map(String::as_str)
+                .unwrap_or_else(|| default_format);
+            let key = if attr.flatten.is_some() {
+                quote!(key)
+            } else {
+                expand_key(key_format, &key_name)
+            };
+
+            Ok(field_expander(field_name, &field.ty, key, attr, span))
         })
-        .map(|result| result.unwrap_or_else(Error::into_compile_error));
+        .collect();
 
-    let output = quote! {
-        #[automatically_derived]
-        impl ini_persist::load::LoadProperty for #struct_name {
-            fn load_in(&mut self, section: &ini::Properties, key: &str) -> ini_persist::Result<()> {
-                #(#load_calls)*
-                ini_persist::Result::Ok(())
-            }
-        }
-    };
-
-    Ok(output)
-}
-
-fn expand_field(
-    name: &Ident,
-    attr: FieldAttr,
-    default_format: &str,
-    span: Span,
-) -> Result<TokenStream> {
-    let key_name = attr.key_name.unwrap_or_else(|| name.to_string());
-    let key_format = attr
-        .key_format
-        .as_ref()
-        .map(String::as_str)
-        .unwrap_or_else(|| default_format);
-    let key = if attr.flatten.is_some() { quote!(key) } else { expand_key(key_format, &key_name) };
-
-    Ok(match attr.load_fn {
-        None => quote_spanned! { span =>
-            self.#name.load_in(section, #key)?;
-        },
-        Some(LoadFn::InPlace(path)) => quote_spanned! { span =>
-            #path(&mut self.#name, section, #key)?;
-        },
-        Some(LoadFn::Constructed(path)) => quote_spanned! { span =>
-            if let Some(value) = #path(section, #key)? {
-                self.#name = value;
-            }
-        },
-        Some(LoadFn::Parsed(path)) => quote_spanned! { span =>
-            if let Some(value) = section.get(#key) {
-                self.#name = #path(value)?;
-            }
-        },
-    })
+    Ok(trait_expander(struct_name, field_expansions))
 }
 
 fn expand_key(format: &str, name: &str) -> TokenStream {
@@ -114,6 +122,9 @@ fn expand_enum_impl(
     ident: Ident,
     variants: Vec<Variant>,
     attrs: Vec<Attribute>,
+    repr_variant_expander: VariantExpander,
+    named_variant_expander: VariantExpander,
+    trait_expander: EnumTraitExpander,
 ) -> Result<TokenStream> {
     for variant in variants.iter() {
         NoAttrSupport::from_ast(variant.attrs.iter())?;
@@ -139,13 +150,13 @@ fn expand_enum_impl(
                 impl Discriminants {
                     #(#constants;)*
                 }
-                let value = #repr_type::parse(value)?;
             }
         })
         .unwrap_or_default();
+
     let match_expander = match attr.repr {
-        Some(()) => expand_repr_variant_match,
-        None => expand_named_variant_match,
+        Some(()) => repr_variant_expander,
+        None => named_variant_expander,
     };
     let match_arms = variants
         .iter()
@@ -153,24 +164,15 @@ fn expand_enum_impl(
             NoAttrSupport::from_ast(variant.attrs.iter())?;
             Ok(match_expander(&variant.ident, enum_name, variant.span()))
         })
-        .map(|result| result.unwrap_or_else(Error::into_compile_error));
+        .map(|result| result.unwrap_or_else(Error::into_compile_error))
+        .collect();
 
-    let output = quote! {
-        #[automatically_derived]
-        impl ini_persist::load::ParseProperty for #enum_name {
-            fn parse(value: &str) -> ini_persist::Result<Self> {
-                #prelude
-                ini_persist::Result::Ok(match value {
-                    #(#match_arms,)*
-                    _ => return ini_persist::Result::Err(ini_persist::error::Error::invalid_value(
-                        format!("invalid value: {}", value)
-                    ))
-                })
-            }
-        }
-    };
-
-    Ok(output)
+    Ok(trait_expander(
+        enum_name,
+        attr.repr.map(|_| &repr_type),
+        prelude,
+        match_arms,
+    ))
 }
 
 fn is_non_unit_variant(variant: &Variant) -> bool {
@@ -211,14 +213,6 @@ fn expand_variant_const(
     span: Span,
 ) -> TokenStream {
     quote_spanned!(span => const #name: #repr_type = #enum_name::#name as #repr_type)
-}
-
-fn expand_named_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream {
-    quote_spanned!(span => stringify!(#name) => #enum_name::#name)
-}
-
-fn expand_repr_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream {
-    quote_spanned!(span => Discriminants::#name => #enum_name::#name)
 }
 
 lazy_static! {

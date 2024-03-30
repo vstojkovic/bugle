@@ -2,8 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use anyhow::Result;
 use chrono::TimeDelta;
-use ini_persist::load::ParseProperty;
-use ini_persist::LoadProperty;
+use ini_persist::load::{LoadProperty, ParseProperty};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::EnumIter;

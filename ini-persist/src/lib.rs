@@ -1,8 +1,6 @@
-pub mod error;
+mod error;
 pub mod load;
+pub mod save;
 
-use self::error::Error;
-
+pub use self::error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
-
-pub use load::{IniLoad, LoadProperty};
