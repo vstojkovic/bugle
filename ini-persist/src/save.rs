@@ -11,9 +11,13 @@ pub trait IniSave {
 
 pub trait SaveProperty {
     fn remove(section: &mut Properties, key: &str) {
-        let _ = section.remove_all(key);
+        default_remove(section, key);
     }
     fn append(&self, section: &mut Properties, key: &str);
+}
+
+pub fn default_remove(section: &mut Properties, key: &str) {
+    let _ = section.remove_all(key);
 }
 
 pub trait DisplayProperty {

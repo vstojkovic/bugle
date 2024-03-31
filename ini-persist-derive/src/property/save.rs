@@ -2,7 +2,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::{DeriveInput, Ident, Result, Type};
 
-use super::attr::FieldAttr;
+use super::attr::{AppendFn, FieldAttr};
 use super::expand_property_impl;
 
 pub fn expand_save_property(input: DeriveInput) -> Result<TokenStream> {
@@ -20,14 +20,27 @@ fn expand_field(
     name: &Ident,
     typ: &Type,
     key: TokenStream,
-    _attr: FieldAttr,
+    attr: FieldAttr,
     span: Span,
 ) -> (TokenStream, TokenStream) {
-    let remove = quote_spanned! { span =>
-        <#typ as ini_persist::save::SaveProperty>::remove(section, #key);
+    let remove = match attr.remove_fn {
+        None => quote_spanned! { span =>
+            <#typ as ini_persist::save::SaveProperty>::remove(section, #key);
+        },
+        Some(path) => quote_spanned! { span =>
+            #path(section, #key);
+        },
     };
-    let append = quote_spanned! { span =>
-        self.#name.append(section, #key);
+    let append = match attr.append_fn {
+        None => quote_spanned! { span =>
+            self.#name.append(section, #key);
+        },
+        Some(AppendFn::Append(path)) => quote_spanned! { span =>
+            #path(&self.#name, section, #key);
+        },
+        Some(AppendFn::Display(path)) => quote_spanned! { span =>
+            section.append(#key, #path(&self.#name));
+        },
     };
     (remove, append)
 }

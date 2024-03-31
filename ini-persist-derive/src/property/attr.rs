@@ -13,6 +13,8 @@ pub struct FieldAttr {
     pub key_format: Option<String>,
     pub flatten: Option<()>,
     pub load_fn: Option<LoadFn>,
+    pub remove_fn: Option<Path>,
+    pub append_fn: Option<AppendFn>,
 }
 
 #[derive(Default)]
@@ -24,6 +26,11 @@ pub enum LoadFn {
     InPlace(Path),
     Constructed(Path),
     Parsed(Path),
+}
+
+pub enum AppendFn {
+    Append(Path),
+    Display(Path),
 }
 
 impl IniAttr for StructAttr {
@@ -99,6 +106,39 @@ impl IniAttr for FieldAttr {
                     return Err(meta.error("cannot define a load function for a flattened field"));
                 }
                 self.load_fn = Some(LoadFn::Parsed(path));
+                return Ok(());
+            }
+            if meta.path.is_ident("remove_with") {
+                let path = extract_path(&meta)?;
+                if self.remove_fn.is_some() {
+                    return Err(meta.error("conflicting remove function specified"));
+                }
+                if self.flatten.is_some() {
+                    return Err(meta.error("cannot define a remove function for a flattened field"));
+                }
+                self.remove_fn = Some(path);
+                return Ok(());
+            }
+            if meta.path.is_ident("append_with") {
+                let path = extract_path(&meta)?;
+                if self.append_fn.is_some() {
+                    return Err(meta.error("conflicting append function specified"));
+                }
+                if self.flatten.is_some() {
+                    return Err(meta.error("cannot define a append function for a flattened field"));
+                }
+                self.append_fn = Some(AppendFn::Append(path));
+                return Ok(());
+            }
+            if meta.path.is_ident("display_with") {
+                let path = extract_path(&meta)?;
+                if self.append_fn.is_some() {
+                    return Err(meta.error("conflicting append function specified"));
+                }
+                if self.flatten.is_some() {
+                    return Err(meta.error("cannot define a append function for a flattened field"));
+                }
+                self.append_fn = Some(AppendFn::Display(path));
                 return Ok(());
             }
             if meta.path.is_ident("flatten") {

@@ -1,7 +1,8 @@
-use ini::Ini;
+use ini::{Ini, WriteOption};
 use ini_persist::load::{IniLoad, LoadProperty};
+use ini_persist::save::{IniSave, SaveProperty};
 
-#[derive(Debug, Default, PartialEq, IniLoad)]
+#[derive(Debug, Default, PartialEq, IniLoad, IniSave)]
 struct Root {
     #[ini(general)]
     general: General,
@@ -12,11 +13,11 @@ struct Root {
     renamed: RenamedSection,
 }
 
-#[derive(Debug, Default, PartialEq, LoadProperty)]
+#[derive(Debug, Default, PartialEq, LoadProperty, SaveProperty)]
 struct General {
     argle: String,
 
-    #[ini(rename = "Bargle")]
+    #[ini(rename = "Bargle", remove_with = helpers::my_remove)]
     bargle: u8,
 
     #[ini(flatten)]
@@ -25,35 +26,35 @@ struct General {
     prefixed: Inner,
 }
 
-#[derive(Debug, Default, PartialEq, LoadProperty)]
+#[derive(Debug, Default, PartialEq, LoadProperty, SaveProperty)]
 struct Inner {
-    #[ini(load_in_with = helpers::my_load_in)]
+    #[ini(load_in_with = helpers::my_load_in, append_with = helpers::my_append)]
     glop: i32,
 
     glyf: Option<EnumByName>,
 }
 
-#[derive(Debug, Default, PartialEq, LoadProperty)]
+#[derive(Debug, Default, PartialEq, LoadProperty, SaveProperty)]
 struct Section {
-    #[ini(load_with = helpers::my_load)]
+    #[ini(load_with = helpers::my_load, display_with = helpers::my_display_f64)]
     olle_bolle: f64,
 
     snop: Option<EnumByRepr>,
 }
 
-#[derive(Debug, Default, PartialEq, LoadProperty)]
+#[derive(Debug, Default, PartialEq, LoadProperty, SaveProperty)]
 struct RenamedSection {
-    #[ini(parse_with = helpers::my_parse)]
+    #[ini(parse_with = helpers::my_parse, display_with = helpers::my_display_i16)]
     snyf: i16,
 }
 
-#[derive(Debug, LoadProperty, PartialEq, Eq)]
+#[derive(Debug, LoadProperty, SaveProperty, PartialEq, Eq)]
 enum EnumByName {
     Argle,
     Bargle,
 }
 
-#[derive(Debug, LoadProperty, PartialEq, Eq)]
+#[derive(Debug, LoadProperty, SaveProperty, PartialEq, Eq)]
 #[ini(repr)]
 #[repr(u8)]
 enum EnumByRepr {
@@ -81,6 +82,24 @@ mod helpers {
     pub fn my_parse(value: &str) -> Result<i16> {
         Ok(-i16::parse(value)?)
     }
+
+    pub fn my_append(_field: &i32, section: &mut Properties, key: &str) {
+        let value = if key == "glop" { 123 } else { 456 };
+        section.append(key, value.to_string());
+    }
+
+    pub fn my_display_f64(field: &f64) -> String {
+        format!("{:.2}", *field * 2.0)
+    }
+
+    pub fn my_display_i16(field: &i16) -> String {
+        format!("{}", -*field)
+    }
+
+    pub fn my_remove(section: &mut Properties, key: &str) {
+        let _ = section.remove_all(key);
+        let _ = section.remove_all("quux");
+    }
 }
 
 #[test]
@@ -90,12 +109,43 @@ fn compilation_errors() {
 }
 
 #[test]
-fn comprehensive_test() {
+fn comprehensive_loading_test() {
     let ini = Ini::load_from_str(TEST_INI).unwrap();
     let mut loaded = Root::default();
     loaded.load_from_ini(&ini).unwrap();
 
-    let expected = Root {
+    let expected = make_test_data();
+    assert_eq!(loaded, expected);
+}
+
+#[test]
+fn comprehensive_saving_test() {
+    use std::io::Write;
+
+    let mut ini = Ini::new();
+    ini.with_section(None::<String>)
+        .set("quux", format!("{}", 420.17));
+
+    let to_save = make_test_data();
+    to_save.save_to_ini(&mut ini);
+
+    let mut saved = vec![];
+    write!(&mut saved, "\n").unwrap();
+    ini.write_to_opt(
+        &mut saved,
+        WriteOption {
+            escape_policy: ini::EscapePolicy::Nothing,
+            line_separator: ini::LineSeparator::CR,
+        },
+    )
+    .unwrap();
+    let saved = String::from_utf8(saved).unwrap();
+
+    assert_eq!(saved, TEST_INI);
+}
+
+fn make_test_data() -> Root {
+    Root {
         general: General {
             argle: "Hello, world!".to_string(),
             bargle: 17,
@@ -113,9 +163,7 @@ fn comprehensive_test() {
             snop: Some(EnumByRepr::Glyf),
         },
         renamed: RenamedSection { snyf: 42 },
-    };
-
-    assert_eq!(loaded, expected);
+    }
 }
 
 const TEST_INI: &str = r#"
@@ -123,11 +171,11 @@ argle=Hello, world!
 Bargle=17
 glop=123
 glyf=Bargle
-prefixedglop=456,
+prefixedglop=456
 prefixedglyf=Argle
 
 [section]
-olle_bolle=84.0
+olle_bolle=84.00
 snop=17
 
 [SomethingElse]

@@ -39,7 +39,7 @@ fn expand_ini_impl(
 
             let section_name = attr.section.unwrap_or_else(|| Some(field_name.to_string()));
             let section = match section_name {
-                Some(name) => quote!(Some(#name)),
+                Some(name) => quote!(Some(#name.to_string())),
                 None => quote!(None::<String>),
             };
 
