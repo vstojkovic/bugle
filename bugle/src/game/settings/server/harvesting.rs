@@ -1,11 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
 use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 use serde::{Deserialize, Serialize};
 
 use crate::game::settings::Multiplier;
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseHarvestingSettings {
     #[serde(rename = "Sl")]
     #[ini(rename = "HarvestAmountMultiplier")]
@@ -20,7 +21,7 @@ pub struct BaseHarvestingSettings {
     pub rsrc_respawn_speed_mult: Multiplier,
 }
 
-#[derive(Debug, Clone, Default, LoadProperty)]
+#[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct HarvestingSettings {
     #[ini(flatten)]
     pub base: BaseHarvestingSettings,

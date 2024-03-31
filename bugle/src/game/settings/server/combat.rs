@@ -2,11 +2,12 @@ use std::ops::{Deref, DerefMut};
 
 use chrono::TimeDelta;
 use ini_persist::load::LoadProperty;
+use ini_persist::save::{default_remove, SaveProperty};
 use serde::{Deserialize, Serialize};
 
-use crate::game::settings::{parse_seconds, Multiplier, WeeklyHours};
+use crate::game::settings::{display_seconds, parse_seconds, Multiplier, WeeklyHours};
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseCombatSettings {
     #[serde(rename = "S6", default)]
     #[ini(rename = "DurabilityMultiplier")]
@@ -18,11 +19,11 @@ pub struct BaseCombatSettings {
         with = "secs_serde",
         default = "default_thrall_wakeup_time"
     )]
-    #[ini(rename = "UnconsciousTimeSeconds", parse_with = parse_seconds)]
+    #[ini(rename = "UnconsciousTimeSeconds", parse_with = parse_seconds, remove_with = default_remove, display_with = display_seconds)]
     pub thrall_wakeup_time: TimeDelta,
 }
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct CombatSettings {
     #[ini(flatten)]
     pub base: BaseCombatSettings,

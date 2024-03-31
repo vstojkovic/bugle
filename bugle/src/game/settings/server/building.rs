@@ -1,10 +1,11 @@
 use chrono::TimeDelta;
 use ini_persist::load::LoadProperty;
+use ini_persist::save::{default_remove, SaveProperty};
 use strum_macros::EnumIter;
 
-use crate::game::settings::{parse_seconds, Multiplier};
+use crate::game::settings::{display_seconds, parse_seconds, Multiplier};
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct BuildingSettings {
     #[ini(rename = "CreativeModeServer")]
     pub creative_mode: CreativeMode,
@@ -27,7 +28,7 @@ pub struct BuildingSettings {
     #[ini(rename = "DisableThrallDecay")]
     pub thrall_decay_disabled: bool,
 
-    #[ini(rename = "ThrallDecayTime", parse_with = parse_seconds)]
+    #[ini(rename = "ThrallDecayTime", parse_with = parse_seconds, remove_with = default_remove, display_with = display_seconds)]
     pub thrall_decay_time: TimeDelta,
 }
 
@@ -46,7 +47,7 @@ impl Default for BuildingSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, LoadProperty)]
+#[derive(Debug, Clone, Copy, EnumIter, LoadProperty, SaveProperty)]
 #[ini(repr)]
 pub enum CreativeMode {
     Admins,

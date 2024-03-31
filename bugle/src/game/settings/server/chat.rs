@@ -1,6 +1,7 @@
 use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct ChatSettings {
     #[ini(rename = "ChatLocalRadius")]
     pub local_radius: f64,

@@ -5,6 +5,7 @@ use std::str::FromStr;
 use chrono::{TimeDelta, Weekday};
 use ini::Properties;
 use ini_persist::load::{LoadProperty, ParseProperty};
+use ini_persist::save::{DisplayProperty, SaveProperty};
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
@@ -31,6 +32,12 @@ impl Default for Multiplier {
 impl ParseProperty for Multiplier {
     fn parse(text: &str) -> ini_persist::Result<Self> {
         Ok(Self(f64::parse(text)?))
+    }
+}
+
+impl DisplayProperty for Multiplier {
+    fn display(&self) -> String {
+        format!("{}", self.0)
     }
 }
 
@@ -70,7 +77,13 @@ impl ParseProperty for HourMinute {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, LoadProperty)]
+impl DisplayProperty for HourMinute {
+    fn display(&self) -> String {
+        self.0.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, LoadProperty, SaveProperty)]
 pub struct Hours {
     #[ini(rename = "Start")]
     pub start: HourMinute,
@@ -110,15 +123,6 @@ impl FromIterator<(Weekday, Hours)> for DailyHours {
 impl LoadProperty for DailyHours {
     fn load_in(&mut self, section: &Properties, key: &str) -> ini_persist::Result<()> {
         use ini_persist::load::ConstructProperty;
-        const DAY_NAMES: [&str; 7] = [
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-            "Sunday",
-        ];
         self.clear();
         for day in weekday_iter() {
             let day_name = DAY_NAMES[day.num_days_from_monday() as usize];
@@ -138,7 +142,34 @@ impl LoadProperty for DailyHours {
     }
 }
 
-#[derive(Debug, Clone, Default, LoadProperty)]
+impl SaveProperty for DailyHours {
+    fn remove(section: &mut Properties, key: &str) {
+        for day in weekday_iter() {
+            let day_name = DAY_NAMES[day.num_days_from_monday() as usize];
+            let _ = section.remove_all(format!("{}Enabled{}", key, day_name));
+            let _ = section.remove_all(format!("{}Time{}Start", key, day_name));
+            let _ = section.remove_all(format!("{}Time{}End", key, day_name));
+        }
+    }
+
+    fn append(&self, section: &mut Properties, key: &str) {
+        for day in weekday_iter() {
+            let day_name = DAY_NAMES[day.num_days_from_monday() as usize];
+            match self.0.get(&day) {
+                Some(Hours { start, end }) => {
+                    section.append(format!("{}Enabled{}", key, day_name), "True");
+                    section.append(format!("{}Time{}Start", key, day_name), start.0.to_string());
+                    section.append(format!("{}Time{}End", key, day_name), end.0.to_string());
+                }
+                None => {
+                    section.append(format!("{}Enabled{}", key, day_name), "False");
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct WeeklyHours {
     #[ini(rename = "Weekday")]
     pub weekday_hours: Hours,
@@ -147,7 +178,9 @@ pub struct WeeklyHours {
     pub weekend_hours: Hours,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, LoadProperty)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, LoadProperty, SaveProperty,
+)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum Nudity {
@@ -165,7 +198,6 @@ fn parse_minutes(value: &str) -> ini_persist::Result<TimeDelta> {
 }
 
 fn parse_delta(value: &str, unit: &str, seconds_per_unit: f64) -> ini_persist::Result<TimeDelta> {
-    const NANOS_PER_SEC: f64 = 1_000_000_000.0;
     let count = f64::parse(value)? * seconds_per_unit;
     let secs = count as i64;
     let nanos = (count.fract().abs() * NANOS_PER_SEC) as u32;
@@ -173,3 +205,27 @@ fn parse_delta(value: &str, unit: &str, seconds_per_unit: f64) -> ini_persist::R
         ini_persist::Error::invalid_value(format!("interval out of range: {} {}", count, unit))
     })
 }
+
+fn display_seconds(value: &TimeDelta) -> String {
+    display_delta(value, 1.0)
+}
+
+fn display_minutes(value: &TimeDelta) -> String {
+    display_delta(value, 60.0)
+}
+
+fn display_delta(value: &TimeDelta, seconds_per_unit: f64) -> String {
+    let seconds = (value.num_seconds() as f64) + (value.subsec_nanos() as f64) / NANOS_PER_SEC;
+    format!("{}", seconds / seconds_per_unit)
+}
+
+const DAY_NAMES: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
+const NANOS_PER_SEC: f64 = 1_000_000_000.0;

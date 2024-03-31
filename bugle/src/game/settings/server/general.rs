@@ -3,13 +3,14 @@ use std::ops::{Deref, DerefMut};
 use anyhow::Result;
 use chrono::TimeDelta;
 use ini_persist::load::{LoadProperty, ParseProperty};
+use ini_persist::save::{default_remove, DisplayProperty, SaveProperty};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::EnumIter;
 
-use crate::game::settings::{parse_seconds, DailyHours, Nudity};
+use crate::game::settings::{display_seconds, parse_seconds, DailyHours, Nudity};
 
-#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty)]
+#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseGeneralSettings {
     #[serde(rename = "S05")]
     #[ini(rename = "IsBattlEyeEnabled")]
@@ -65,7 +66,7 @@ impl Default for BaseGeneralSettings {
     }
 }
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct GeneralSettings {
     #[ini(flatten)]
     pub base: BaseGeneralSettings,
@@ -88,7 +89,7 @@ pub struct GeneralSettings {
     #[ini(rename = "DynamicBuildingDamage")]
     pub dbd_enabled: bool,
 
-    #[ini(rename = "DynamicBuildingDamagePeriod", parse_with = parse_seconds)]
+    #[ini(rename = "DynamicBuildingDamagePeriod", parse_with = parse_seconds, remove_with = default_remove, display_with = display_seconds)]
     pub dbd_period: TimeDelta,
 
     #[ini(rename = "NoOwnership")]
@@ -109,7 +110,7 @@ pub struct GeneralSettings {
     #[ini(rename = "MaxNudity")]
     pub max_nudity: Nudity,
 
-    #[ini(rename = "serverVoiceChat", parse_with = true_if_non_zero)]
+    #[ini(rename = "serverVoiceChat", parse_with = true_if_non_zero, display_with = one_if_true)]
     pub voice_chat_enabled: bool,
 
     #[ini(rename = "EnableWhitelist")]
@@ -219,6 +220,12 @@ impl ParseProperty for CombatModeModifier {
     }
 }
 
+impl DisplayProperty for CombatModeModifier {
+    fn display(&self) -> String {
+        self.to_repr().to_string()
+    }
+}
+
 #[derive(
     Clone,
     Copy,
@@ -226,6 +233,7 @@ impl ParseProperty for CombatModeModifier {
     Deserialize_repr,
     Serialize_repr,
     LoadProperty,
+    SaveProperty,
     PartialEq,
     Eq,
     PartialOrd,
@@ -248,7 +256,7 @@ impl Default for Community {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, LoadProperty)]
+#[derive(Debug, Clone, Copy, EnumIter, LoadProperty, SaveProperty)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum EventLogPrivacy {
@@ -257,7 +265,7 @@ pub enum EventLogPrivacy {
     Nobody,
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, LoadProperty)]
+#[derive(Debug, Clone, Copy, EnumIter, LoadProperty, SaveProperty)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum OnlinePlayerInfoVisibility {
@@ -273,6 +281,13 @@ const fn default_clan_size() -> u16 {
 
 fn true_if_non_zero(value: &str) -> ini_persist::Result<bool> {
     Ok(u8::parse(value)? != 0)
+}
+
+fn one_if_true(value: &bool) -> String {
+    match value {
+        false => "0".to_string(),
+        true => "1".to_string(),
+    }
 }
 
 mod raid_hours_serde {

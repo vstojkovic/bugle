@@ -1,11 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
 use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 use serde::{Deserialize, Serialize};
 
 use crate::game::settings::Multiplier;
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseCraftingSettings {
     #[serde(rename = "S8")]
     #[ini(rename = "ItemConvertionMultiplier")]
@@ -16,7 +17,7 @@ pub struct BaseCraftingSettings {
     pub thrall_crafting_time_mult: Multiplier,
 }
 
-#[derive(Debug, Clone, Default, LoadProperty)]
+#[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct CraftingSettings {
     #[ini(flatten)]
     pub base: BaseCraftingSettings,

@@ -1,11 +1,13 @@
 use chrono::TimeDelta;
 use ini_persist::load::LoadProperty;
+use ini_persist::save::{default_remove, SaveProperty};
 
 use crate::game::settings::{
-    parse_minutes, parse_seconds, HourMinute, Hours, Multiplier, WeeklyHours,
+    display_minutes, display_seconds, parse_minutes, parse_seconds, HourMinute, Hours, Multiplier,
+    WeeklyHours,
 };
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct MaelstromSettings {
     #[ini(rename = "StormEnabled")]
     pub storm_enabled: bool,
@@ -28,7 +30,7 @@ pub struct MaelstromSettings {
     #[ini(rename = "ElderThingsEnabled")]
     pub monsters_enabled: bool,
 
-    #[ini(rename = "ElderThingsIdleLifespan", parse_with = parse_seconds)]
+    #[ini(rename = "ElderThingsIdleLifespan", parse_with = parse_seconds, remove_with = default_remove, display_with = display_seconds)]
     pub monster_idle_lifespan: TimeDelta, // UNIT: seconds?
 
     #[ini(rename = "ElderThingSpawnRate")]
@@ -64,16 +66,16 @@ pub struct MaelstromSettings {
     #[ini(rename = "ElderThingSiegeBuildingSizeMultiplier")]
     pub siege_build_size_mult: Multiplier,
 
-    #[ini(rename = "StormCooldown", parse_with = parse_minutes)]
+    #[ini(rename = "StormCooldown", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub storm_cooldown: TimeDelta,
 
-    #[ini(rename = "StormAccumulationTime", parse_with = parse_minutes)]
+    #[ini(rename = "StormAccumulationTime", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub storm_accumulation: TimeDelta,
 
-    #[ini(rename = "StormDuration", parse_with = parse_minutes)]
+    #[ini(rename = "StormDuration", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub storm_duration: TimeDelta,
 
-    #[ini(rename = "StormDissipationTime", parse_with = parse_minutes)]
+    #[ini(rename = "StormDissipationTime", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub storm_dissipation: TimeDelta,
 
     #[ini(rename = "StormBuildingDamageEnabled")]
@@ -88,16 +90,16 @@ pub struct MaelstromSettings {
     #[ini(rename = "StormBuildingDamageMultiplier")]
     pub storm_build_dmg_mult: Multiplier,
 
-    #[ini(rename = "VaultRefreshTime", parse_with = parse_minutes)]
+    #[ini(rename = "VaultRefreshTime", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub vault_refresh_time: TimeDelta,
 
-    #[ini(rename = "VaultRefreshDeviation", parse_with = parse_minutes)]
+    #[ini(rename = "VaultRefreshDeviation", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub vault_refresh_deviation: TimeDelta,
 
     #[ini(rename = "SurgeSacrificeRequirementMultiplier")]
     pub surge_cost_mult: Multiplier,
 
-    #[ini(rename = "SurgeDespawnTimer", parse_with = parse_minutes)]
+    #[ini(rename = "SurgeDespawnTimer", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub surge_despawn_time: TimeDelta,
 
     #[ini(rename = "AltarModuleActiveTimeMultiplier")]

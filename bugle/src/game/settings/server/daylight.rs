@@ -1,11 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
 use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 use serde::{Deserialize, Serialize};
 
 use crate::game::settings::Multiplier;
 
-#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty)]
+#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseDaylightSettings {
     #[serde(rename = "Sb", default)]
     #[ini(rename = "DayCycleSpeedScale")]
@@ -30,7 +31,7 @@ impl Default for BaseDaylightSettings {
     }
 }
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct DaylightSettings {
     #[ini(flatten)]
     pub base: BaseDaylightSettings,

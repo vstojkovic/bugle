@@ -1,12 +1,13 @@
 use std::ops::{Deref, DerefMut};
 
 use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
 
 use crate::game::settings::Multiplier;
 
-#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty)]
+#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseSurvivalSettings {
     #[serde(rename = "Sj", default)]
     #[ini(rename = "StaminaCostMultiplier")]
@@ -56,7 +57,7 @@ impl Default for BaseSurvivalSettings {
     }
 }
 
-#[derive(Debug, Clone, Default, LoadProperty)]
+#[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct SurvivalSettings {
     #[ini(flatten)]
     pub base: BaseSurvivalSettings,
@@ -84,7 +85,7 @@ impl DerefMut for SurvivalSettings {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize_repr, LoadProperty)]
+#[derive(Clone, Copy, Debug, Serialize_repr, LoadProperty, SaveProperty)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum DropOnDeath {

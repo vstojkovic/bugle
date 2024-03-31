@@ -1,9 +1,10 @@
 use chrono::TimeDelta;
 use ini_persist::load::LoadProperty;
+use ini_persist::save::{default_remove, SaveProperty};
 
-use crate::game::settings::{parse_minutes, Multiplier};
+use crate::game::settings::{display_minutes, parse_minutes, Multiplier};
 
-#[derive(Debug, Clone, LoadProperty)]
+#[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct FollowerSettings {
     #[ini(rename = "AnimalPenCraftingTimeMultiplier")]
     pub pen_crafting_time_mult: Multiplier,
@@ -20,7 +21,7 @@ pub struct FollowerSettings {
     #[ini(rename = "MinionPopulationPerPlayer")]
     pub cap_per_player: u8,
 
-    #[ini(rename = "MinionOverpopulationCleanup", parse_with = parse_minutes)]
+    #[ini(rename = "MinionOverpopulationCleanup", parse_with = parse_minutes, remove_with = default_remove, display_with = display_minutes)]
     pub cleanup_interval: TimeDelta,
 }
 

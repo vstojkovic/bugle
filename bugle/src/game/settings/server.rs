@@ -1,4 +1,5 @@
 use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 
 mod building;
 mod chat;
@@ -24,7 +25,7 @@ use self::maelstrom::MaelstromSettings;
 pub use self::progression::{BaseProgressionSettings, ProgressionSettings};
 pub use self::survival::{BaseSurvivalSettings, DropOnDeath, SurvivalSettings};
 
-#[derive(Debug, Clone, Default, LoadProperty)]
+#[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct ServerSettings {
     #[ini(flatten)]
     pub general: GeneralSettings,
