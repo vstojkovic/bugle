@@ -1,7 +1,7 @@
 use chrono::TimeDelta;
 use ini_persist::load::LoadProperty;
 use ini_persist::save::{default_remove, SaveProperty};
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, FromRepr};
 
 use crate::game::settings::{display_seconds, parse_seconds, Multiplier};
 
@@ -47,7 +47,8 @@ impl Default for BuildingSettings {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, LoadProperty, SaveProperty)]
+#[derive(Debug, Clone, Copy, EnumIter, FromRepr, LoadProperty, SaveProperty)]
+#[repr(u8)]
 #[ini(repr)]
 pub enum CreativeMode {
     Admins,

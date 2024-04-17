@@ -13,15 +13,18 @@ mod maelstrom;
 mod progression;
 mod survival;
 
-use self::building::BuildingSettings;
-use self::chat::ChatSettings;
+pub use self::building::{BuildingSettings, CreativeMode};
+pub use self::chat::ChatSettings;
 pub use self::combat::{BaseCombatSettings, CombatSettings};
 pub use self::crafting::{BaseCraftingSettings, CraftingSettings};
 pub use self::daylight::{BaseDaylightSettings, DaylightSettings};
-use self::followers::FollowerSettings;
-pub use self::general::{BaseGeneralSettings, CombatModeModifier, Community, GeneralSettings};
+pub use self::followers::FollowerSettings;
+pub use self::general::{
+    BaseGeneralSettings, CombatModeModifier, Community, EventLogPrivacy, GeneralSettings,
+    OnlinePlayerInfoVisibility,
+};
 pub use self::harvesting::{BaseHarvestingSettings, HarvestingSettings};
-use self::maelstrom::MaelstromSettings;
+pub use self::maelstrom::MaelstromSettings;
 pub use self::progression::{BaseProgressionSettings, ProgressionSettings};
 pub use self::survival::{BaseSurvivalSettings, DropOnDeath, SurvivalSettings};
 

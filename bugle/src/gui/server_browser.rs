@@ -5,7 +5,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
-use chrono::Weekday;
 use fltk::enums::{Align, Event};
 use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
@@ -778,17 +777,5 @@ fn community_name(community: Community) -> &'static str {
         Community::Hardcore => "Hardcore",
         Community::RolePlaying => "Role Playing",
         Community::Experimental => "Experimental",
-    }
-}
-
-fn weekday_name(weekday: Weekday) -> &'static str {
-    match weekday {
-        Weekday::Mon => "Mon",
-        Weekday::Tue => "Tue",
-        Weekday::Wed => "Wed",
-        Weekday::Thu => "Thu",
-        Weekday::Fri => "Fri",
-        Weekday::Sat => "Sat",
-        Weekday::Sun => "Sun",
     }
 }

@@ -9,11 +9,12 @@ use nom::IResult;
 use crate::game::platform::ModDirectory;
 use crate::game::settings::server::DropOnDeath;
 use crate::game::settings::Hours;
+use crate::gui::weekday_name;
 use crate::gui::widgets::{use_inspector_macros, Inspector, PropertiesTable, PropertyRow};
 use crate::servers::{Server, Validity};
 use crate::util::weekday_iter;
 
-use super::{community_name, mode_name, region_name, weekday_name};
+use super::{community_name, mode_name, region_name};
 
 pub(super) struct DetailsPane {
     table: PropertiesTable<Server, InspectorCtx>,

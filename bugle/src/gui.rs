@@ -1,14 +1,15 @@
 use std::rc::Rc;
 
+use chrono::Weekday;
 use fltk::app;
-use fltk::button::{Button, CheckButton, LightButton, ReturnButton};
+use fltk::button::{Button, CheckButton, LightButton, RadioButton, ReturnButton};
 use fltk::dialog as fltk_dialog;
 use fltk::enums::{Color, Event};
 use fltk::frame::Frame;
 use fltk::input::{Input, SecretInput};
 use fltk::menu::MenuButton;
 use fltk::misc::InputChoice;
-use fltk_float::button::{ButtonElement, MenuButtonElement};
+use fltk_float::button::{ButtonElement, FramelessButtonElement, MenuButtonElement};
 use fltk_float::frame::FrameElement;
 use fltk_float::input::InputElement;
 use fltk_float::misc::InputChoiceElement;
@@ -25,6 +26,7 @@ mod mod_manager;
 mod mod_update;
 mod prelude;
 mod server_browser;
+mod server_settings;
 mod single_player;
 mod svg_symbol;
 pub mod theme;
@@ -36,6 +38,7 @@ pub use self::launcher::LauncherWindow;
 pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
 pub use self::mod_update::{ModUpdateProgressDialog, ModUpdateSelectionDialog};
 pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
+pub use self::server_settings::ServerSettingsDialog;
 pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
 
 pub enum Action {
@@ -90,13 +93,14 @@ thread_local! {
         use self::widgets::{DropDownList, DropDownListElement, ReadOnlyText, ReadOnlyTextElement};
         let mut factory = WrapperFactory::new();
         factory.set_wrapper::<Button, ButtonElement<Button>>();
-        factory.set_wrapper::<CheckButton, ButtonElement<CheckButton>>();
+        factory.set_wrapper::<CheckButton, FramelessButtonElement<CheckButton>>();
         factory.set_wrapper::<DropDownList, DropDownListElement>();
         factory.set_wrapper::<Frame, FrameElement>();
         factory.set_wrapper::<Input, InputElement<Input>>();
         factory.set_wrapper::<InputChoice, InputChoiceElement>();
         factory.set_wrapper::<LightButton, ButtonElement<LightButton>>();
         factory.set_wrapper::<MenuButton, MenuButtonElement>();
+        factory.set_wrapper::<RadioButton, ButtonElement<RadioButton>>();
         factory.set_wrapper::<ReadOnlyText, ReadOnlyTextElement>();
         factory.set_wrapper::<ReturnButton, ButtonElement<ReturnButton>>();
         factory.set_wrapper::<SecretInput, InputElement<SecretInput>>();
@@ -119,4 +123,16 @@ fn is_table_nav_event() -> bool {
 fn color_rgb(color: Color) -> u32 {
     let (r, g, b) = color.to_rgb();
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
+
+fn weekday_name(weekday: Weekday) -> &'static str {
+    match weekday {
+        Weekday::Mon => "Mon",
+        Weekday::Tue => "Tue",
+        Weekday::Wed => "Wed",
+        Weekday::Thu => "Thu",
+        Weekday::Fri => "Fri",
+        Weekday::Sat => "Sat",
+        Weekday::Sun => "Sun",
+    }
 }

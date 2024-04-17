@@ -32,6 +32,7 @@ pub enum SinglePlayerAction {
     LoadSavedGame { map_id: usize, backup_name: PathBuf },
     SaveGame { map_id: usize, backup_name: PathBuf },
     DeleteSavedGame { backup_name: PathBuf },
+    EditSettings,
 }
 
 pub enum SinglePlayerUpdate {
@@ -104,7 +105,7 @@ impl SinglePlayer {
         grid.col().with_default_align(CellAlign::End).add();
         grid.col().with_stretch(1).add();
         let btn_group = grid.col_group().add();
-        grid.extend_group(btn_group).batch(6);
+        grid.extend_group(btn_group).batch(7);
 
         grid.row().add();
         grid.cell()
@@ -155,6 +156,12 @@ impl SinglePlayer {
             .wrap(Button::default())
             .with_label("Delete")
             .with_tooltip("Delete the selected backup");
+        let mut settings_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Settings...")
+            .with_tooltip("Edit the server settings");
 
         grid.row().with_stretch(1).add();
         grid.cell()
@@ -163,7 +170,7 @@ impl SinglePlayer {
             .wrap(Frame::default())
             .with_label("In Progress:");
         let in_progress_table = make_db_list();
-        grid.span(1, 7)
+        grid.span(1, 8)
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(
@@ -178,7 +185,7 @@ impl SinglePlayer {
             .wrap(Frame::default())
             .with_label("Backups:");
         let mut backups_table = make_db_list();
-        grid.span(1, 7)
+        grid.span(1, 8)
             .unwrap()
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(
@@ -247,6 +254,7 @@ impl SinglePlayer {
         save_button.set_callback(single_player.weak_cb(Self::save_clicked));
         save_as_button.set_callback(single_player.weak_cb(Self::save_as_clicked));
         delete_button.set_callback(single_player.weak_cb(Self::delete_clicked));
+        settings_button.set_callback(single_player.weak_cb(Self::settings_clicked));
 
         single_player
     }
@@ -491,6 +499,10 @@ impl SinglePlayer {
             });
         }
         self.populate_list();
+    }
+
+    fn settings_clicked(&self) {
+        (self.on_action)(SinglePlayerAction::EditSettings).unwrap();
     }
 
     fn populate_list(&self) {

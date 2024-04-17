@@ -6,7 +6,7 @@ use ini_persist::load::{LoadProperty, ParseProperty};
 use ini_persist::save::{default_remove, DisplayProperty, SaveProperty};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, FromRepr};
 
 use crate::game::settings::{display_seconds, parse_seconds, DailyHours, Nudity};
 
@@ -256,7 +256,7 @@ impl Default for Community {
     }
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, LoadProperty, SaveProperty)]
+#[derive(Debug, Clone, Copy, EnumIter, FromRepr, LoadProperty, SaveProperty)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum EventLogPrivacy {
@@ -265,7 +265,7 @@ pub enum EventLogPrivacy {
     Nobody,
 }
 
-#[derive(Debug, Clone, Copy, EnumIter, LoadProperty, SaveProperty)]
+#[derive(Debug, Clone, Copy, EnumIter, FromRepr, LoadProperty, SaveProperty)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum OnlinePlayerInfoVisibility {

@@ -15,6 +15,7 @@ use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, Transie
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::prelude::WindowExt;
+use gui::{alert_error, ServerSettingsDialog};
 use regex::Regex;
 use servers::Confidence;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
@@ -413,6 +414,10 @@ impl Launcher {
             }) => self.saved_games_worker.create_backup(map_id, backup_name),
             Action::SinglePlayer(SinglePlayerAction::DeleteSavedGame { backup_name }) => {
                 std::fs::remove_file(self.game.save_path().join(backup_name))?;
+                Ok(())
+            }
+            Action::SinglePlayer(SinglePlayerAction::EditSettings) => {
+                self.edit_server_settings();
                 Ok(())
             }
             Action::ModManager(ModManagerAction::LoadModList) => {
@@ -1193,6 +1198,21 @@ impl Launcher {
         fixed_all
     }
 
+    fn edit_server_settings(&self) {
+        let settings = match self.game.load_server_settings() {
+            Ok(settings) => settings,
+            Err(err) => {
+                alert_error(ERR_LOADING_SETTINGS, &err);
+                return;
+            }
+        };
+        let dialog = ServerSettingsDialog::new(settings);
+        let Some(settings) = dialog.run() else { return };
+        if let Err(err) = self.game.save_server_settings(settings) {
+            alert_error(ERR_SAVING_SETTINGS, &err);
+        }
+    }
+
     fn config(&self) -> Ref<Config> {
         self.config.borrow()
     }
@@ -1301,6 +1321,8 @@ const ERR_STEAM_NOT_ONLINE: &str = "Steam is in offline mode. Online play is dis
 const ERR_FLS_ACCOUNT_NOT_CACHED: &str =
     "Steam is offline and the game has not stored your FLS account info. You need to start the \
     game in online mode at least once before you can play offline.";
+const ERR_LOADING_SETTINGS: &str = "Error while loading the game settings.";
+const ERR_SAVING_SETTINGS: &str = "Error while saving the game settings.";
 
 #[tokio::main]
 async fn main() {

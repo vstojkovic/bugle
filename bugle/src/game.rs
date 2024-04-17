@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
 use ini::Properties;
+use ini_persist::load::LoadProperty;
+use ini_persist::save::SaveProperty;
 use lazy_static::lazy_static;
 use regex::Regex;
 use slog::{debug, info, warn, Logger};
@@ -31,6 +33,7 @@ pub use self::engine::map::Maps;
 use self::engine::version::get_game_version;
 pub use self::launch::Launch;
 pub use self::mod_info::{ModEntry, ModLibraryBuilder, ModProvenance, ModRef, Mods};
+use self::settings::server::ServerSettings;
 
 pub struct Game {
     logger: Logger,
@@ -40,6 +43,7 @@ pub struct Game {
     version: (u32, u16),
     save_path: PathBuf,
     game_ini_path: PathBuf,
+    server_settings_path: PathBuf,
     mod_list_path: PathBuf,
     installed_mods: Arc<Mods>,
     maps: Arc<Maps>,
@@ -127,6 +131,8 @@ impl Game {
         }
 
         let game_ini_path = config_path.join("Game.ini");
+        let server_settings_path = config_path.join("ServerSettings.ini");
+
         let game_ini =
             if game_ini_path.exists() { Some(config::load_ini(&game_ini_path)?) } else { None };
 
@@ -197,6 +203,7 @@ impl Game {
             version,
             save_path,
             game_ini_path,
+            server_settings_path,
             mod_list_path,
             installed_mods: Arc::new(installed_mods),
             maps: Arc::new(maps),
@@ -414,6 +421,25 @@ impl Game {
         Ok(saves)
     }
 
+    pub fn load_server_settings(&self) -> Result<ServerSettings> {
+        let ini = config::load_ini(&self.server_settings_path)?;
+        let mut settings = ServerSettings::default();
+        if let Some(section) = ini.section(Some(SECTION_SERVER_SETTINGS)) {
+            settings.load_in(section, "")?;
+        }
+        Ok(settings)
+    }
+
+    pub fn save_server_settings(&self, settings: ServerSettings) -> Result<()> {
+        let mut ini = config::load_ini(&self.server_settings_path)?;
+        let section = ini
+            .entry(Some(SECTION_SERVER_SETTINGS.into()))
+            .or_insert_with(Properties::default);
+        ServerSettings::remove(section, "");
+        settings.append(section, "");
+        config::save_ini(&ini, &self.server_settings_path)
+    }
+
     pub fn last_session(&self) -> MutexGuard<Option<Session>> {
         self.last_session.lock().unwrap()
     }
@@ -496,6 +522,7 @@ const SECTION_FAVORITE_SERVERS: &str = "FavoriteServers";
 const SECTION_FUNCOM_LIVE_SERVICES: &str = "FuncomLiveServices";
 const SECTION_SAVED_SERVERS: &str = "SavedServers";
 const SECTION_SAVED_COOP_DATA: &str = "SavedCoopData";
+const SECTION_SERVER_SETTINGS: &str = "ServerSettings";
 
 const KEY_CACHED_USERS: &str = "CachedUsers";
 const KEY_LAST_CONNECTED: &str = "LastConnected";

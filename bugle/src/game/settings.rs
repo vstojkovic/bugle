@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
@@ -6,8 +7,10 @@ use chrono::{TimeDelta, Weekday};
 use ini::Properties;
 use ini_persist::load::{LoadProperty, ParseProperty};
 use ini_persist::save::{DisplayProperty, SaveProperty};
+use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumIter;
+use strum_macros::{EnumIter, FromRepr};
 
 use crate::util::weekday_iter;
 
@@ -15,7 +18,7 @@ pub mod server;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
-pub struct Multiplier(f64);
+pub struct Multiplier(pub f64);
 
 impl Multiplier {
     pub fn to_string(&self) -> String {
@@ -48,6 +51,18 @@ impl FromStr for Multiplier {
     }
 }
 
+impl From<Multiplier> for f64 {
+    fn from(value: Multiplier) -> Self {
+        value.0
+    }
+}
+
+impl From<f64> for Multiplier {
+    fn from(value: f64) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HourMinute(pub u16);
 
@@ -59,9 +74,24 @@ impl HourMinute {
     pub fn minutes(self) -> u8 {
         (self.0 % 100) as _
     }
+}
 
-    pub fn to_string(self) -> String {
-        format!("{:02}:{:02}", self.hours(), self.minutes())
+impl Display for HourMinute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02}:{:02}", self.hours(), self.minutes())
+    }
+}
+
+impl FromStr for HourMinute {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let [h, m] = HOUR_MINUTE_REGEX
+            .captures(s)
+            .map(|c| c.extract().1)
+            .unwrap_or_default();
+        let h: u16 = h.parse()?;
+        let m: u16 = m.parse()?;
+        Ok(HourMinute(h * 100 + m))
     }
 }
 
@@ -179,7 +209,17 @@ pub struct WeeklyHours {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, LoadProperty, SaveProperty,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    EnumIter,
+    FromRepr,
+    LoadProperty,
+    SaveProperty,
 )]
 #[repr(u8)]
 #[ini(repr)]
@@ -229,3 +269,7 @@ const DAY_NAMES: [&str; 7] = [
     "Sunday",
 ];
 const NANOS_PER_SEC: f64 = 1_000_000_000.0;
+
+lazy_static! {
+    static ref HOUR_MINUTE_REGEX: Regex = Regex::new(r"^(\d\d?):(\d\d)$").unwrap();
+}
