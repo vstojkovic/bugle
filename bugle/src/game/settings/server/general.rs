@@ -291,13 +291,12 @@ fn one_if_true(value: &bool) -> String {
 }
 
 mod raid_hours_serde {
-    use std::collections::HashMap;
 
     use chrono::Weekday;
     use serde::de::{MapAccess, Visitor};
     use serde::ser::SerializeMap;
 
-    use crate::game::settings::{HourMinute, Hours};
+    use crate::game::settings::{DailyHoursEntry, HourMinute, Hours};
 
     use super::DailyHours;
 
@@ -305,19 +304,23 @@ mod raid_hours_serde {
         hours: &DailyHours,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(Some(hours.len() * 3))?;
+        let mut map = serializer.serialize_map(Some(21))?;
         for (
             day,
-            Hours {
-                start: HourMinute(start),
-                end: HourMinute(end),
+            DailyHoursEntry {
+                enabled,
+                hours:
+                    Hours {
+                        start: HourMinute(start),
+                        end: HourMinute(end),
+                    },
             },
         ) in hours.iter()
         {
-            let offset = *day as isize;
+            let offset = day as isize;
             map.serialize_entry(&format!("S{}", 92 + offset), start)?;
             map.serialize_entry(&format!("S{}", 99 + offset), end)?;
-            map.serialize_entry(&format!("S{}", 106 + offset), &true)?;
+            map.serialize_entry(&format!("S{}", 106 + offset), enabled)?;
         }
         map.end()
     }
@@ -325,35 +328,34 @@ mod raid_hours_serde {
     pub fn deserialize<'de, D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> Result<DailyHours, D::Error> {
-        fn hours_entry_index(key: &str) -> Option<(Weekday, usize)> {
-            match key {
-                "S92" => Some((Weekday::Mon, 0)),
-                "S93" => Some((Weekday::Tue, 0)),
-                "S94" => Some((Weekday::Wed, 0)),
-                "S95" => Some((Weekday::Thu, 0)),
-                "S96" => Some((Weekday::Fri, 0)),
-                "S97" => Some((Weekday::Sat, 0)),
-                "S98" => Some((Weekday::Sun, 0)),
-                "S99" => Some((Weekday::Mon, 1)),
-                "S100" => Some((Weekday::Tue, 1)),
-                "S101" => Some((Weekday::Wed, 1)),
-                "S102" => Some((Weekday::Thu, 1)),
-                "S103" => Some((Weekday::Fri, 1)),
-                "S104" => Some((Weekday::Sat, 1)),
-                "S105" => Some((Weekday::Sun, 1)),
-                _ => None,
-            }
+        enum Field {
+            Enabled,
+            Start,
+            End,
         }
-
-        fn hours_inclusion_key(key: &str) -> Option<Weekday> {
+        fn hours_entry_index(key: &str) -> Option<(Weekday, Field)> {
             match key {
-                "S106" => Some(Weekday::Mon),
-                "S107" => Some(Weekday::Tue),
-                "S108" => Some(Weekday::Wed),
-                "S109" => Some(Weekday::Thu),
-                "S110" => Some(Weekday::Fri),
-                "S111" => Some(Weekday::Sat),
-                "S112" => Some(Weekday::Sun),
+                "S92" => Some((Weekday::Mon, Field::Start)),
+                "S93" => Some((Weekday::Tue, Field::Start)),
+                "S94" => Some((Weekday::Wed, Field::Start)),
+                "S95" => Some((Weekday::Thu, Field::Start)),
+                "S96" => Some((Weekday::Fri, Field::Start)),
+                "S97" => Some((Weekday::Sat, Field::Start)),
+                "S98" => Some((Weekday::Sun, Field::Start)),
+                "S99" => Some((Weekday::Mon, Field::End)),
+                "S100" => Some((Weekday::Tue, Field::End)),
+                "S101" => Some((Weekday::Wed, Field::End)),
+                "S102" => Some((Weekday::Thu, Field::End)),
+                "S103" => Some((Weekday::Fri, Field::End)),
+                "S104" => Some((Weekday::Sat, Field::End)),
+                "S105" => Some((Weekday::Sun, Field::End)),
+                "S106" => Some((Weekday::Mon, Field::Enabled)),
+                "S107" => Some((Weekday::Tue, Field::Enabled)),
+                "S108" => Some((Weekday::Wed, Field::Enabled)),
+                "S109" => Some((Weekday::Thu, Field::Enabled)),
+                "S110" => Some((Weekday::Fri, Field::Enabled)),
+                "S111" => Some((Weekday::Sat, Field::Enabled)),
+                "S112" => Some((Weekday::Sun, Field::Enabled)),
                 _ => None,
             }
         }
@@ -368,33 +370,20 @@ mod raid_hours_serde {
             }
 
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-                let mut hours = HashMap::new();
-                let mut defined_days = Vec::new();
+                let mut result = DailyHours::default();
 
                 while let Some(key) = map.next_key::<&str>()? {
-                    if let Some((day, idx)) = hours_entry_index(key) {
-                        hours.entry(day).or_insert([0, 0])[idx] = map.next_value()?;
-                    } else if let Some(day) = hours_inclusion_key(key) {
-                        if map.next_value::<bool>()? {
-                            defined_days.push(day);
+                    if let Some((day, field)) = hours_entry_index(key) {
+                        let entry = &mut result[day];
+                        match field {
+                            Field::Enabled => entry.enabled = map.next_value()?,
+                            Field::Start => entry.hours.start = map.next_value::<u16>()?.into(),
+                            Field::End => entry.hours.end = map.next_value::<u16>()?.into(),
                         }
                     }
                 }
 
-                Ok(defined_days
-                    .into_iter()
-                    .filter_map(|day| {
-                        hours.get(&day).map(|values| {
-                            (
-                                day,
-                                Hours {
-                                    start: values[0].into(),
-                                    end: values[1].into(),
-                                },
-                            )
-                        })
-                    })
-                    .collect())
+                Ok(result)
             }
         }
 

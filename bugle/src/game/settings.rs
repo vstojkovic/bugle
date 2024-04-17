@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::fmt::Display;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 
 use chrono::{TimeDelta, Weekday};
@@ -123,50 +122,72 @@ pub struct Hours {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct DailyHours(HashMap<Weekday, Hours>);
+pub struct DailyHours([DailyHoursEntry; 7]);
+
+#[derive(Debug, Clone, Default)]
+pub struct DailyHoursEntry {
+    pub enabled: bool,
+    pub hours: Hours,
+}
 
 impl DailyHours {
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Default::default()
+    }
+
+    pub fn get(&self, day: Weekday) -> Option<&Hours> {
+        let entry = &self[day];
+        if entry.enabled {
+            Some(&entry.hours)
+        } else {
+            None
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Weekday, &DailyHoursEntry)> {
+        weekday_iter().map(|day| (day, &self[day]))
     }
 }
 
-impl Deref for DailyHours {
-    type Target = HashMap<Weekday, Hours>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl Index<Weekday> for DailyHours {
+    type Output = DailyHoursEntry;
+    fn index(&self, index: Weekday) -> &Self::Output {
+        &self.0[index.num_days_from_monday() as usize]
     }
 }
 
-impl DerefMut for DailyHours {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+impl IndexMut<Weekday> for DailyHours {
+    fn index_mut(&mut self, index: Weekday) -> &mut Self::Output {
+        &mut self.0[index.num_days_from_monday() as usize]
     }
 }
 
-impl FromIterator<(Weekday, Hours)> for DailyHours {
-    fn from_iter<T: IntoIterator<Item = (Weekday, Hours)>>(iter: T) -> Self {
-        Self(HashMap::from_iter(iter))
+impl FromIterator<(Weekday, DailyHoursEntry)> for DailyHours {
+    fn from_iter<T: IntoIterator<Item = (Weekday, DailyHoursEntry)>>(iter: T) -> Self {
+        let mut result = DailyHours::new();
+        for (day, entry) in iter {
+            result[day] = entry;
+        }
+        result
     }
 }
 
 impl LoadProperty for DailyHours {
     fn load_in(&mut self, section: &Properties, key: &str) -> ini_persist::Result<()> {
         use ini_persist::load::ConstructProperty;
-        self.clear();
         for day in weekday_iter() {
-            let day_name = DAY_NAMES[day.num_days_from_monday() as usize];
-            if bool::load(section, &format!("{}Enabled{}", key, day_name))?.unwrap_or_default() {
-                let start = u16::load(section, &format!("{}Time{}Start", key, day_name))?;
-                let end = u16::load(section, &format!("{}Time{}End", key, day_name))?;
-                self.insert(
-                    day,
-                    Hours {
-                        start: start.unwrap_or_default().into(),
-                        end: end.unwrap_or_default().into(),
-                    },
-                );
-            }
+            let day_name = weekday_name(day);
+            let enabled =
+                bool::load(section, &format!("{}Enabled{}", key, day_name))?.unwrap_or_default();
+            let start = u16::load(section, &format!("{}Time{}Start", key, day_name))?;
+            let end = u16::load(section, &format!("{}Time{}End", key, day_name))?;
+            self[day] = DailyHoursEntry {
+                enabled,
+                hours: Hours {
+                    start: start.unwrap_or_default().into(),
+                    end: end.unwrap_or_default().into(),
+                },
+            };
         }
         Ok(())
     }
@@ -175,7 +196,7 @@ impl LoadProperty for DailyHours {
 impl SaveProperty for DailyHours {
     fn remove(section: &mut Properties, key: &str) {
         for day in weekday_iter() {
-            let day_name = DAY_NAMES[day.num_days_from_monday() as usize];
+            let day_name = weekday_name(day);
             let _ = section.remove_all(format!("{}Enabled{}", key, day_name));
             let _ = section.remove_all(format!("{}Time{}Start", key, day_name));
             let _ = section.remove_all(format!("{}Time{}End", key, day_name));
@@ -183,20 +204,25 @@ impl SaveProperty for DailyHours {
     }
 
     fn append(&self, section: &mut Properties, key: &str) {
-        for day in weekday_iter() {
-            let day_name = DAY_NAMES[day.num_days_from_monday() as usize];
-            match self.0.get(&day) {
-                Some(Hours { start, end }) => {
-                    section.append(format!("{}Enabled{}", key, day_name), "True");
-                    section.append(format!("{}Time{}Start", key, day_name), start.0.to_string());
-                    section.append(format!("{}Time{}End", key, day_name), end.0.to_string());
-                }
-                None => {
-                    section.append(format!("{}Enabled{}", key, day_name), "False");
-                }
-            }
+        for (day, entry) in self.iter() {
+            let day_name = weekday_name(day);
+            entry
+                .enabled
+                .append(section, &format!("{}Enabled{}", key, day_name));
+            entry
+                .hours
+                .start
+                .append(section, &format!("{}Time{}Start", key, day_name));
+            entry
+                .hours
+                .end
+                .append(section, &format!("{}Time{}End", key, day_name));
         }
     }
+}
+
+fn weekday_name(day: Weekday) -> &'static str {
+    DAY_NAMES[day.num_days_from_monday() as usize]
 }
 
 #[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]

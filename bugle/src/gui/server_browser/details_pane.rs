@@ -49,7 +49,7 @@ impl InspectorCtx {
 
         if let Some(server) = server {
             for weekday in weekday_iter() {
-                if let Some(Hours { start, end }) = server.general.raid_hours.get(&weekday) {
+                if let Some(Hours { start, end }) = server.general.raid_hours.get(weekday) {
                     row_consumer([
                         header.into(),
                         format!(

@@ -27,7 +27,7 @@ use fltk::valuator::HorNiceSlider;
 use fltk_float::grid::{CellAlign, GridBuilder};
 use fltk_float::{SimpleWrapper, WrapperFactory};
 
-use crate::game::settings::{DailyHours, HourMinute, Hours, WeeklyHours};
+use crate::game::settings::{DailyHours, DailyHoursEntry, HourMinute, Hours, WeeklyHours};
 use crate::util::weekday_iter;
 
 use super::weekday_name;
@@ -165,23 +165,6 @@ impl HoursInput {
         }
     }
 
-    fn set_enabled(&self, enabled: bool) {
-        let mut start_input = self.start_input.clone();
-        let mut end_input = self.end_input.clone();
-        if enabled {
-            let value = self.value.get();
-            start_input.activate();
-            start_input.set_value(&value.start.to_string());
-            end_input.activate();
-            end_input.set_value(&value.end.to_string());
-        } else {
-            start_input.deactivate();
-            start_input.set_value("");
-            end_input.deactivate();
-            end_input.set_value("");
-        }
-    }
-
     fn value(&self) -> Hours {
         self.value.get()
     }
@@ -193,8 +176,15 @@ impl DailyHoursInput {
     fn value(&self) -> DailyHours {
         self.0
             .iter()
-            .filter(|(_, (enabled, _))| enabled.is_checked())
-            .map(|(day, (_, hours))| (*day, hours.value()))
+            .map(|(day, (enabled, hours))| {
+                (
+                    *day,
+                    DailyHoursEntry {
+                        enabled: enabled.is_checked(),
+                        hours: hours.value(),
+                    },
+                )
+            })
             .collect()
     }
 }
@@ -316,7 +306,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
     fn daily_hours_prop(&mut self, check_label: &str, init_value: &DailyHours) -> DailyHoursInput {
         let mut result = HashMap::with_capacity(7);
         for day in weekday_iter() {
-            let (enabled, value) = match init_value.get(&day) {
+            let (enabled, value) = match init_value.get(day) {
                 Some(value) => (true, *value),
                 None => (false, Hours::default()),
             };
@@ -327,7 +317,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
                     .with_label(weekday_name(day))
                     .with_align(Align::Right | Align::Inside),
             );
-            let mut enabled_check = self
+            let enabled_check = self
                 .cell()
                 .unwrap()
                 .wrap(CheckButton::default().with_label(check_label));
@@ -342,12 +332,6 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
             self.cell().unwrap().wrap(input.end_input.clone());
 
             enabled_check.set_checked(enabled);
-            input.set_enabled(enabled);
-
-            enabled_check.set_callback({
-                let input = input.clone();
-                move |check| input.set_enabled(check.is_checked())
-            });
 
             result.insert(day, (enabled_check, input));
         }
