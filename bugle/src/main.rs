@@ -16,6 +16,7 @@ use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::prelude::WindowExt;
 use gui::{alert_error, ServerSettingsDialog};
+use lazy_static::lazy_static;
 use regex::Regex;
 use servers::Confidence;
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
@@ -1076,9 +1077,8 @@ impl Launcher {
             if db_metadata.len() != 0 { list_mod_controllers(db_path)? } else { Vec::new() };
 
         let mut required_folders = HashMap::new();
-        let folder_regex = Regex::new("/Game/Mods/([^/]+)/.*").unwrap();
         for controller in mod_controllers {
-            if let Some(captures) = folder_regex.captures(&controller) {
+            if let Some(captures) = MOD_CTRL_FOLDER_REGEX.captures(&controller) {
                 let folder = captures.get(1).unwrap().as_str();
                 required_folders.insert(folder.to_string(), false);
             }
@@ -1323,6 +1323,10 @@ const ERR_FLS_ACCOUNT_NOT_CACHED: &str =
     game in online mode at least once before you can play offline.";
 const ERR_LOADING_SETTINGS: &str = "Error while loading the game settings.";
 const ERR_SAVING_SETTINGS: &str = "Error while saving the game settings.";
+
+lazy_static! {
+    static ref MOD_CTRL_FOLDER_REGEX: Regex = Regex::new("/Game/Mods/([^/]+)/.*").unwrap();
+}
 
 #[tokio::main]
 async fn main() {

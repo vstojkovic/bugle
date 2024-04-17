@@ -10,8 +10,6 @@ use anyhow::Result;
 use ini::Properties;
 use ini_persist::load::LoadProperty;
 use ini_persist::save::SaveProperty;
-use lazy_static::lazy_static;
-use regex::Regex;
 use slog::{debug, info, warn, Logger};
 use walkdir::WalkDir;
 
@@ -511,11 +509,6 @@ impl Game {
 
         self.continue_session(options)
     }
-}
-
-lazy_static! {
-    static ref BUILD_ID_REGEX: Regex =
-        Regex::new(r"^OnlineSubsystem:BuildIdOverride:0\s*=\s*(\d+)$").unwrap();
 }
 
 const SECTION_FAVORITE_SERVERS: &str = "FavoriteServers";
