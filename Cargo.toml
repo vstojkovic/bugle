@@ -1,5 +1,5 @@
 [workspace]
-members = ["bugle", "ini-persist", "ini-persist-derive"]
+members = ["bugle", "dynabus", "dynabus-derive", "ini-persist", "ini-persist-derive"]
 resolver = "2"
 
 [profile.dist]

@@ -1,0 +1,13 @@
+[package]
+name = "dynabus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+crossbeam-channel = { version = "0.5.5", optional = true }
+dynabus-derive = { version = "0.1.0", path = "../dynabus-derive", optional = true }
+
+[features]
+default = ["derive"]
+crossbeam = ["crossbeam-channel"]
+derive = ["dynabus-derive"]
