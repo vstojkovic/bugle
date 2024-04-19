@@ -76,24 +76,6 @@ pub enum ServerBrowserUpdate {
     RefreshDetails,
 }
 
-impl ServerBrowserUpdate {
-    pub fn try_consolidate(
-        self,
-        other: ServerBrowserUpdate,
-    ) -> std::result::Result<Self, (Self, Self)> {
-        match (self, other) {
-            (Self::BatchProcessPongs(mut consolidated), Self::ProcessPong(response)) => {
-                consolidated.push(response);
-                Ok(Self::BatchProcessPongs(consolidated))
-            }
-            (Self::ProcessPong(first), Self::ProcessPong(second)) => {
-                Ok(Self::BatchProcessPongs(vec![first, second]))
-            }
-            (this, other) => Err((this, other)),
-        }
-    }
-}
-
 impl From<ServerBrowserUpdate> for super::Update {
     fn from(update: ServerBrowserUpdate) -> Self {
         Self::ServerBrowser(update)

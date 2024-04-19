@@ -6,7 +6,6 @@ use slog::{o, Logger};
 use tokio::task::JoinHandle;
 
 use crate::game::Game;
-use crate::gui::{ServerBrowserUpdate, Update};
 use crate::servers::{fetch_server_list, PingClient, PingRequest, Server};
 use crate::Message;
 
@@ -91,9 +90,7 @@ impl ServerLoaderWorker {
                 if self.server_loader.lock().unwrap().generation != generation {
                     return;
                 }
-                self.tx.send(Message::Update(Update::ServerBrowser(
-                    ServerBrowserUpdate::ProcessPong(response),
-                )));
+                self.tx.send(Message::ServerPong(response));
             },
         )?)
     }

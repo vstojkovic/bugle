@@ -18,7 +18,7 @@ use fltk::prelude::WindowExt;
 use gui::{alert_error, ServerSettingsDialog};
 use lazy_static::lazy_static;
 use regex::Regex;
-use servers::Confidence;
+use servers::{Confidence, PingResponse};
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 use uuid::Uuid;
 
@@ -58,6 +58,7 @@ use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
 pub enum Message {
     Update(Update),
     ServerList(Result<Vec<Server>>),
+    ServerPong(PingResponse),
     Account(Result<Account>),
     PlatformReady,
 }
@@ -77,7 +78,7 @@ struct Launcher {
     rx: app::Receiver<Message>,
     mod_directory: Rc<dyn ModDirectory>,
     main_window: LauncherWindow,
-    pending_update: RefCell<Option<Update>>,
+    pong_accumulator: RefCell<Vec<PingResponse>>,
     cached_users: RefCell<CachedUsers>,
     cached_users_persister: CachedUsersPersister,
     waiting_for_server_load: Cell<bool>,
@@ -152,7 +153,7 @@ impl Launcher {
             rx,
             mod_directory,
             main_window,
-            pending_update: RefCell::new(None),
+            pong_accumulator: RefCell::new(vec![]),
             cached_users: RefCell::new(cached_users),
             cached_users_persister,
             waiting_for_server_load: Cell::new(false),
@@ -210,28 +211,24 @@ impl Launcher {
         loop {
             self.steam.run_callbacks();
 
-            let mut pending_ref = self.pending_update.borrow_mut();
-
-            let pending_update = pending_ref.take();
-            let next_update = self.rx.recv().and_then(|msg| self.process_message(msg));
-            let (ready_update, pending_update) = match (pending_update, next_update) {
-                (Some(pending), Some(next)) => match pending.try_consolidate(next) {
-                    Ok(consolidated) => (None, Some(consolidated)),
-                    Err((pending, next)) => (Some(pending), Some(next)),
-                },
-                (Some(pending), None) => (Some(pending), None),
-                (None, Some(next)) => (None, Some(next)),
-                (None, None) => (None, None),
+            match self.rx.recv() {
+                Some(message) => {
+                    if let Some(update) = self.process_message(message) {
+                        self.main_window.handle_update(update);
+                    }
+                }
+                None => {
+                    let mut pong_accumulator = self.pong_accumulator.borrow_mut();
+                    if !pong_accumulator.is_empty() {
+                        self.main_window.handle_update(Update::ServerBrowser(
+                            ServerBrowserUpdate::BatchProcessPongs(
+                                pong_accumulator.drain(..).collect(),
+                            ),
+                        ));
+                    }
+                    return;
+                }
             };
-
-            if let Some(update) = ready_update {
-                self.main_window.handle_update(update);
-            }
-
-            *pending_ref = pending_update;
-            if pending_ref.is_none() {
-                return;
-            }
         }
     }
 
@@ -292,6 +289,10 @@ impl Launcher {
                         done: true,
                     },
                 ))
+            }
+            Message::ServerPong(pong) => {
+                self.pong_accumulator.borrow_mut().push(pong);
+                None
             }
             Message::Account(account) => {
                 if let Ok(account) = &account {
