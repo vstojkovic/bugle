@@ -11,6 +11,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail, Result};
 use auth::{CachedUser, CachedUsers};
 use bit_vec::BitVec;
+use bus::AppBus;
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
@@ -24,6 +25,7 @@ use uuid::Uuid;
 
 mod auth;
 mod battleye;
+mod bus;
 mod config;
 mod env;
 mod game;
@@ -68,6 +70,7 @@ struct Launcher {
     logger: Logger,
     log_level: Option<Arc<AtomicUsize>>,
     app: App,
+    bus: AppBus,
     steam: Rc<SteamClient>,
     game: Arc<Game>,
     config: RefCell<Config>,
@@ -99,6 +102,7 @@ impl Launcher {
         saved_servers: Option<SavedServers>,
     ) -> Rc<Self> {
         let game = Arc::new(game);
+        let bus = bus::bus();
         let (tx, rx) = app::channel();
         let steam = steam.init_client(&*game, tx.clone());
 
@@ -141,6 +145,7 @@ impl Launcher {
 
         let launcher = Rc::new(Self {
             logger,
+            bus,
             log_level,
             app,
             steam,
