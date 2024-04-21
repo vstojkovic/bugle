@@ -13,10 +13,11 @@ use auth::{CachedUser, CachedUsers};
 use bit_vec::BitVec;
 use bus::AppBus;
 use config::{BattlEyeUsage, Config, ConfigPersister, IniConfigPersister, TransientConfig};
+use dynabus::Bus;
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::prelude::WindowExt;
-use gui::{alert_error, ServerSettingsDialog};
+use gui::{PopulateModList, PopulateServers, UpdateServer};
 use lazy_static::lazy_static;
 use regex::Regex;
 use servers::{Confidence, PingResponse};
@@ -47,9 +48,9 @@ use self::game::{
 };
 use self::gui::theme::Theme;
 use self::gui::{
-    prompt_confirm, Action, Dialog, HomeAction, HomeUpdate, LauncherWindow, ModManagerAction,
-    ModManagerUpdate, ModUpdateProgressDialog, ModUpdateSelectionDialog, ServerBrowserAction,
-    ServerBrowserUpdate, SinglePlayerAction, Update,
+    alert_error, prompt_confirm, Action, Dialog, HomeAction, LauncherWindow, ModManagerAction,
+    ModUpdateProgressDialog, ModUpdateSelectionDialog, ProcessPongs, ServerBrowserAction,
+    ServerSettingsDialog, SinglePlayerAction, UpdateAuthState, UpdateLastSession,
 };
 use self::logger::create_root_logger;
 use self::servers::{SavedServers, Server, Similarity};
@@ -57,7 +58,6 @@ use self::util::weak_cb;
 use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
 
 pub enum Message {
-    Update(Update),
     ServerList(Result<Vec<Server>>),
     ServerPong(PingResponse),
     Account(Result<Account>),
@@ -76,7 +76,6 @@ struct Launcher {
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     saved_servers: Option<RefCell<SavedServers>>,
-    tx: app::Sender<Message>,
     rx: app::Receiver<Message>,
     mod_directory: Rc<dyn ModDirectory>,
     main_window: LauncherWindow,
@@ -102,19 +101,20 @@ impl Launcher {
         saved_servers: Option<SavedServers>,
     ) -> Rc<Self> {
         let game = Arc::new(game);
-        let bus = bus::bus();
+        let mut bus = bus::bus();
         let (tx, rx) = app::channel();
         let steam = steam.init_client(&*game, tx.clone());
 
         let mod_directory: Rc<dyn ModDirectory> = SteamModDirectory::new(
             logger.clone(),
             Rc::clone(&steam),
-            tx.clone(),
+            bus.sender().clone(),
             game.installed_mods(),
         );
 
         let main_window = LauncherWindow::new(
             logger.clone(),
+            &mut bus,
             Arc::clone(&game),
             &config,
             Rc::clone(&mod_directory),
@@ -140,7 +140,7 @@ impl Launcher {
         let server_loader_worker =
             ServerLoaderWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
 
-        let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), tx.clone());
+        let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), bus.sender().clone());
         let fls_worker = FlsWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
 
         let launcher = Rc::new(Self {
@@ -153,7 +153,6 @@ impl Launcher {
             config: RefCell::new(config),
             config_persister,
             saved_servers: saved_servers.map(RefCell::new),
-            tx,
             rx,
             mod_directory,
             main_window,
@@ -183,19 +182,13 @@ impl Launcher {
     fn run(self: &Rc<Self>, disable_prefetch: bool) {
         self.main_window.show();
 
-        if disable_prefetch {
-            self.main_window
-                .handle_update(ServerBrowserUpdate::PrefetchDisabled.into());
-        } else {
+        if !disable_prefetch {
             self.load_server_list();
         }
 
         self.check_mod_updates();
 
-        self.main_window
-            .handle_update(Update::HomeUpdate(HomeUpdate::AuthState(
-                self.check_auth_state(),
-            )));
+        self.bus.publish(UpdateAuthState(self.check_auth_state()));
 
         app::add_check(weak_cb!([this = self] => |_| this.background_loop()));
 
@@ -208,20 +201,22 @@ impl Launcher {
         loop {
             self.steam.run_callbacks();
 
+            self.bus.recv().unwrap();
+
             match self.rx.recv() {
                 Some(message) => {
-                    if let Some(update) = self.process_message(message) {
-                        self.main_window.handle_update(update);
-                    }
+                    self.process_message(message);
                 }
                 None => {
                     let mut pong_accumulator = self.pong_accumulator.borrow_mut();
-                    if !pong_accumulator.is_empty() {
-                        self.main_window.handle_update(Update::ServerBrowser(
-                            ServerBrowserUpdate::BatchProcessPongs(
-                                pong_accumulator.drain(..).collect(),
-                            ),
-                        ));
+                    match pong_accumulator.len() {
+                        0 => (),
+                        1 => self
+                            .bus
+                            .publish(ProcessPongs::One(pong_accumulator.pop().unwrap())),
+                        _ => self
+                            .bus
+                            .publish(ProcessPongs::Many(pong_accumulator.drain(..).collect())),
                     }
                     return;
                 }
@@ -229,9 +224,8 @@ impl Launcher {
         }
     }
 
-    fn process_message(&self, message: Message) -> Option<Update> {
+    fn process_message(&self, message: Message) {
         match message {
-            Message::Update(update) => Some(update),
             Message::ServerList(mut servers) => {
                 match servers.as_mut() {
                     Ok(servers) => {
@@ -278,18 +272,14 @@ impl Launcher {
                     Err(err) => error!(&self.logger, "Error fetching server list"; "error" => %err),
                 }
                 self.waiting_for_server_load.set(false);
-                self.tx
-                    .send(Message::Update(Update::HomeUpdate(HomeUpdate::LastSession)));
-                Some(Update::ServerBrowser(
-                    ServerBrowserUpdate::PopulateServers {
-                        payload: servers,
-                        done: true,
-                    },
-                ))
+                self.bus.publish(UpdateLastSession);
+                self.bus.publish(PopulateServers {
+                    payload: servers,
+                    done: true,
+                });
             }
             Message::ServerPong(pong) => {
                 self.pong_accumulator.borrow_mut().push(pong);
-                None
             }
             Message::Account(account) => {
                 if let Ok(account) = &account {
@@ -308,12 +298,10 @@ impl Launcher {
                     online_capability,
                     sp_capability,
                 };
-
-                Some(Update::HomeUpdate(HomeUpdate::AuthState(auth_state)))
+                self.bus.publish(UpdateAuthState(auth_state));
             }
             Message::PlatformReady => {
                 self.check_mod_updates();
-                None
             }
         }
     }
@@ -359,10 +347,7 @@ impl Launcher {
                 Ok(())
             }
             Action::HomeAction(HomeAction::RefreshAuthState) => {
-                self.main_window
-                    .handle_update(Update::HomeUpdate(HomeUpdate::AuthState(
-                        self.check_auth_state(),
-                    )));
+                self.bus.publish(UpdateAuthState(self.check_auth_state()));
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
@@ -422,9 +407,10 @@ impl Launcher {
             Action::ModManager(ModManagerAction::LoadModList) => {
                 self.check_mod_updates();
                 let active_mods = self.game.load_mod_list()?;
-                self.tx.send(Message::Update(Update::ModManager(
-                    ModManagerUpdate::PopulateModList(active_mods),
-                )));
+                self.bus
+                    .sender()
+                    .send(PopulateModList(active_mods))
+                    .unwrap();
                 Ok(())
             }
             Action::ModManager(ModManagerAction::SaveModList(active_mods)) => {
@@ -443,9 +429,10 @@ impl Launcher {
 
                 let active_mods = self.game.load_mod_list_from(&mod_list_path)?;
                 self.game.save_mod_list(&active_mods)?;
-                self.tx.send(Message::Update(Update::ModManager(
-                    ModManagerUpdate::PopulateModList(active_mods),
-                )));
+                self.bus
+                    .sender()
+                    .send(PopulateModList(active_mods))
+                    .unwrap();
 
                 Ok(())
             }
@@ -487,9 +474,7 @@ impl Launcher {
                 }
                 let result = self.game.save_mod_list(mod_list.iter());
                 if result.is_ok() {
-                    self.tx.send(Message::Update(Update::ModManager(
-                        ModManagerUpdate::PopulateModList(mod_list),
-                    )));
+                    self.bus.sender().send(PopulateModList(mod_list)).unwrap();
                 }
                 result
             }
@@ -652,12 +637,10 @@ impl Launcher {
         if let Some(servers) = self.saved_servers.as_ref() {
             let servers = servers.borrow();
             if !servers.is_empty() {
-                self.main_window.handle_update(Update::ServerBrowser(
-                    ServerBrowserUpdate::PopulateServers {
-                        payload: Ok(servers.iter().cloned().collect()),
-                        done: false,
-                    },
-                ));
+                self.bus.publish(PopulateServers {
+                    payload: Ok(servers.iter().cloned().collect()),
+                    done: false,
+                });
             }
         }
         self.server_loader_worker.load_servers();
@@ -741,12 +724,13 @@ impl Launcher {
         let mut servers = servers.borrow_mut();
         let id = servers.add(server);
         servers.save()?;
-        self.tx.send(Message::Update(Update::ServerBrowser(
-            ServerBrowserUpdate::UpdateServer {
+        self.bus
+            .sender()
+            .send(UpdateServer {
                 idx,
                 server: servers[id].clone(),
-            },
-        )));
+            })
+            .unwrap();
         Ok(())
     }
 
@@ -760,9 +744,10 @@ impl Launcher {
         if !server.merged {
             server.tombstone = true;
         }
-        self.tx.send(Message::Update(Update::ServerBrowser(
-            ServerBrowserUpdate::UpdateServer { idx, server },
-        )));
+        self.bus
+            .sender()
+            .send(UpdateServer { idx, server })
+            .unwrap();
         Ok(())
     }
 

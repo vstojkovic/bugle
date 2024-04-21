@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use dynabus::Bus;
 use fltk::button::{Button, CheckButton, LightButton};
 use fltk::enums::{Align, CallbackTrigger, Color, Event, FrameType};
 use fltk::frame::Frame;
@@ -14,8 +15,10 @@ use fltk_float::{LayoutElement, LayoutWidgetWrapper};
 use slog::{error, FilterLevel, Logger};
 
 use crate::auth::AuthState;
+use crate::bus::AppBus;
 use crate::config::{BattlEyeUsage, Config, LogLevel, ModMismatchChecks, ThemeChoice};
 use crate::game::{Branch, Game, MapRef, Maps, ServerRef, Session};
+use crate::util::weak_cb;
 use crate::workers::TaskState;
 
 use super::assets::Assets;
@@ -37,10 +40,11 @@ pub enum HomeAction {
     RefreshAuthState,
 }
 
-pub enum HomeUpdate {
-    LastSession,
-    AuthState(AuthState),
-}
+#[derive(dynabus::Event)]
+pub struct UpdateLastSession;
+
+#[derive(dynabus::Event)]
+pub struct UpdateAuthState(pub AuthState);
 
 pub struct Home {
     grid: Grid,
@@ -60,6 +64,7 @@ pub struct Home {
 impl Home {
     pub fn new(
         logger: Logger,
+        bus: &mut AppBus,
         game: Arc<Game>,
         config: &Config,
         log_level_overridden: bool,
@@ -481,7 +486,7 @@ impl Home {
 
         let _ = launch_button.take_focus();
 
-        Rc::new(Self {
+        let this = Rc::new(Self {
             grid,
             root,
             game,
@@ -494,20 +499,24 @@ impl Home {
             online_play_text,
             sp_play_text,
             last_session_text,
-        })
+        });
+
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |UpdateLastSession| this.update_last_session()
+        ));
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |UpdateAuthState(state)| this.update_auth_state(state)));
+
+        this
     }
 
     pub fn root(&self) -> &impl WidgetExt {
         &self.root
     }
 
-    pub fn handle_update(&self, update: HomeUpdate) {
-        match update {
-            HomeUpdate::LastSession => self
-                .last_session_text
-                .set_value(last_session_text(&self.game)),
-            HomeUpdate::AuthState(state) => self.update_auth_state(state),
-        }
+    fn update_last_session(&self) {
+        self.last_session_text
+            .set_value(last_session_text(&self.game));
     }
 
     fn update_auth_state(&self, state: AuthState) {

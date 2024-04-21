@@ -12,6 +12,7 @@ use fltk_float::overlay::OverlayBuilder;
 use fltk_float::LayoutElement;
 use slog::Logger;
 
+use crate::bus::AppBus;
 use crate::config::Config;
 use crate::game::platform::ModDirectory;
 use crate::game::Game;
@@ -22,20 +23,17 @@ use super::mod_manager::ModManager;
 use super::server_browser::ServerBrowser;
 use super::single_player::SinglePlayer;
 use super::wrapper_factory;
-use super::{Action, Handler, Update};
+use super::{Action, Handler};
 
 pub struct LauncherWindow {
     window: Window,
     on_action: Rc<RefCell<Box<dyn Handler<Action>>>>,
-    home: Rc<Home>,
-    server_browser: Rc<ServerBrowser>,
-    single_player: Rc<SinglePlayer>,
-    mod_manager: Rc<ModManager>,
 }
 
 impl LauncherWindow {
     pub fn new(
         logger: Logger,
+        bus: &mut AppBus,
         game: Arc<Game>,
         config: &Config,
         mod_resolver: Rc<dyn ModDirectory>,
@@ -72,6 +70,7 @@ impl LauncherWindow {
             let on_action = Rc::clone(&on_action);
             Home::new(
                 logger.clone(),
+                bus,
                 Arc::clone(&game),
                 config,
                 log_level_overridden,
@@ -85,6 +84,7 @@ impl LauncherWindow {
             let on_action = Rc::clone(&on_action);
             ServerBrowser::new(
                 logger.clone(),
+                bus,
                 Arc::clone(&game),
                 &config.server_browser,
                 mod_resolver,
@@ -96,9 +96,12 @@ impl LauncherWindow {
 
         let single_player = {
             let on_action = Rc::clone(&on_action);
-            SinglePlayer::new(logger.clone(), Arc::clone(game.maps()), move |sp_action| {
-                on_action.borrow()(Action::SinglePlayer(sp_action))
-            })
+            SinglePlayer::new(
+                logger.clone(),
+                bus,
+                Arc::clone(game.maps()),
+                move |sp_action| on_action.borrow()(Action::SinglePlayer(sp_action)),
+            )
         };
         content_overlay.add_shared(Rc::<SinglePlayer>::clone(&single_player));
 
@@ -106,6 +109,7 @@ impl LauncherWindow {
             let on_action = Rc::clone(&on_action);
             ModManager::new(
                 logger.clone(),
+                bus,
                 Arc::clone(game.installed_mods()),
                 game.branch(),
                 move |mod_mgr_action| on_action.borrow()(Action::ModManager(mod_mgr_action)),
@@ -160,14 +164,7 @@ impl LauncherWindow {
             main_menu.set_on_mods(move || content_group.set_current_widget(mod_manager.root()));
         }
 
-        Self {
-            window,
-            on_action,
-            home,
-            server_browser,
-            single_player,
-            mod_manager,
-        }
+        Self { window, on_action }
     }
 
     pub fn set_on_action(&self, on_action: impl Handler<Action> + 'static) {
@@ -176,15 +173,6 @@ impl LauncherWindow {
 
     pub fn show(&self) {
         self.window.clone().show();
-    }
-
-    pub fn handle_update(&self, update: Update) {
-        match update {
-            Update::HomeUpdate(update) => self.home.handle_update(update),
-            Update::ServerBrowser(update) => self.server_browser.handle_update(update),
-            Update::SinglePlayer(update) => self.single_player.handle_update(update),
-            Update::ModManager(update) => self.mod_manager.handle_update(update),
-        }
     }
 
     pub fn window(&self) -> &Window {

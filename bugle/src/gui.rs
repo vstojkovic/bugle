@@ -33,26 +33,21 @@ pub mod theme;
 mod widgets;
 
 pub use self::dialog::Dialog;
-pub use self::home::{HomeAction, HomeUpdate};
+pub use self::home::{HomeAction, UpdateAuthState, UpdateLastSession};
 pub use self::launcher::LauncherWindow;
-pub use self::mod_manager::{ModManagerAction, ModManagerUpdate};
+pub use self::mod_manager::{ModManagerAction, PopulateModList};
 pub use self::mod_update::{ModUpdateProgressDialog, ModUpdateSelectionDialog};
-pub use self::server_browser::{ServerBrowserAction, ServerBrowserUpdate};
+pub use self::server_browser::{
+    PopulateServers, ProcessPongs, RefreshServerDetails, ServerBrowserAction, UpdateServer,
+};
 pub use self::server_settings::ServerSettingsDialog;
-pub use self::single_player::{SinglePlayerAction, SinglePlayerUpdate};
+pub use self::single_player::{PopulateSinglePlayerGames, SinglePlayerAction};
 
 pub enum Action {
     HomeAction(HomeAction),
     ServerBrowser(ServerBrowserAction),
     SinglePlayer(SinglePlayerAction),
     ModManager(ModManagerAction),
-}
-
-pub enum Update {
-    HomeUpdate(HomeUpdate),
-    ServerBrowser(ServerBrowserUpdate),
-    SinglePlayer(SinglePlayerUpdate),
-    ModManager(ModManagerUpdate),
 }
 
 pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}

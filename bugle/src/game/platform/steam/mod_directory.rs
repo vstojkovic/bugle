@@ -3,18 +3,18 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use anyhow::{anyhow, bail, Result};
-use fltk::app;
+use dynabus::mpsc::BusSender;
 use slog::{debug, Logger};
 use steamworks::SteamError;
 
+use crate::bus::AppSender;
 use crate::game::platform::steam::client::DownloadCallback;
 use crate::game::platform::{ModDirectory, ModUpdate};
 use crate::game::{ModEntry, ModProvenance, Mods};
-use crate::gui::ServerBrowserUpdate;
+use crate::gui::RefreshServerDetails;
 use crate::logger::IteratorFormatter;
 use crate::util::weak_cb;
 use crate::workers::TaskState;
-use crate::Message;
 
 use super::SteamClient;
 
@@ -22,14 +22,14 @@ pub struct SteamModDirectory {
     logger: Logger,
     map: RefCell<HashMap<u64, String>>,
     client: Rc<SteamClient>,
-    tx: app::Sender<Message>,
+    tx: BusSender<AppSender>,
 }
 
 impl SteamModDirectory {
     pub fn new(
         logger: Logger,
         client: Rc<SteamClient>,
-        tx: app::Sender<Message>,
+        tx: BusSender<AppSender>,
         installed_mods: &Mods,
     ) -> Rc<Self> {
         let branch = client.branch();
@@ -81,7 +81,7 @@ impl ModDirectory for SteamModDirectory {
                 for (id, name) in results {
                     map.insert(id, name);
                 }
-                tx.send(Message::Update(ServerBrowserUpdate::RefreshDetails.into()));
+                tx.send(RefreshServerDetails).ok();
             });
         }
     }

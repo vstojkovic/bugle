@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::Result;
+use dynabus::Bus;
 use fltk::enums::{Align, Event};
 use fltk::frame::Frame;
 use fltk::group::{Group, Tile};
@@ -15,6 +16,7 @@ use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
+use crate::bus::AppBus;
 use crate::config::ServerBrowserConfig;
 use crate::game::platform::ModDirectory;
 use crate::game::settings::server::Community;
@@ -61,26 +63,26 @@ pub enum ServerBrowserAction {
     },
 }
 
-pub enum ServerBrowserUpdate {
-    PrefetchDisabled,
-    PopulateServers {
-        payload: Result<Vec<Server>>,
-        done: bool,
-    },
-    ProcessPong(PingResponse),
-    BatchProcessPongs(Vec<PingResponse>),
-    UpdateServer {
-        idx: Option<usize>,
-        server: Server,
-    },
-    RefreshDetails,
+#[derive(dynabus::Event)]
+pub struct PopulateServers {
+    pub payload: Result<Vec<Server>>,
+    pub done: bool,
 }
 
-impl From<ServerBrowserUpdate> for super::Update {
-    fn from(update: ServerBrowserUpdate) -> Self {
-        Self::ServerBrowser(update)
-    }
+#[derive(dynabus::Event)]
+pub enum ProcessPongs {
+    One(PingResponse),
+    Many(Vec<PingResponse>),
 }
+
+#[derive(dynabus::Event)]
+pub struct UpdateServer {
+    pub idx: Option<usize>,
+    pub server: Server,
+}
+
+#[derive(dynabus::Event)]
+pub struct RefreshServerDetails;
 
 pub(super) struct ServerBrowser {
     logger: Logger,
@@ -95,15 +97,22 @@ pub(super) struct ServerBrowser {
     total_players: Cell<usize>,
     total_players_text: Frame,
     loading_label: Frame,
-    pending_update: Rc<Cell<Option<ServerBrowserUpdate>>>,
     state: Rc<RefCell<ServerBrowserState>>,
+    deferred_action: Cell<Option<DeferredAction>>,
     filter_dirty: Cell<bool>,
     refreshing: Cell<bool>,
+}
+
+enum DeferredAction {
+    Refresh,
+    AlertError(&'static str, anyhow::Error),
+    PingServers,
 }
 
 impl ServerBrowser {
     pub fn new(
         logger: Logger,
+        bus: &mut AppBus,
         game: Arc<Game>,
         config: &ServerBrowserConfig,
         mod_resolver: Rc<dyn ModDirectory>,
@@ -226,8 +235,8 @@ impl ServerBrowser {
             total_players: Cell::new(0),
             total_players_text,
             loading_label,
-            pending_update: Rc::new(Cell::new(None)),
             state: Rc::clone(&state),
+            deferred_action: Cell::new(Some(DeferredAction::Refresh)),
             filter_dirty: Cell::new(false),
             refreshing: Cell::new(true),
         });
@@ -411,6 +420,18 @@ impl ServerBrowser {
             }
         ));
 
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |PopulateServers { payload, done }| this.populate_servers(payload, done)
+        ));
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |pongs: ProcessPongs| this.update_pinged_servers(pongs)
+        ));
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |UpdateServer { idx, server }| this.update_server(idx, server)
+        ));
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |RefreshServerDetails| this.refresh_server_details()));
+
         this
     }
 
@@ -418,86 +439,42 @@ impl ServerBrowser {
         &self.root
     }
 
-    pub fn handle_update(&self, update: ServerBrowserUpdate) {
-        match update {
-            ServerBrowserUpdate::PrefetchDisabled => {
-                if self.root.visible() {
-                    (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
-                } else {
-                    self.pending_update
-                        .set(Some(ServerBrowserUpdate::PrefetchDisabled));
-                }
-            }
-            ServerBrowserUpdate::PopulateServers { payload, done } => {
-                if self.root.visible() {
-                    if done {
-                        self.refreshing.set(false);
-                        self.loading_label.clone().hide();
-                        self.stats_group.clone().show();
-                    }
-                    match payload {
-                        Ok(all_servers) => {
-                            self.populate_servers(all_servers);
-                            if done {
-                                self.ping_servers();
-                            }
-                        }
-                        Err(err) => {
-                            self.list_pane.clear_refreshing();
-                            alert_error(ERR_LOADING_SERVERS, &err);
-                        }
-                    }
-                } else {
-                    self.pending_update
-                        .set(Some(ServerBrowserUpdate::PopulateServers { payload, done }));
-                }
-            }
-            ServerBrowserUpdate::ProcessPong(response) => {
-                self.update_pinged_servers(&[response]);
-            }
-            ServerBrowserUpdate::BatchProcessPongs(responses) => {
-                self.update_pinged_servers(&responses);
-            }
-            ServerBrowserUpdate::UpdateServer { idx, server } => {
-                self.update_servers(
-                    1,
-                    move |all_servers, updated_indices, filter, _sort_criteria| {
-                        let matched_before = idx
-                            .map(|idx| filter.matches(&all_servers[idx]))
-                            .unwrap_or_default();
-                        let matches_after = filter.matches(&server);
-                        match idx {
-                            Some(idx) => {
-                                all_servers[idx] = server;
-                                updated_indices.push(idx);
-                            }
-                            None => {
-                                all_servers.push(server);
-                                updated_indices.push(all_servers.len() - 1);
-                            }
-                        }
-                        Reindex::Order.filter_if(matched_before != matches_after)
-                    },
-                );
-            }
-            ServerBrowserUpdate::RefreshDetails => {
-                if self.root.visible() {
-                    if let Some(selected_idx) = self.list_pane.selected_index() {
-                        let server = &self.state.borrow()[selected_idx];
-                        self.details_pane.populate(Some(server));
-                    }
-                }
-            }
-        }
-    }
-
     fn on_show(&self) {
-        if let Some(update) = self.pending_update.take() {
-            self.handle_update(update);
+        match self.deferred_action.take() {
+            None => (),
+            Some(DeferredAction::Refresh) => {
+                (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
+            }
+            Some(DeferredAction::AlertError(msg, err)) => {
+                alert_error(msg, &err);
+            }
+            Some(DeferredAction::PingServers) => self.ping_servers(),
         }
     }
 
-    fn populate_servers(&self, all_servers: Vec<Server>) {
+    fn populate_servers(&self, payload: Result<Vec<Server>>, done: bool) {
+        self.deferred_action.set(None);
+
+        if done {
+            self.refreshing.set(false);
+            self.loading_label.clone().hide();
+            self.stats_group.clone().show();
+        }
+
+        let all_servers = match payload {
+            Ok(all_servers) => all_servers,
+            Err(err) => {
+                self.list_pane.clear_refreshing();
+                if self.root.visible() {
+                    alert_error(ERR_LOADING_SERVERS, &err);
+                } else {
+                    self.deferred_action
+                        .set(Some(DeferredAction::AlertError(ERR_LOADING_SERVERS, err)));
+                }
+                return;
+            }
+        };
+
         {
             let mut state = self.state.borrow_mut();
             state.update(|servers, _, _| {
@@ -508,6 +485,14 @@ impl ServerBrowser {
 
         let state = Rc::clone(&self.state);
         self.list_pane.populate(state);
+
+        if done {
+            if self.root.visible() {
+                self.ping_servers();
+            } else {
+                self.deferred_action.set(Some(DeferredAction::PingServers));
+            }
+        }
     }
 
     fn ping_servers(&self) {
@@ -539,10 +524,15 @@ impl ServerBrowser {
         }
     }
 
-    fn update_pinged_servers(&self, updates: &[PingResponse]) {
+    fn update_pinged_servers(&self, pongs: ProcessPongs) {
         if self.refreshing.get() {
             return;
         }
+
+        let updates = match &pongs {
+            ProcessPongs::One(pong) => std::slice::from_ref(pong),
+            ProcessPongs::Many(pongs) => &pongs[..],
+        };
 
         let mut total_players = self.total_players.get();
         self.update_servers(
@@ -567,6 +557,36 @@ impl ServerBrowser {
             },
         );
         self.set_total_player_count(total_players);
+    }
+
+    fn update_server(&self, idx: Option<usize>, server: Server) {
+        self.update_servers(
+            1,
+            move |all_servers, updated_indices, filter, _sort_criteria| {
+                let matched_before = idx
+                    .map(|idx| filter.matches(&all_servers[idx]))
+                    .unwrap_or_default();
+                let matches_after = filter.matches(&server);
+                match idx {
+                    Some(idx) => {
+                        all_servers[idx] = server;
+                        updated_indices.push(idx);
+                    }
+                    None => {
+                        all_servers.push(server);
+                        updated_indices.push(all_servers.len() - 1);
+                    }
+                }
+                Reindex::Order.filter_if(matched_before != matches_after)
+            },
+        );
+    }
+
+    fn refresh_server_details(&self) {
+        if let Some(selected_idx) = self.list_pane.selected_index() {
+            let server = &self.state.borrow()[selected_idx];
+            self.details_pane.populate(Some(server));
+        }
     }
 
     fn update_servers(

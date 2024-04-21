@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
+use dynabus::Bus;
 use fltk::button::Button;
 use fltk::dialog;
 use fltk::enums::{CallbackTrigger, Event};
@@ -17,6 +18,7 @@ use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 
+use crate::bus::AppBus;
 use crate::game::{GameDB, Maps};
 use crate::util::weak_cb;
 
@@ -36,9 +38,8 @@ pub enum SinglePlayerAction {
     EditSettings,
 }
 
-pub enum SinglePlayerUpdate {
-    PopulateList(Result<Vec<GameDB>>),
-}
+#[derive(dynabus::Event)]
+pub struct PopulateSinglePlayerGames(pub Result<Vec<GameDB>>);
 
 struct SavedGameFilter {
     map_id: usize,
@@ -97,6 +98,7 @@ pub struct SinglePlayer {
 impl SinglePlayer {
     pub fn new(
         logger: Logger,
+        bus: &mut AppBus,
         maps: Arc<Maps>,
         on_action: impl Handler<SinglePlayerAction> + 'static,
     ) -> Rc<Self> {
@@ -243,6 +245,10 @@ impl SinglePlayer {
         delete_button.set_callback(weak_cb!([this] => |_| this.delete_clicked()));
         settings_button.set_callback(weak_cb!([this] => |_| this.settings_clicked()));
 
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |PopulateSinglePlayerGames(payload)| this.populate_games(payload)
+        ));
+
         this
     }
 
@@ -250,20 +256,18 @@ impl SinglePlayer {
         &self.root
     }
 
-    pub fn handle_update(&self, update: SinglePlayerUpdate) {
-        match update {
-            SinglePlayerUpdate::PopulateList(result) => match result {
-                Ok(games) => self.set_games(games),
-                Err(err) => {
-                    error!(self.logger, "Error listing saved games"; "error" => %err);
-                    super::alert_error(ERR_LISTING_SAVED_GAMES, &err);
-                }
-            },
-        }
-    }
-
     fn on_show(&self) {
         (self.on_action)(SinglePlayerAction::ListSavedGames).unwrap();
+    }
+
+    fn populate_games(&self, payload: Result<Vec<GameDB>>) {
+        match payload {
+            Ok(games) => self.set_games(games),
+            Err(err) => {
+                error!(self.logger, "Error listing saved games"; "error" => %err);
+                super::alert_error(ERR_LISTING_SAVED_GAMES, &err);
+            }
+        }
     }
 
     fn set_games(&self, mut games: Vec<GameDB>) {

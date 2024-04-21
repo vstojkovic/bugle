@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use bbscope::{BBCode, BBCodeTagConfig};
 use bit_vec::BitVec;
+use dynabus::Bus;
 use fltk::app;
 use fltk::button::Button;
 use fltk::enums::{Align, Event, FrameType};
@@ -19,6 +20,7 @@ use lazy_static::lazy_static;
 use size::Size;
 use slog::{error, Logger};
 
+use crate::bus::AppBus;
 use crate::game::{Branch, ModEntry, ModProvenance, ModRef, Mods};
 use crate::util::weak_cb;
 
@@ -38,9 +40,8 @@ pub enum ModManagerAction {
     FixModListErrors(Vec<ModRef>),
 }
 
-pub enum ModManagerUpdate {
-    PopulateModList(Vec<ModRef>),
-}
+#[derive(dynabus::Event)]
+pub struct PopulateModList(pub Vec<ModRef>);
 
 enum Selection {
     Available(usize),
@@ -126,6 +127,7 @@ pub(super) struct ModManager {
 impl ModManager {
     pub fn new(
         logger: Logger,
+        bus: &mut AppBus,
         mods: Arc<Mods>,
         branch: Branch,
         on_action: impl Handler<ModManagerAction> + 'static,
@@ -499,17 +501,15 @@ impl ModManager {
         description_button.set_callback(weak_cb!([this] => |_| this.show_description()));
         change_notes_button.set_callback(weak_cb!([this] => |_| this.show_change_notes()));
 
+        bus.subscribe_consumer(weak_cb!(
+            [this] => |PopulateModList(active_mods)| this.populate_state(active_mods)
+        ));
+
         this
     }
 
     pub fn root(&self) -> &impl WidgetExt {
         &self.root
-    }
-
-    pub fn handle_update(&self, update: ModManagerUpdate) {
-        match update {
-            ModManagerUpdate::PopulateModList(active_mods) => self.populate_state(active_mods),
-        }
     }
 
     fn on_show(&self) {
