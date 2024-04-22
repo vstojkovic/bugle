@@ -13,6 +13,7 @@ use steamworks::{
 use crate::auth::PlatformUser;
 use crate::game::Branch;
 use crate::logger::IteratorFormatter;
+use crate::util::weak_cb;
 use crate::Message;
 
 use super::app_id;
@@ -175,14 +176,9 @@ impl SteamClient {
             let mut downloads = self.downloads.borrow_mut();
             downloads.dispatch_map.insert(mod_id, callback);
             if downloads.api_callback_handle.is_none() {
-                let mut api_callback = CallbackWrapper({
-                    let this = Rc::downgrade(self);
-                    move |result| {
-                        if let Some(this) = this.upgrade() {
-                            this.handle_download_result(result)
-                        }
-                    }
-                });
+                let mut api_callback = CallbackWrapper(weak_cb!(
+                    [this = self] => |result| this.handle_download_result(result)
+                ));
                 downloads.api_callback_handle =
                     Some(client.register_callback(move |result| api_callback.call_mut(result)));
                 self.callback_timer.borrow_mut().callback_pending();

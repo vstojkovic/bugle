@@ -18,10 +18,10 @@ use strum::IntoEnumIterator;
 
 use crate::game::settings::server::{BaseGeneralSettings, CombatModeModifier};
 use crate::game::Game;
-use crate::gui::prelude::declare_weak_cb;
 use crate::gui::widgets::DropDownList;
 use crate::gui::{alert_error, wrapper_factory};
 use crate::servers::{Mode, Ownership, Region, Server, ServerData};
+use crate::util::weak_cb;
 
 use super::{mode_name, region_name, ServerBrowserAction};
 
@@ -151,8 +151,8 @@ impl AddServerDialog {
             result: RefCell::new(None),
         });
 
-        ok_button.set_callback(this.weak_cb(Self::ok_clicked));
-        cancel_button.set_callback(this.weak_cb(Self::cancel_clicked));
+        ok_button.set_callback(weak_cb!([this] => |_| this.ok_clicked()));
+        cancel_button.set_callback(weak_cb!([this] => |_| this.cancel_clicked()));
 
         this
     }
@@ -168,8 +168,6 @@ impl AddServerDialog {
 
         self.result.borrow_mut().take()
     }
-
-    declare_weak_cb!();
 
     fn ok_clicked(&self) {
         let server = match self.make_server() {

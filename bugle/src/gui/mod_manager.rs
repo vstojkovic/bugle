@@ -20,6 +20,7 @@ use size::Size;
 use slog::{error, Logger};
 
 use crate::game::{Branch, ModEntry, ModProvenance, ModRef, Mods};
+use crate::util::weak_cb;
 
 use super::prelude::*;
 use super::widgets::{
@@ -426,7 +427,7 @@ impl ModManager {
 
         root.hide();
 
-        let manager = Rc::new(Self {
+        let this = Rc::new(Self {
             logger,
             branch,
             grid,
@@ -448,57 +449,57 @@ impl ModManager {
             state: RefCell::new(ModListState::new(mods)),
         });
 
-        manager.update_actions();
+        this.update_actions();
 
-        {
-            let this = Rc::downgrade(&manager);
-            root.handle(move |_, event| {
-                if let Event::Show = event {
-                    if let Some(this) = this.upgrade() {
-                        this.on_show();
+        root.handle(weak_cb!([this] => |_, event| {
+            if let Event::Show = event {
+                this.on_show();
+            }
+        }; false));
+
+        available_list.set_callback(weak_cb!(
+            [this] => |_| {
+                if is_table_nav_event()
+                    && this.available_list.callback_context() == TableContext::Cell
+                {
+                    if app::event_clicks() {
+                        this.activate_clicked();
+                    } else {
+                        this.available_clicked();
                     }
                 }
-                false
-            });
-        }
+            }
+        ));
 
-        available_list.set_callback(manager.weak_cb(|this| {
-            if is_table_nav_event() && this.available_list.callback_context() == TableContext::Cell
-            {
-                if app::event_clicks() {
-                    this.activate_clicked();
-                } else {
-                    this.available_clicked();
+        active_list.set_callback(weak_cb!(
+            [this] => |_| {
+                if is_table_nav_event() && this.active_list.callback_context() == TableContext::Cell
+                {
+                    if app::event_clicks() {
+                        this.deactivate_clicked();
+                    } else {
+                        this.active_clicked();
+                    }
                 }
             }
-        }));
+        ));
 
-        active_list.set_callback(manager.weak_cb(|this| {
-            if is_table_nav_event() && this.active_list.callback_context() == TableContext::Cell {
-                if app::event_clicks() {
-                    this.deactivate_clicked();
-                } else {
-                    this.active_clicked();
-                }
-            }
-        }));
+        clear_button.set_callback(weak_cb!([this] => |_| this.clear_clicked()));
+        import_button.set_callback(weak_cb!([this] => |_| this.import_clicked()));
+        export_button.set_callback(weak_cb!([this] => |_| this.export_clicked()));
+        copy_modlist_button.set_callback(weak_cb!([this] => |_| this.copy_modlist_clicked()));
+        fix_errors_button.set_callback(weak_cb!([this] => |_| this.fix_errors_clicked()));
+        activate_button.set_callback(weak_cb!([this] => |_| this.activate_clicked()));
+        deactivate_button.set_callback(weak_cb!([this] => |_| this.deactivate_clicked()));
+        move_top_button.set_callback(weak_cb!([this] => |_| this.move_top_clicked()));
+        move_up_button.set_callback(weak_cb!([this] => |_| this.move_up_clicked()));
+        move_down_button.set_callback(weak_cb!([this] => |_| this.move_down_clicked()));
+        move_bottom_button.set_callback(weak_cb!([this] => |_| this.move_bottom_clicked()));
+        update_mods_button.set_callback(weak_cb!([this] => |_| this.update_mods_clicked()));
+        description_button.set_callback(weak_cb!([this] => |_| this.show_description()));
+        change_notes_button.set_callback(weak_cb!([this] => |_| this.show_change_notes()));
 
-        clear_button.set_callback(manager.weak_cb(Self::clear_clicked));
-        import_button.set_callback(manager.weak_cb(Self::import_clicked));
-        export_button.set_callback(manager.weak_cb(Self::export_clicked));
-        copy_modlist_button.set_callback(manager.weak_cb(Self::copy_modlist_clicked));
-        fix_errors_button.set_callback(manager.weak_cb(Self::fix_errors_clicked));
-        activate_button.set_callback(manager.weak_cb(Self::activate_clicked));
-        deactivate_button.set_callback(manager.weak_cb(Self::deactivate_clicked));
-        move_top_button.set_callback(manager.weak_cb(Self::move_top_clicked));
-        move_up_button.set_callback(manager.weak_cb(Self::move_up_clicked));
-        move_down_button.set_callback(manager.weak_cb(Self::move_down_clicked));
-        move_bottom_button.set_callback(manager.weak_cb(Self::move_bottom_clicked));
-        update_mods_button.set_callback(manager.weak_cb(Self::update_mods_clicked));
-        description_button.set_callback(manager.weak_cb(Self::show_description));
-        change_notes_button.set_callback(manager.weak_cb(Self::show_change_notes));
-
-        manager
+        this
     }
 
     pub fn root(&self) -> &impl WidgetExt {
@@ -510,8 +511,6 @@ impl ModManager {
             ModManagerUpdate::PopulateModList(active_mods) => self.populate_state(active_mods),
         }
     }
-
-    declare_weak_cb!();
 
     fn on_show(&self) {
         if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {

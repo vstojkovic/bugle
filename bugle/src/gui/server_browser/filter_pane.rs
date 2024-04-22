@@ -16,6 +16,7 @@ use crate::game::Maps;
 use crate::gui::widgets::DropDownList;
 use crate::gui::{glyph, wrapper_factory};
 use crate::servers::{Mode, Region, TypeFilter};
+use crate::util::weak_cb;
 
 use super::state::Filter;
 use super::{mode_name, region_name};
@@ -186,138 +187,117 @@ impl FilterPane {
         {
             let mut name_input = self.name_input.clone();
             name_input.set_trigger(CallbackTrigger::Changed);
-            {
-                let filter_holder = Rc::downgrade(&filter_holder);
-                name_input.set_callback(move |input| {
-                    if let Some(filter_holder) = filter_holder.upgrade() {
-                        filter_holder.mutate_filter(|filter| filter.set_name(input.value()));
-                    }
-                });
-            }
+            name_input.set_callback(weak_cb!(
+                [filter_holder] => |input| {
+                    filter_holder.mutate_filter(|filter| filter.set_name(input.value()));
+                }
+            ));
             set_unfocus_handler(&mut name_input, &filter_holder);
         }
         {
             let mut map_input = self.map_input.clone();
             map_input.set_trigger(CallbackTrigger::Changed);
-            {
-                let filter_holder = Rc::downgrade(&filter_holder);
-                map_input.set_callback(move |input| {
-                    if let Some(filter_holder) = filter_holder.upgrade() {
-                        if input.menu_button().value() == 0 {
-                            input.set_value("");
-                        }
-                        input.menu_button().set_value(-1);
-                        filter_holder.mutate_filter(|filter| {
-                            filter.set_map(input.value().unwrap_or_default())
-                        });
+            map_input.set_callback(weak_cb!(
+                [filter_holder] => |input| {
+                    if input.menu_button().value() == 0 {
+                        input.set_value("");
                     }
-                });
-            }
+                    input.menu_button().set_value(-1);
+                    filter_holder
+                        .mutate_filter(|filter| filter.set_map(input.value().unwrap_or_default()));
+                }
+            ));
             set_unfocus_handler(&mut map_input, &filter_holder);
         }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut type_input = self.type_input.clone();
-            type_input.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    let repr = input.value();
-                    let type_filter = TypeFilter::from_repr(repr as _).unwrap();
-                    filter_holder.mutate_filter(|filter| filter.set_type_filter(type_filter));
-                    filter_holder.persist_filter();
-                }
-            });
-        }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut mode_input = self.mode_input.clone();
-            mode_input.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    let mode = {
-                        let repr = input.value() - 1;
-                        if repr < 0 {
-                            None
-                        } else {
-                            Mode::from_repr(repr as _)
-                        }
-                    };
-                    filter_holder.mutate_filter(|filter| filter.set_mode(mode));
-                    filter_holder.persist_filter();
-                }
-            });
-        }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut region_input = self.region_input.clone();
-            region_input.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    let region = {
-                        let repr = input.value() - 1;
-                        if repr < 0 {
-                            None
-                        } else {
-                            Region::from_repr(repr as _)
-                        }
-                    };
-                    filter_holder.mutate_filter(|filter| filter.set_region(region));
-                    filter_holder.persist_filter();
-                }
-            });
-        }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut battleye_input = self.battleye_input.clone();
-            battleye_input.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    let required = match input.value() {
-                        1 => Some(true),
-                        2 => Some(false),
-                        _ => None,
-                    };
-                    filter_holder.mutate_filter(|filter| filter.set_battleye_required(required));
-                    filter_holder.persist_filter();
-                }
-            });
-        }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut invalid_check = self.invalid_check.clone();
-            invalid_check.set_trigger(CallbackTrigger::Changed);
-            invalid_check.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder
-                        .mutate_filter(|filter| filter.set_include_invalid(input.is_checked()));
-                    filter_holder.persist_filter();
-                }
-            })
-        }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut pwd_prot_check = self.pwd_prot_check.clone();
-            pwd_prot_check.set_trigger(CallbackTrigger::Changed);
-            pwd_prot_check.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    filter_holder.mutate_filter(|filter| {
-                        filter.set_include_password_protected(input.is_checked())
-                    });
-                    filter_holder.persist_filter();
-                }
-            })
-        }
-        {
-            let filter_holder = Rc::downgrade(&filter_holder);
-            let mut mods_input = self.mods_input.clone();
-            mods_input.set_callback(move |input| {
-                if let Some(filter_holder) = filter_holder.upgrade() {
-                    let mods = match input.value() {
-                        1 => Some(false),
-                        2 => Some(true),
-                        _ => None,
-                    };
-                    filter_holder.mutate_filter(|filter| filter.set_mods(mods));
-                    filter_holder.persist_filter();
-                }
-            })
-        }
+
+        let mut type_input = self.type_input.clone();
+        type_input.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                let repr = input.value();
+                let type_filter = TypeFilter::from_repr(repr as _).unwrap();
+                filter_holder.mutate_filter(|filter| filter.set_type_filter(type_filter));
+                filter_holder.persist_filter();
+            }
+        ));
+
+        let mut mode_input = self.mode_input.clone();
+        mode_input.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                let mode = {
+                    let repr = input.value() - 1;
+                    if repr < 0 {
+                        None
+                    } else {
+                        Mode::from_repr(repr as _)
+                    }
+                };
+                filter_holder.mutate_filter(|filter| filter.set_mode(mode));
+                filter_holder.persist_filter();
+            }
+        ));
+
+        let mut region_input = self.region_input.clone();
+        region_input.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                let region = {
+                    let repr = input.value() - 1;
+                    if repr < 0 {
+                        None
+                    } else {
+                        Region::from_repr(repr as _)
+                    }
+                };
+                filter_holder.mutate_filter(|filter| filter.set_region(region));
+                filter_holder.persist_filter();
+            }
+        ));
+
+        let mut battleye_input = self.battleye_input.clone();
+        battleye_input.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                let required = match input.value() {
+                    1 => Some(true),
+                    2 => Some(false),
+                    _ => None,
+                };
+                filter_holder.mutate_filter(|filter| filter.set_battleye_required(required));
+                filter_holder.persist_filter();
+            }
+        ));
+
+        let mut invalid_check = self.invalid_check.clone();
+        invalid_check.set_trigger(CallbackTrigger::Changed);
+        invalid_check.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                filter_holder
+                    .mutate_filter(|filter| filter.set_include_invalid(input.is_checked()));
+                filter_holder.persist_filter();
+            }
+        ));
+
+        let mut pwd_prot_check = self.pwd_prot_check.clone();
+        pwd_prot_check.set_trigger(CallbackTrigger::Changed);
+        pwd_prot_check.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                filter_holder.mutate_filter(|filter| {
+                    filter.set_include_password_protected(input.is_checked())
+                });
+                filter_holder.persist_filter();
+            }
+        ));
+
+        let mut mods_input = self.mods_input.clone();
+        mods_input.set_callback(weak_cb!(
+            [filter_holder] => |input| {
+                let mods = match input.value() {
+                    1 => Some(false),
+                    2 => Some(true),
+                    _ => None,
+                };
+                filter_holder.mutate_filter(|filter| filter.set_mods(mods));
+                filter_holder.persist_filter();
+            }
+        ));
     }
 }
 
@@ -344,13 +324,9 @@ fn set_unfocus_handler<W: WidgetBase>(
     widget: &mut W,
     filter_holder: &Rc<impl FilterHolder + 'static>,
 ) {
-    let filter_holder = Rc::downgrade(filter_holder);
-    widget.handle(move |_, event| {
+    widget.handle(weak_cb!([filter_holder] => |_, event| {
         if let Event::Unfocus | Event::Hide = event {
-            if let Some(filter_holder) = filter_holder.upgrade() {
-                filter_holder.persist_filter();
-            }
+            filter_holder.persist_filter();
         }
-        false
-    });
+    }; false));
 }

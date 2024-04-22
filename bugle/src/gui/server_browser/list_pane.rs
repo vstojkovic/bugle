@@ -14,6 +14,7 @@ use crate::gui::data::{IterableTableSource, TableSource};
 use crate::gui::widgets::{DataColumn, DataTable, DataTableProperties, DataTableUpdate};
 use crate::gui::{glyph, is_table_nav_event};
 use crate::servers::{Server, SortCriteria, SortKey};
+use crate::util::weak_cb;
 
 use super::{mode_name, region_name};
 
@@ -59,7 +60,7 @@ impl ListPane {
         table.end();
         table.hide();
 
-        let list_pane = Rc::new(Self {
+        let this = Rc::new(Self {
             table: table.clone(),
             sort_criteria: RefCell::new(*initial_sort),
             server_list: RefCell::new(Rc::new(RefCell::new(Vec::new()))),
@@ -71,28 +72,20 @@ impl ListPane {
             }),
         });
 
-        {
-            let list_pane = Rc::downgrade(&list_pane);
-            table.set_callback(move |_| {
-                if let Some(list_pane) = list_pane.upgrade() {
-                    if is_table_nav_event() {
-                        list_pane.clicked();
-                    }
+        table.set_callback(weak_cb!(
+            [this] => |_| {
+                if is_table_nav_event() {
+                    this.clicked();
                 }
-            });
-        }
-        {
-            let list_pane = Rc::downgrade(&list_pane);
-            let mut tooltip_pos = None;
-            table.handle(move |_, event| {
-                if let Some(list_pane) = list_pane.upgrade() {
-                    list_pane.update_tooltip(event, &mut tooltip_pos);
-                }
-                false
-            });
-        }
+            }
+        ));
 
-        list_pane
+        let mut tooltip_pos = None;
+        table.handle(weak_cb!([this] => |_, event| {
+            this.update_tooltip(event, &mut tooltip_pos);
+        }; false));
+
+        this
     }
 
     pub fn populate(&self, server_list: Rc<RefCell<dyn TableSource<Output = Server>>>) {

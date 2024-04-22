@@ -11,8 +11,8 @@ use fltk_float::overlay::OverlayBuilder;
 use fltk_float::{LayoutElement, WrapperFactory};
 
 use crate::game::settings::server::ServerSettings;
-use crate::gui::prelude::declare_weak_cb;
 use crate::gui::wrapper_factory;
+use crate::util::weak_cb;
 
 use super::building::BuildingTab;
 use super::chat::ChatTab;
@@ -155,8 +155,8 @@ impl ServerSettingsDialog {
             result: Cell::new(None),
         });
 
-        ok_button.set_callback(this.weak_cb(Self::ok_clicked));
-        cancel_button.set_callback(this.weak_cb(Self::cancel_clicked));
+        ok_button.set_callback(weak_cb!([this] => |_| this.ok_clicked()));
+        cancel_button.set_callback(weak_cb!([this] => |_| this.cancel_clicked()));
 
         this
     }
@@ -172,8 +172,6 @@ impl ServerSettingsDialog {
 
         self.result.take()
     }
-
-    declare_weak_cb!();
 
     fn ok_clicked(&self) {
         self.result.set(Some(self.values()));

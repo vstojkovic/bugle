@@ -18,6 +18,7 @@ use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 
 use crate::game::{GameDB, Maps};
+use crate::util::weak_cb;
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
@@ -199,7 +200,7 @@ impl SinglePlayer {
         let mut root = grid.group();
         root.hide();
 
-        let single_player = Rc::new(Self {
+        let this = Rc::new(Self {
             logger,
             grid,
             root: root.clone(),
@@ -215,48 +216,34 @@ impl SinglePlayer {
             state: RefCell::new(SinglePlayerState::new(selected_map_id)),
         });
 
-        {
-            let this = Rc::downgrade(&single_player);
-            root.handle(move |_, event| {
-                if let Event::Show = event {
-                    if let Some(this) = this.upgrade() {
-                        this.on_show();
-                    }
+        root.handle(weak_cb!([this] => |_, event| {
+            if let Event::Show = event {
+                this.on_show();
+            }
+        }; false));
+
+        map_input.set_trigger(CallbackTrigger::Changed);
+        map_input.set_callback(weak_cb!(
+            [this] => |input| this.map_selected(input.menu_button().value() as _)
+        ));
+
+        backups_table.set_callback(weak_cb!(
+            [this] => |_| {
+                if is_table_nav_event() {
+                    this.backup_clicked();
                 }
-                false
-            });
-        }
+            }
+        ));
 
-        {
-            let this = Rc::downgrade(&single_player);
-            map_input.set_trigger(CallbackTrigger::Changed);
-            map_input.set_callback(move |input| {
-                if let Some(this) = this.upgrade() {
-                    this.map_selected(input.menu_button().value() as _);
-                }
-            });
-        }
+        new_button.set_callback(weak_cb!([this] => |_| this.new_clicked()));
+        continue_button.set_callback(weak_cb!([this] => |_| this.continue_clicked()));
+        load_button.set_callback(weak_cb!([this] => |_| this.load_clicked()));
+        save_button.set_callback(weak_cb!([this] => |_| this.save_clicked()));
+        save_as_button.set_callback(weak_cb!([this] => |_| this.save_as_clicked()));
+        delete_button.set_callback(weak_cb!([this] => |_| this.delete_clicked()));
+        settings_button.set_callback(weak_cb!([this] => |_| this.settings_clicked()));
 
-        {
-            let this = Rc::downgrade(&single_player);
-            backups_table.set_callback(move |_| {
-                if let Some(this) = this.upgrade() {
-                    if is_table_nav_event() {
-                        this.backup_clicked();
-                    }
-                }
-            });
-        }
-
-        new_button.set_callback(single_player.weak_cb(Self::new_clicked));
-        continue_button.set_callback(single_player.weak_cb(Self::continue_clicked));
-        load_button.set_callback(single_player.weak_cb(Self::load_clicked));
-        save_button.set_callback(single_player.weak_cb(Self::save_clicked));
-        save_as_button.set_callback(single_player.weak_cb(Self::save_as_clicked));
-        delete_button.set_callback(single_player.weak_cb(Self::delete_clicked));
-        settings_button.set_callback(single_player.weak_cb(Self::settings_clicked));
-
-        single_player
+        this
     }
 
     pub fn root(&self) -> &impl WidgetExt {
@@ -274,8 +261,6 @@ impl SinglePlayer {
             },
         }
     }
-
-    declare_weak_cb!();
 
     fn on_show(&self) {
         (self.on_action)(SinglePlayerAction::ListSavedGames).unwrap();

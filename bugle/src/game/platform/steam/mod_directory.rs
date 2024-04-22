@@ -12,6 +12,7 @@ use crate::game::platform::{ModDirectory, ModUpdate};
 use crate::game::{ModEntry, ModProvenance, Mods};
 use crate::gui::ServerBrowserUpdate;
 use crate::logger::IteratorFormatter;
+use crate::util::weak_cb;
 use crate::workers::TaskState;
 use crate::Message;
 
@@ -117,15 +118,12 @@ impl ModDirectory for SteamModDirectory {
             mod_id,
             result: RefCell::new(TaskState::Pending),
         });
-        let success = self.client.start_mod_update(mod_id, {
-            let update = Rc::downgrade(&update);
-            let callback: DownloadCallback = Rc::new(move |result| {
-                if let Some(update) = update.upgrade() {
-                    *update.result.borrow_mut() = TaskState::Ready(result);
-                }
-            });
-            callback
-        });
+        let callback: DownloadCallback = Rc::new(weak_cb!(
+            [update] => |result| {
+                *update.result.borrow_mut() = TaskState::Ready(result);
+            }
+        ));
+        let success = self.client.start_mod_update(mod_id, callback);
         if success.ok_or_else(|| anyhow!("Steam not running"))? {
             Ok(update)
         } else {

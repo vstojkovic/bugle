@@ -35,8 +35,6 @@ mod servers;
 mod util;
 mod workers;
 
-use crate::servers::Similarity;
-
 use self::auth::{Account, AuthState, Capability, PlatformUser};
 use self::config::ModMismatchChecks;
 use self::game::platform::steam::{Steam, SteamClient, SteamModDirectory};
@@ -52,7 +50,8 @@ use self::gui::{
     ServerBrowserUpdate, SinglePlayerAction, Update,
 };
 use self::logger::create_root_logger;
-use self::servers::{SavedServers, Server};
+use self::servers::{SavedServers, Server, Similarity};
+use self::util::weak_cb;
 use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
 
 pub enum Message {
@@ -193,14 +192,7 @@ impl Launcher {
                 self.check_auth_state(),
             )));
 
-        app::add_check({
-            let this = Rc::downgrade(self);
-            move |_| {
-                if let Some(this) = this.upgrade() {
-                    this.background_loop();
-                }
-            }
-        });
+        app::add_check(weak_cb!([this = self] => |_| this.background_loop()));
 
         while self.main_window.window().shown() {
             self.app.wait();
@@ -852,16 +844,15 @@ impl Launcher {
 
         let should_poll = Rc::new(Cell::new(true));
         app::add_timeout3(1.0, {
-            let should_poll = Rc::downgrade(&should_poll);
             let logger = self.logger.clone();
-            move |handle| {
-                if let Some(should_poll) = should_poll.upgrade() {
+            weak_cb!(
+                [should_poll] => |handle| {
                     let poll_skipped = should_poll.replace(true);
                     trace!(logger, "Firing steam poll timer"; "poll_skipped" => poll_skipped);
                     app::repeat_timeout3(1.0, handle);
                     app::awake();
                 }
-            }
+            )
         });
         loop {
             if should_poll.replace(false) {
@@ -968,16 +959,15 @@ impl Launcher {
 
         let should_poll = Rc::new(Cell::new(true));
         app::add_timeout3(1.0, {
-            let should_poll = Rc::downgrade(&should_poll);
             let logger = self.logger.clone();
-            move |handle| {
-                if let Some(should_poll) = should_poll.upgrade() {
+            weak_cb!(
+                [should_poll] => |handle| {
                     let poll_skipped = should_poll.replace(true);
                     trace!(logger, "Firing launch poll timer"; "poll_skipped" => poll_skipped);
                     app::repeat_timeout3(1.0, handle);
                     app::awake();
                 }
-            }
+            )
         });
         loop {
             if should_poll.replace(false) {
