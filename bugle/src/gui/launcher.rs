@@ -17,11 +17,11 @@ use crate::config::Config;
 use crate::game::platform::ModDirectory;
 use crate::game::Game;
 
-use super::home::Home;
+use super::home::HomeTab;
 use super::main_menu::MainMenu;
-use super::mod_manager::ModManager;
-use super::server_browser::ServerBrowser;
-use super::single_player::SinglePlayer;
+use super::mod_manager::ModManagerTab;
+use super::server_browser::ServerBrowserTab;
+use super::single_player::SinglePlayerTab;
 use super::wrapper_factory;
 use super::{Action, Handler};
 
@@ -68,7 +68,7 @@ impl LauncherWindow {
 
         let home = {
             let on_action = Rc::clone(&on_action);
-            Home::new(
+            HomeTab::new(
                 logger.clone(),
                 bus,
                 Arc::clone(&game),
@@ -78,11 +78,11 @@ impl LauncherWindow {
                 move |home_action| on_action.borrow()(Action::HomeAction(home_action)),
             )
         };
-        content_overlay.add_shared(Rc::<Home>::clone(&home));
+        content_overlay.add_shared(Rc::<HomeTab>::clone(&home));
 
         let server_browser = {
             let on_action = Rc::clone(&on_action);
-            ServerBrowser::new(
+            ServerBrowserTab::new(
                 logger.clone(),
                 bus,
                 Arc::clone(&game),
@@ -92,22 +92,22 @@ impl LauncherWindow {
                 move |browser_action| on_action.borrow()(Action::ServerBrowser(browser_action)),
             )
         };
-        content_overlay.add_shared(Rc::<ServerBrowser>::clone(&server_browser));
+        content_overlay.add_shared(Rc::<ServerBrowserTab>::clone(&server_browser));
 
         let single_player = {
             let on_action = Rc::clone(&on_action);
-            SinglePlayer::new(
+            SinglePlayerTab::new(
                 logger.clone(),
                 bus,
                 Arc::clone(game.maps()),
                 move |sp_action| on_action.borrow()(Action::SinglePlayer(sp_action)),
             )
         };
-        content_overlay.add_shared(Rc::<SinglePlayer>::clone(&single_player));
+        content_overlay.add_shared(Rc::<SinglePlayerTab>::clone(&single_player));
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
-            ModManager::new(
+            ModManagerTab::new(
                 logger.clone(),
                 bus,
                 Arc::clone(game.installed_mods()),
@@ -115,7 +115,7 @@ impl LauncherWindow {
                 move |mod_mgr_action| on_action.borrow()(Action::ModManager(mod_mgr_action)),
             )
         };
-        content_overlay.add_shared(Rc::<ModManager>::clone(&mod_manager));
+        content_overlay.add_shared(Rc::<ModManagerTab>::clone(&mod_manager));
 
         let content_overlay = content_overlay.end();
         let mut content_group = content_overlay.group();

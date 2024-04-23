@@ -79,7 +79,7 @@ impl SinglePlayerState {
     }
 }
 
-pub struct SinglePlayer {
+pub struct SinglePlayerTab {
     logger: Logger,
     grid: Grid,
     root: Group,
@@ -95,7 +95,7 @@ pub struct SinglePlayer {
     state: RefCell<SinglePlayerState>,
 }
 
-impl SinglePlayer {
+impl SinglePlayerTab {
     pub fn new(
         logger: Logger,
         bus: &mut AppBus,
@@ -551,7 +551,7 @@ impl SinglePlayer {
     }
 }
 
-impl LayoutElement for SinglePlayer {
+impl LayoutElement for SinglePlayerTab {
     fn min_size(&self) -> fltk_float::Size {
         self.grid.min_size()
     }

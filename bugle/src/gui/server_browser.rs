@@ -84,7 +84,7 @@ pub struct UpdateServer {
 #[derive(dynabus::Event)]
 pub struct RefreshServerDetails;
 
-pub(super) struct ServerBrowser {
+pub(super) struct ServerBrowserTab {
     logger: Logger,
     game: Arc<Game>,
     grid: Grid,
@@ -109,7 +109,7 @@ enum DeferredAction {
     PingServers,
 }
 
-impl ServerBrowser {
+impl ServerBrowserTab {
     pub fn new(
         logger: Logger,
         bus: &mut AppBus,
@@ -684,7 +684,7 @@ impl ServerBrowser {
     }
 }
 
-impl LayoutElement for ServerBrowser {
+impl LayoutElement for ServerBrowserTab {
     fn min_size(&self) -> fltk_float::Size {
         self.grid.min_size()
     }
@@ -694,7 +694,7 @@ impl LayoutElement for ServerBrowser {
     }
 }
 
-impl FilterHolder for ServerBrowser {
+impl FilterHolder for ServerBrowserTab {
     fn access_filter(&self, accessor: impl FnOnce(&Filter)) {
         accessor(self.state.borrow().filter());
     }

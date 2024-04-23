@@ -46,7 +46,7 @@ pub struct UpdateLastSession;
 #[derive(dynabus::Event)]
 pub struct UpdateAuthState(pub AuthState);
 
-pub struct Home {
+pub struct HomeTab {
     grid: Grid,
     root: Group,
     game: Arc<Game>,
@@ -61,7 +61,7 @@ pub struct Home {
     last_session_text: ReadOnlyText,
 }
 
-impl Home {
+impl HomeTab {
     pub fn new(
         logger: Logger,
         bus: &mut AppBus,
@@ -565,7 +565,7 @@ impl Home {
     }
 }
 
-impl LayoutElement for Home {
+impl LayoutElement for HomeTab {
     fn min_size(&self) -> fltk_float::Size {
         self.grid.min_size()
     }

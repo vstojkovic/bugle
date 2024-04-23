@@ -102,7 +102,7 @@ impl ModListState {
 
 type ModRow = [String; 4];
 
-pub(super) struct ModManager {
+pub(super) struct ModManagerTab {
     logger: Logger,
     branch: Branch,
     grid: Grid<Tile>,
@@ -124,7 +124,7 @@ pub(super) struct ModManager {
     state: RefCell<ModListState>,
 }
 
-impl ModManager {
+impl ModManagerTab {
     pub fn new(
         logger: Logger,
         bus: &mut AppBus,
@@ -861,7 +861,7 @@ impl ModManager {
     }
 }
 
-impl LayoutElement for ModManager {
+impl LayoutElement for ModManagerTab {
     fn min_size(&self) -> fltk_float::Size {
         self.grid.min_size()
     }
