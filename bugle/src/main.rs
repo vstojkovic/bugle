@@ -407,10 +407,7 @@ impl Launcher {
             Action::ModManager(ModManagerAction::LoadModList) => {
                 self.check_mod_updates();
                 let active_mods = self.game.load_mod_list()?;
-                self.bus
-                    .sender()
-                    .send(PopulateModList(active_mods))
-                    .unwrap();
+                self.bus.publish(PopulateModList(active_mods));
                 Ok(())
             }
             Action::ModManager(ModManagerAction::SaveModList(active_mods)) => {
@@ -429,10 +426,7 @@ impl Launcher {
 
                 let active_mods = self.game.load_mod_list_from(&mod_list_path)?;
                 self.game.save_mod_list(&active_mods)?;
-                self.bus
-                    .sender()
-                    .send(PopulateModList(active_mods))
-                    .unwrap();
+                self.bus.publish(PopulateModList(active_mods));
 
                 Ok(())
             }
@@ -474,7 +468,7 @@ impl Launcher {
                 }
                 let result = self.game.save_mod_list(mod_list.iter());
                 if result.is_ok() {
-                    self.bus.sender().send(PopulateModList(mod_list)).unwrap();
+                    self.bus.publish(PopulateModList(mod_list));
                 }
                 result
             }
