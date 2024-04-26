@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use dynabus::mpsc::BusSender;
 use fltk::app::{self, TimeoutHandle};
 use slog::{debug, o, trace, warn, Logger};
 use steamworks::{
@@ -11,10 +12,10 @@ use steamworks::{
 };
 
 use crate::auth::PlatformUser;
+use crate::bus::AppSender;
 use crate::game::Branch;
 use crate::logger::IteratorFormatter;
 use crate::util::weak_cb;
-use crate::Message;
 
 use super::app_id;
 
@@ -22,13 +23,16 @@ pub struct SteamClient {
     logger: Logger,
     branch: Branch,
     api: RefCell<Option<SteamAPI>>,
-    tx: app::Sender<Message>,
+    tx: BusSender<AppSender>,
     ticket: RefCell<Option<Rc<SteamTicket>>>,
     downloads: RefCell<Downloads>,
     callback_timer: Rc<RefCell<CallbackTimer>>,
     // explicitly make sure SteamClient is neither Send nor Sync, see CallbackWrapper below
     _marker: PhantomData<*const ()>,
 }
+
+#[derive(dynabus::Event)]
+pub struct PlatformReady;
 
 pub type DownloadCallback = Rc<dyn Fn(Option<SteamError>)>;
 
@@ -44,7 +48,7 @@ struct Downloads {
 }
 
 impl SteamClient {
-    pub(super) fn new(logger: Logger, branch: Branch, tx: app::Sender<Message>) -> Rc<Self> {
+    pub(super) fn new(logger: Logger, branch: Branch, tx: BusSender<AppSender>) -> Rc<Self> {
         let logger = logger.new(o!("branch" => format!("{:?}", branch)));
         let callback_timer = Rc::new(RefCell::new(CallbackTimer::new(logger.clone())));
         Rc::new(Self {
@@ -204,7 +208,7 @@ impl SteamClient {
         if api.is_none() {
             *api = init_client(self.branch);
             if api.is_some() {
-                self.tx.send(Message::PlatformReady);
+                self.tx.send(PlatformReady).ok();
             }
         }
         RefMut::filter_map(api, |opt| opt.as_mut().map(|api| &mut api.client)).ok()

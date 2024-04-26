@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
-use fltk::app;
+use dynabus::mpsc::BusSender;
 use keyvalues_parser::Vdf;
 use slog::{debug, o, Logger};
 use steamlocate::SteamDir;
@@ -10,11 +10,11 @@ use steamlocate::SteamDir;
 mod client;
 mod mod_directory;
 
-pub use self::client::{SteamClient, SteamTicket};
+pub use self::client::{PlatformReady, SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
+use crate::bus::AppSender;
 use crate::game::{Branch, Game, ModLibraryBuilder, ModProvenance};
 use crate::util::PathExt;
-use crate::Message;
 
 pub struct Steam {
     logger: Logger,
@@ -96,7 +96,7 @@ impl Steam {
         Ok(game)
     }
 
-    pub fn init_client(&self, game: &Game, tx: app::Sender<Message>) -> Rc<SteamClient> {
+    pub fn init_client(&self, game: &Game, tx: BusSender<AppSender>) -> Rc<SteamClient> {
         SteamClient::new(self.logger.clone(), game.branch(), tx)
     }
 }

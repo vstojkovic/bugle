@@ -17,12 +17,14 @@ use dynabus::Bus;
 use fltk::app::{self, App};
 use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::prelude::WindowExt;
+use game::platform::steam::PlatformReady;
 use gui::{PopulateModList, PopulateServers, UpdateServer};
 use lazy_static::lazy_static;
 use regex::Regex;
 use servers::{Confidence, PingResponse};
 use slog::{debug, error, info, trace, warn, FilterLevel, Logger};
 use uuid::Uuid;
+use workers::{LoginComplete, PongReceived, ServersLoaded};
 
 mod auth;
 mod battleye;
@@ -57,26 +59,18 @@ use self::servers::{SavedServers, Server, Similarity};
 use self::util::weak_cb;
 use self::workers::{FlsWorker, SavedGamesWorker, ServerLoaderWorker, TaskState};
 
-pub enum Message {
-    ServerList(Result<Vec<Server>>),
-    ServerPong(PingResponse),
-    Account(Result<Account>),
-    PlatformReady,
-}
-
 type CachedUsersPersister = fn(&Game, &CachedUsers) -> Result<()>;
 
 struct Launcher {
     logger: Logger,
     log_level: Option<Arc<AtomicUsize>>,
     app: App,
-    bus: AppBus,
+    bus: RefCell<AppBus>,
     steam: Rc<SteamClient>,
     game: Arc<Game>,
     config: RefCell<Config>,
     config_persister: Box<dyn ConfigPersister + Send + Sync>,
     saved_servers: Option<RefCell<SavedServers>>,
-    rx: app::Receiver<Message>,
     mod_directory: Rc<dyn ModDirectory>,
     main_window: LauncherWindow,
     pong_accumulator: RefCell<Vec<PingResponse>>,
@@ -102,8 +96,7 @@ impl Launcher {
     ) -> Rc<Self> {
         let game = Arc::new(game);
         let mut bus = bus::bus();
-        let (tx, rx) = app::channel();
-        let steam = steam.init_client(&*game, tx.clone());
+        let steam = steam.init_client(&*game, bus.sender().clone());
 
         let mod_directory: Rc<dyn ModDirectory> = SteamModDirectory::new(
             logger.clone(),
@@ -138,14 +131,14 @@ impl Launcher {
         };
 
         let server_loader_worker =
-            ServerLoaderWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
+            ServerLoaderWorker::new(logger.clone(), Arc::clone(&game), bus.sender().clone());
 
         let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), bus.sender().clone());
-        let fls_worker = FlsWorker::new(logger.clone(), Arc::clone(&game), tx.clone());
+        let fls_worker = FlsWorker::new(logger.clone(), Arc::clone(&game), bus.sender().clone());
 
         let launcher = Rc::new(Self {
             logger,
-            bus,
+            bus: RefCell::new(bus),
             log_level,
             app,
             steam,
@@ -153,7 +146,6 @@ impl Launcher {
             config: RefCell::new(config),
             config_persister,
             saved_servers: saved_servers.map(RefCell::new),
-            rx,
             mod_directory,
             main_window,
             pong_accumulator: RefCell::new(vec![]),
@@ -164,6 +156,22 @@ impl Launcher {
             saved_games_worker,
             fls_worker,
         });
+
+        {
+            let mut bus = launcher.bus.borrow_mut();
+            bus.subscribe_consumer(weak_cb!(
+                [launcher] => |PlatformReady| launcher.check_mod_updates()
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [launcher] => |LoginComplete(payload)| launcher.on_login_complete(payload)
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [launcher] => |ServersLoaded(payload)| launcher.on_servers_loaded(payload)
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [launcher] => |PongReceived(pong)| launcher.on_pong_received(pong)
+            ))
+        }
 
         launcher.main_window.set_on_action({
             let this = Rc::downgrade(&launcher);
@@ -188,7 +196,9 @@ impl Launcher {
 
         self.check_mod_updates();
 
-        self.bus.publish(UpdateAuthState(self.check_auth_state()));
+        self.bus
+            .borrow()
+            .publish(UpdateAuthState(self.check_auth_state()));
 
         app::add_check(weak_cb!([this = self] => |_| this.background_loop()));
 
@@ -201,109 +211,101 @@ impl Launcher {
         loop {
             self.steam.run_callbacks();
 
-            self.bus.recv().unwrap();
-
-            match self.rx.recv() {
-                Some(message) => {
-                    self.process_message(message);
-                }
-                None => {
-                    let mut pong_accumulator = self.pong_accumulator.borrow_mut();
-                    match pong_accumulator.len() {
-                        0 => (),
-                        1 => self
-                            .bus
-                            .publish(ProcessPongs::One(pong_accumulator.pop().unwrap())),
-                        _ => self
-                            .bus
-                            .publish(ProcessPongs::Many(pong_accumulator.drain(..).collect())),
+            if !self.bus.borrow().recv().unwrap() {
+                let mut pong_accumulator = self.pong_accumulator.borrow_mut();
+                match pong_accumulator.len() {
+                    0 => (),
+                    1 => {
+                        self.bus
+                            .borrow()
+                            .publish(ProcessPongs::One(pong_accumulator.pop().unwrap()));
                     }
-                    return;
+                    _ => {
+                        self.bus
+                            .borrow()
+                            .publish(ProcessPongs::Many(pong_accumulator.drain(..).collect()));
+                    }
                 }
-            };
+                return;
+            }
         }
     }
 
-    fn process_message(&self, message: Message) {
-        match message {
-            Message::ServerList(mut servers) => {
-                match servers.as_mut() {
-                    Ok(servers) => {
-                        self.merge_server_list(servers, Confidence::High);
-
-                        match self.game.load_favorites() {
-                            Err(err) => {
-                                warn!(self.logger, "Failed to load favorites"; "error" => %err);
-                            }
-                            Ok(favorites) => {
-                                for server in servers.iter_mut() {
-                                    server.check_favorites(&favorites);
-                                }
-                            }
-                        }
-
-                        let build_id = self.game.build_id();
-                        for server in servers.iter_mut() {
-                            server.validate_build(build_id);
-                            server.prepare_for_ping();
-                        }
-
-                        let mut last_session = self.game.last_session();
-                        if let Some(Session::Online(server_ref)) = &mut *last_session {
-                            let addr = match server_ref {
-                                ServerRef::Known(server) => server.game_addr().unwrap(),
-                                ServerRef::Unknown(addr) => *addr,
-                            };
-                            let server = servers
-                                .iter()
-                                .filter(|server| server.is_valid())
-                                .find(|server| server.game_addr().unwrap() == addr);
-                            *server_ref = match server {
-                                Some(server) => ServerRef::Known(server.clone()),
-                                None => ServerRef::Unknown(addr),
-                            };
-                            debug!(
-                                self.logger,
-                                "Determined last session server";
-                                "server" => ?server_ref
-                            );
-                        }
-                    }
-                    Err(err) => error!(&self.logger, "Error fetching server list"; "error" => %err),
-                }
-                self.waiting_for_server_load.set(false);
-                self.bus.publish(UpdateLastSession);
-                self.bus.publish(PopulateServers {
-                    payload: servers,
-                    done: true,
-                });
-            }
-            Message::ServerPong(pong) => {
-                self.pong_accumulator.borrow_mut().push(pong);
-            }
-            Message::Account(account) => {
-                if let Ok(account) = &account {
-                    if let Err(err) = self.cache_user(account) {
-                        warn!(self.logger, "Error saving cached users"; "error" => %err);
-                    }
-                }
-
-                let platform_user = self.steam.user().ok_or(anyhow!("Steam not running"));
-                let fls_account = TaskState::Ready(account);
-                let online_capability = self.online_capability(&platform_user, &fls_account);
-                let sp_capability = self.sp_capability(&platform_user, &fls_account);
-                let auth_state = AuthState {
-                    platform_user,
-                    fls_account,
-                    online_capability,
-                    sp_capability,
-                };
-                self.bus.publish(UpdateAuthState(auth_state));
-            }
-            Message::PlatformReady => {
-                self.check_mod_updates();
+    fn on_login_complete(&self, payload: Result<Account>) {
+        if let Ok(account) = &payload {
+            if let Err(err) = self.cache_user(account) {
+                warn!(self.logger, "Error saving cached users"; "error" => %err);
             }
         }
+
+        let platform_user = self.steam.user().ok_or(anyhow!("Steam not running"));
+        let fls_account = TaskState::Ready(payload);
+        let online_capability = self.online_capability(&platform_user, &fls_account);
+        let sp_capability = self.sp_capability(&platform_user, &fls_account);
+        let auth_state = AuthState {
+            platform_user,
+            fls_account,
+            online_capability,
+            sp_capability,
+        };
+        self.bus.borrow().publish(UpdateAuthState(auth_state));
+    }
+
+    fn on_servers_loaded(&self, mut payload: Result<Vec<Server>>) {
+        match payload.as_mut() {
+            Ok(servers) => {
+                self.merge_server_list(servers, Confidence::High);
+
+                match self.game.load_favorites() {
+                    Err(err) => {
+                        warn!(self.logger, "Failed to load favorites"; "error" => %err);
+                    }
+                    Ok(favorites) => {
+                        for server in servers.iter_mut() {
+                            server.check_favorites(&favorites);
+                        }
+                    }
+                }
+
+                let build_id = self.game.build_id();
+                for server in servers.iter_mut() {
+                    server.validate_build(build_id);
+                    server.prepare_for_ping();
+                }
+
+                let mut last_session = self.game.last_session();
+                if let Some(Session::Online(server_ref)) = &mut *last_session {
+                    let addr = match server_ref {
+                        ServerRef::Known(server) => server.game_addr().unwrap(),
+                        ServerRef::Unknown(addr) => *addr,
+                    };
+                    let server = servers
+                        .iter()
+                        .filter(|server| server.is_valid())
+                        .find(|server| server.game_addr().unwrap() == addr);
+                    *server_ref = match server {
+                        Some(server) => ServerRef::Known(server.clone()),
+                        None => ServerRef::Unknown(addr),
+                    };
+                    debug!(
+                        self.logger,
+                        "Determined last session server";
+                        "server" => ?server_ref
+                    );
+                }
+            }
+            Err(err) => error!(&self.logger, "Error fetching server list"; "error" => %err),
+        }
+        self.waiting_for_server_load.set(false);
+        self.bus.borrow().publish(UpdateLastSession);
+        self.bus.borrow().publish(PopulateServers {
+            payload,
+            done: true,
+        });
+    }
+
+    fn on_pong_received(&self, pong: PingResponse) {
+        self.pong_accumulator.borrow_mut().push(pong);
     }
 
     fn on_action(self: &Rc<Self>, action: Action) -> Result<()> {
@@ -347,7 +349,9 @@ impl Launcher {
                 Ok(())
             }
             Action::HomeAction(HomeAction::RefreshAuthState) => {
-                self.bus.publish(UpdateAuthState(self.check_auth_state()));
+                self.bus
+                    .borrow()
+                    .publish(UpdateAuthState(self.check_auth_state()));
                 Ok(())
             }
             Action::ServerBrowser(ServerBrowserAction::LoadServers) => {
@@ -407,7 +411,7 @@ impl Launcher {
             Action::ModManager(ModManagerAction::LoadModList) => {
                 self.check_mod_updates();
                 let active_mods = self.game.load_mod_list()?;
-                self.bus.publish(PopulateModList(active_mods));
+                self.bus.borrow().publish(PopulateModList(active_mods));
                 Ok(())
             }
             Action::ModManager(ModManagerAction::SaveModList(active_mods)) => {
@@ -426,7 +430,7 @@ impl Launcher {
 
                 let active_mods = self.game.load_mod_list_from(&mod_list_path)?;
                 self.game.save_mod_list(&active_mods)?;
-                self.bus.publish(PopulateModList(active_mods));
+                self.bus.borrow().publish(PopulateModList(active_mods));
 
                 Ok(())
             }
@@ -468,7 +472,7 @@ impl Launcher {
                 }
                 let result = self.game.save_mod_list(mod_list.iter());
                 if result.is_ok() {
-                    self.bus.publish(PopulateModList(mod_list));
+                    self.bus.borrow().publish(PopulateModList(mod_list));
                 }
                 result
             }
@@ -631,7 +635,7 @@ impl Launcher {
         if let Some(servers) = self.saved_servers.as_ref() {
             let servers = servers.borrow();
             if !servers.is_empty() {
-                self.bus.publish(PopulateServers {
+                self.bus.borrow().publish(PopulateServers {
                     payload: Ok(servers.iter().cloned().collect()),
                     done: false,
                 });
@@ -719,6 +723,7 @@ impl Launcher {
         let id = servers.add(server);
         servers.save()?;
         self.bus
+            .borrow()
             .sender()
             .send(UpdateServer {
                 idx,
@@ -739,6 +744,7 @@ impl Launcher {
             server.tombstone = true;
         }
         self.bus
+            .borrow()
             .sender()
             .send(UpdateServer { idx, server })
             .unwrap();

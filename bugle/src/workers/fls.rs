@@ -1,21 +1,25 @@
 use std::sync::Arc;
 
-use fltk::app;
+use anyhow::Result;
+use dynabus::mpsc::BusSender;
 use slog::Logger;
 
-use crate::auth::playfab;
+use crate::auth::{playfab, Account};
+use crate::bus::AppSender;
 use crate::game::platform::steam::SteamTicket;
 use crate::game::Game;
-use crate::Message;
 
 pub struct FlsWorker {
     logger: Logger,
     game: Arc<Game>,
-    tx: app::Sender<Message>,
+    tx: BusSender<AppSender>,
 }
 
+#[derive(dynabus::Event)]
+pub struct LoginComplete(pub Result<Account>);
+
 impl FlsWorker {
-    pub fn new(logger: Logger, game: Arc<Game>, tx: app::Sender<Message>) -> Arc<Self> {
+    pub fn new(logger: Logger, game: Arc<Game>, tx: BusSender<AppSender>) -> Arc<Self> {
         Arc::new(Self { logger, game, tx })
     }
 
@@ -23,7 +27,7 @@ impl FlsWorker {
         let ticket = ticket.data().into();
         tokio::spawn(async move {
             let account = playfab::login_with_steam(&self.logger, &*self.game, ticket).await;
-            self.tx.send(Message::Account(account));
+            self.tx.send(LoginComplete(account)).ok();
         });
     }
 }

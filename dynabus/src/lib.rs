@@ -10,7 +10,7 @@ mod crossbeam;
 pub trait Event {}
 
 pub trait Bus {
-    fn publish<E: Event + 'static>(&self, event: E);
+    fn publish<E: Event + 'static>(&self, event: E) -> bool;
     fn subscribe_transform<E: Event + 'static, F: Fn(E) -> Option<E> + 'static>(
         &mut self,
         handler: F,

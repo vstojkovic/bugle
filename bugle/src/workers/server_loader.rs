@@ -1,20 +1,26 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use fltk::app;
+use dynabus::mpsc::BusSender;
 use slog::{o, Logger};
 use tokio::task::JoinHandle;
 
+use crate::bus::AppSender;
 use crate::game::Game;
-use crate::servers::{fetch_server_list, PingClient, PingRequest, Server};
-use crate::Message;
+use crate::servers::{fetch_server_list, PingClient, PingRequest, PingResponse, Server};
 
 pub struct ServerLoaderWorker {
     logger: Logger,
     game: Arc<Game>,
-    tx: app::Sender<Message>,
+    tx: BusSender<AppSender>,
     server_loader: Mutex<ServerLoader>,
 }
+
+#[derive(dynabus::Event)]
+pub struct ServersLoaded(pub Result<Vec<Server>>);
+
+#[derive(dynabus::Event)]
+pub struct PongReceived(pub PingResponse);
 
 #[derive(Default)]
 struct ServerLoader {
@@ -24,7 +30,7 @@ struct ServerLoader {
 }
 
 impl ServerLoaderWorker {
-    pub fn new(logger: Logger, game: Arc<Game>, tx: app::Sender<Message>) -> Arc<Self> {
+    pub fn new(logger: Logger, game: Arc<Game>, tx: BusSender<AppSender>) -> Arc<Self> {
         Arc::new(Self {
             logger,
             game,
@@ -66,7 +72,7 @@ impl ServerLoaderWorker {
                 return;
             }
 
-            self.tx.send(Message::ServerList(servers));
+            self.tx.send(ServersLoaded(servers)).ok();
 
             server_loader.fetcher = None;
         })
@@ -90,7 +96,7 @@ impl ServerLoaderWorker {
                 if self.server_loader.lock().unwrap().generation != generation {
                     return;
                 }
-                self.tx.send(Message::ServerPong(response));
+                self.tx.send(PongReceived(response)).ok();
             },
         )?)
     }

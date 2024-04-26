@@ -2,9 +2,9 @@ mod fls;
 mod saved_games;
 mod server_loader;
 
-pub use fls::FlsWorker;
+pub use fls::{FlsWorker, LoginComplete};
 pub use saved_games::SavedGamesWorker;
-pub use server_loader::ServerLoaderWorker;
+pub use server_loader::{PongReceived, ServerLoaderWorker, ServersLoaded};
 
 #[derive(Debug)]
 pub enum TaskState<T> {

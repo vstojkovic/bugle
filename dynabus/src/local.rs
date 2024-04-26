@@ -20,12 +20,12 @@ impl LocalBus {
 }
 
 impl Bus for LocalBus {
-    fn publish<E: Event + 'static>(&self, event: E) {
+    fn publish<E: Event + 'static>(&self, event: E) -> bool {
         let Some(erased) = self.dispatch_map.get(&TypeId::of::<E>()) else {
-            return;
+            return false;
         };
         let handlers = erased.downcast_ref::<Handlers<E>>().unwrap();
-        handlers.handle(event);
+        handlers.handle(event)
     }
 
     fn subscribe_transform<E: Event + 'static, F: Fn(E) -> Option<E> + 'static>(
@@ -50,12 +50,16 @@ impl<E: Event> Handlers<E> {
         self.list.push(Box::new(handler));
     }
 
-    fn handle(&self, mut event: E) {
+    fn handle(&self, mut event: E) -> bool {
+        if self.list.is_empty() {
+            return false;
+        }
         for handler in self.list.iter() {
             let Some(next) = handler(event) else {
-                return;
+                return true;
             };
             event = next;
         }
+        true
     }
 }

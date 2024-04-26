@@ -19,7 +19,7 @@ pub trait Receiver {
 pub struct ChannelBus<S: Sender, R: Receiver, B: Bus = LocalBus> {
     tx: BusSender<S>,
     rx: R,
-    dispatch_map: HashMap<TypeId, fn(&ChannelBus<S, R, B>, Box<dyn Any>)>,
+    dispatch_map: HashMap<TypeId, fn(&ChannelBus<S, R, B>, Box<dyn Any>) -> bool>,
     backer: B,
 }
 
@@ -40,30 +40,28 @@ impl<S: Sender, R: Receiver, B: Bus> ChannelBus<S, R, B> {
         &self.tx
     }
 
-    pub fn recv(&self) -> Result<(), R::Error> {
+    pub fn recv(&self) -> Result<bool, R::Error> {
         let Some(message) = self.rx.try_recv()? else {
-            return Ok(());
+            return Ok(false);
         };
         let type_id = (&*message).type_id();
         let Some(receiver) = self.dispatch_map.get(&type_id) else {
-            return Ok(());
+            return Ok(false);
         };
         receiver(self, message);
-        Ok(())
+        Ok(true)
     }
 
     fn ensure_dispatch<E: Event + 'static>(&mut self) {
         self.dispatch_map
             .entry(TypeId::of::<E>())
-            .or_insert(|bus, message| {
-                bus.publish(*message.downcast::<E>().unwrap());
-            });
+            .or_insert(|bus, message| bus.publish(*message.downcast::<E>().unwrap()));
     }
 }
 
 impl<S: Sender, R: Receiver, B: Bus> Bus for ChannelBus<S, R, B> {
-    fn publish<E: Event + 'static>(&self, event: E) {
-        self.backer.publish(event);
+    fn publish<E: Event + 'static>(&self, event: E) -> bool {
+        self.backer.publish(event)
     }
 
     fn subscribe_transform<E: Event + 'static, F: Fn(E) -> Option<E> + 'static>(
