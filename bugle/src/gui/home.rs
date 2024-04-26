@@ -63,7 +63,7 @@ pub struct HomeTab {
 
 impl HomeTab {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         bus: &mut AppBus,
         game: Arc<Game>,
         config: &Config,

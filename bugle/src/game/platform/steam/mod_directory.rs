@@ -27,7 +27,7 @@ pub struct SteamModDirectory {
 
 impl SteamModDirectory {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         client: Rc<SteamClient>,
         tx: BusSender<AppSender>,
         installed_mods: &Mods,
@@ -44,7 +44,7 @@ impl SteamModDirectory {
         }
 
         Rc::new(Self {
-            logger,
+            logger: logger.clone(),
             map: RefCell::new(map),
             client,
             tx,

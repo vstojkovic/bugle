@@ -86,7 +86,7 @@ impl Steam {
         };
 
         let game = Game::new(
-            self.logger.clone(),
+            &self.logger,
             location.game_path,
             location.branch,
             location.needs_update,
@@ -97,7 +97,7 @@ impl Steam {
     }
 
     pub fn init_client(&self, game: &Game, tx: BusSender<AppSender>) -> Rc<SteamClient> {
-        SteamClient::new(self.logger.clone(), game.branch(), tx)
+        SteamClient::new(&self.logger, game.branch(), tx)
     }
 }
 

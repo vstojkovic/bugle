@@ -118,7 +118,7 @@ pub struct MapExtractor {
 }
 
 impl MapExtractor {
-    pub fn new(logger: Logger) -> Self {
+    pub fn new(logger: &Logger) -> Self {
         let mut name_registry = NameRegistry::new();
 
         let names = InterredNames {
@@ -136,7 +136,7 @@ impl MapExtractor {
         };
 
         Self {
-            logger,
+            logger: logger.clone(),
             name_registry,
             names,
         }

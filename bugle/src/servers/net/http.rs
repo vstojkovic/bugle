@@ -9,7 +9,7 @@ use crate::game::{Branch, Game};
 use crate::net::http_client_builder;
 use crate::servers::Server;
 
-pub async fn fetch_server_list<'dc>(logger: Logger, game: &Game) -> anyhow::Result<Vec<Server>> {
+pub async fn fetch_server_list<'dc>(logger: &Logger, game: &Game) -> anyhow::Result<Vec<Server>> {
     let url = directory_url(game.branch());
 
     debug!(logger, "Fetching server list");

@@ -99,14 +99,14 @@ impl Launcher {
         let steam = steam.init_client(&*game, bus.sender().clone());
 
         let mod_directory: Rc<dyn ModDirectory> = SteamModDirectory::new(
-            logger.clone(),
+            &logger,
             Rc::clone(&steam),
             bus.sender().clone(),
             game.installed_mods(),
         );
 
         let main_window = LauncherWindow::new(
-            logger.clone(),
+            &logger,
             &mut bus,
             Arc::clone(&game),
             &config,
@@ -131,10 +131,10 @@ impl Launcher {
         };
 
         let server_loader_worker =
-            ServerLoaderWorker::new(logger.clone(), Arc::clone(&game), bus.sender().clone());
+            ServerLoaderWorker::new(&logger, Arc::clone(&game), bus.sender().clone());
 
         let saved_games_worker = SavedGamesWorker::new(Arc::clone(&game), bus.sender().clone());
-        let fls_worker = FlsWorker::new(logger.clone(), Arc::clone(&game), bus.sender().clone());
+        let fls_worker = FlsWorker::new(&logger, Arc::clone(&game), bus.sender().clone());
 
         let launcher = Rc::new(Self {
             logger,

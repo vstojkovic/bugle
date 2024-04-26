@@ -52,7 +52,7 @@ pub struct PingClient {
 
 impl PingClient {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         build_id: u32,
         on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> Result<Self> {
@@ -94,7 +94,7 @@ pub struct ClientImpl {
 
 impl ClientImpl {
     fn new(
-        logger: Logger,
+        logger: &Logger,
         build_id: u32,
         on_response: impl Fn(PingResponse) + Send + 'static,
     ) -> Result<Arc<Self>> {
@@ -106,7 +106,7 @@ impl ClientImpl {
         };
 
         let client = Arc::new(Self {
-            logger,
+            logger: logger.clone(),
             build_id,
             socket,
             unsent: Mutex::new(UnsentRequests::new()),

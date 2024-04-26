@@ -19,7 +19,8 @@ pub struct FlsWorker {
 pub struct LoginComplete(pub Result<Account>);
 
 impl FlsWorker {
-    pub fn new(logger: Logger, game: Arc<Game>, tx: BusSender<AppSender>) -> Arc<Self> {
+    pub fn new(logger: &Logger, game: Arc<Game>, tx: BusSender<AppSender>) -> Arc<Self> {
+        let logger = logger.clone();
         Arc::new(Self { logger, game, tx })
     }
 

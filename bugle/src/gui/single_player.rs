@@ -97,7 +97,7 @@ pub struct SinglePlayerTab {
 
 impl SinglePlayerTab {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         bus: &mut AppBus,
         maps: Arc<Maps>,
         on_action: impl Handler<SinglePlayerAction> + 'static,
@@ -203,7 +203,7 @@ impl SinglePlayerTab {
         root.hide();
 
         let this = Rc::new(Self {
-            logger,
+            logger: logger.clone(),
             grid,
             root: root.clone(),
             on_action: Box::new(on_action),

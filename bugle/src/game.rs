@@ -89,12 +89,14 @@ pub struct LaunchOptions {
 
 impl Game {
     fn new(
-        logger: Logger,
+        logger: &Logger,
         game_path: PathBuf,
         branch: Branch,
         needs_update: bool,
         mut installed_mods: ModLibraryBuilder,
     ) -> Result<Self> {
+        let logger = logger.clone();
+
         let save_path = game_path.join_all(["ConanSandbox", "Saved"]);
         let config_path = save_path.join_all(["Config", "WindowsNoEditor"]);
 
@@ -108,7 +110,7 @@ impl Game {
         let mod_list_path = game_path.join_all(["ConanSandbox", "Mods", "modlist.txt"]);
 
         let mut maps = Maps::new();
-        let map_extractor = MapExtractor::new(logger.clone());
+        let map_extractor = MapExtractor::new(&logger);
 
         debug!(logger, "Enumerating base game maps");
         map_extractor.extract_base_game_maps(

@@ -111,7 +111,7 @@ enum DeferredAction {
 
 impl ServerBrowserTab {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         bus: &mut AppBus,
         game: Arc<Game>,
         config: &ServerBrowserConfig,
@@ -223,7 +223,7 @@ impl ServerBrowserTab {
         root.hide();
 
         let this = Rc::new(Self {
-            logger,
+            logger: logger.clone(),
             game,
             grid,
             root: root.clone(),

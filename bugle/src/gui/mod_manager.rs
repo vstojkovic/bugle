@@ -126,7 +126,7 @@ pub(super) struct ModManagerTab {
 
 impl ModManagerTab {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         bus: &mut AppBus,
         mods: Arc<Mods>,
         branch: Branch,
@@ -430,7 +430,7 @@ impl ModManagerTab {
         root.hide();
 
         let this = Rc::new(Self {
-            logger,
+            logger: logger.clone(),
             branch,
             grid,
             root: root.clone(),

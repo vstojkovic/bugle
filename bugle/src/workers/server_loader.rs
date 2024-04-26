@@ -30,9 +30,9 @@ struct ServerLoader {
 }
 
 impl ServerLoaderWorker {
-    pub fn new(logger: Logger, game: Arc<Game>, tx: BusSender<AppSender>) -> Arc<Self> {
+    pub fn new(logger: &Logger, game: Arc<Game>, tx: BusSender<AppSender>) -> Arc<Self> {
         Arc::new(Self {
-            logger,
+            logger: logger.clone(),
             game,
             tx,
             server_loader: Mutex::new(Default::default()),
@@ -90,9 +90,10 @@ impl ServerLoaderWorker {
     fn make_ping_client(self: Arc<Self>, generation: u32) -> Result<PingClient> {
         let ping_logger = self.logger.new(o!("ping_generation" => generation));
         Ok(PingClient::new(
-            ping_logger,
+            &ping_logger,
             self.game.build_id(),
             move |response| {
+                // TODO: Improve generation handling?
                 if self.server_loader.lock().unwrap().generation != generation {
                     return;
                 }
@@ -102,6 +103,6 @@ impl ServerLoaderWorker {
     }
 
     async fn fetch_servers(&self) -> Result<Vec<Server>> {
-        Ok(fetch_server_list(self.logger.clone(), &*self.game).await?)
+        Ok(fetch_server_list(&self.logger, &*self.game).await?)
     }
 }

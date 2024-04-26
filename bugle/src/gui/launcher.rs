@@ -32,7 +32,7 @@ pub struct LauncherWindow {
 
 impl LauncherWindow {
     pub fn new(
-        logger: Logger,
+        logger: &Logger,
         bus: &mut AppBus,
         game: Arc<Game>,
         config: &Config,
@@ -69,7 +69,7 @@ impl LauncherWindow {
         let home = {
             let on_action = Rc::clone(&on_action);
             HomeTab::new(
-                logger.clone(),
+                logger,
                 bus,
                 Arc::clone(&game),
                 config,
@@ -83,7 +83,7 @@ impl LauncherWindow {
         let server_browser = {
             let on_action = Rc::clone(&on_action);
             ServerBrowserTab::new(
-                logger.clone(),
+                logger,
                 bus,
                 Arc::clone(&game),
                 &config.server_browser,
@@ -96,19 +96,16 @@ impl LauncherWindow {
 
         let single_player = {
             let on_action = Rc::clone(&on_action);
-            SinglePlayerTab::new(
-                logger.clone(),
-                bus,
-                Arc::clone(game.maps()),
-                move |sp_action| on_action.borrow()(Action::SinglePlayer(sp_action)),
-            )
+            SinglePlayerTab::new(logger, bus, Arc::clone(game.maps()), move |sp_action| {
+                on_action.borrow()(Action::SinglePlayer(sp_action))
+            })
         };
         content_overlay.add_shared(Rc::<SinglePlayerTab>::clone(&single_player));
 
         let mod_manager = {
             let on_action = Rc::clone(&on_action);
             ModManagerTab::new(
-                logger.clone(),
+                logger,
                 bus,
                 Arc::clone(game.installed_mods()),
                 game.branch(),

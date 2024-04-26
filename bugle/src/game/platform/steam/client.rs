@@ -48,9 +48,9 @@ struct Downloads {
 }
 
 impl SteamClient {
-    pub(super) fn new(logger: Logger, branch: Branch, tx: BusSender<AppSender>) -> Rc<Self> {
+    pub(super) fn new(logger: &Logger, branch: Branch, tx: BusSender<AppSender>) -> Rc<Self> {
         let logger = logger.new(o!("branch" => format!("{:?}", branch)));
-        let callback_timer = Rc::new(RefCell::new(CallbackTimer::new(logger.clone())));
+        let callback_timer = Rc::new(RefCell::new(CallbackTimer::new(&logger)));
         Rc::new(Self {
             logger,
             branch,
@@ -256,9 +256,9 @@ struct CallbackTimer {
 }
 
 impl CallbackTimer {
-    fn new(logger: Logger) -> Self {
+    fn new(logger: &Logger) -> Self {
         Self {
-            logger,
+            logger: logger.clone(),
             handle: None,
             pending_callbacks: 0,
         }
