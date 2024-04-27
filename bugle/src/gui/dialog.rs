@@ -15,12 +15,17 @@ pub struct Dialog<T: Copy + 'static> {
 }
 
 impl<T: Copy + 'static> Dialog<T> {
-    pub fn default(parent: &Window, title: &str, message: &str, choices: &[(&str, T)]) -> Self {
+    pub fn default(
+        parent: &impl WindowExt,
+        title: &str,
+        message: &str,
+        choices: &[(&str, T)],
+    ) -> Self {
         Self::new(parent, title, message, 480, 135, choices)
     }
 
     pub fn new(
-        parent: &Window,
+        parent: &impl WindowExt,
         title: &str,
         message: &str,
         width: i32,
@@ -98,7 +103,7 @@ impl<T: Copy + 'static> Dialog<T> {
     }
 
     pub fn run(&self) -> Option<T> {
-        while self.shown() {
+        while self.shown() && !fltk::app::should_program_quit() {
             fltk::app::wait();
         }
         self.result()

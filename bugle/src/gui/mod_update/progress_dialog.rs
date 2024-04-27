@@ -100,7 +100,7 @@ impl ProgressRow {
 
 impl ModUpdateProgressDialog {
     pub fn new(
-        parent: &Window,
+        parent: &impl WindowExt,
         mods: &Arc<Mods>,
         mods_to_update: Vec<ModRef>,
         mod_directory: Rc<dyn ModDirectory>,
@@ -199,10 +199,8 @@ impl ModUpdateProgressDialog {
             }
         });
 
-        while self.window.shown() {
-            if !fltk::app::wait() {
-                return;
-            }
+        while self.window.shown() && !fltk::app::should_program_quit() {
+            fltk::app::wait();
         }
     }
 }

@@ -13,13 +13,12 @@ use fltk::window::Window;
 use fltk_float::grid::{CellAlign, GridBuilder};
 
 use crate::gui::{alert_error, wrapper_factory};
+use crate::launcher::ConnectionInfo;
 use crate::servers::Server;
-
-use super::ServerBrowserAction;
 
 pub struct ConnectDialog {
     window: Window,
-    result: Rc<RefCell<Option<ServerBrowserAction>>>,
+    result: Rc<RefCell<Option<ConnectionInfo>>>,
 }
 
 impl ConnectDialog {
@@ -43,7 +42,7 @@ impl ConnectDialog {
                     Ok(addr) => {
                         let password = password_text.value();
                         let password = if password.is_empty() { None } else { Some(password) };
-                        *result.borrow_mut() = Some(ServerBrowserAction::JoinServer {
+                        *result.borrow_mut() = Some(ConnectionInfo {
                             addr,
                             password,
                             battleye_required: None,
@@ -76,7 +75,7 @@ impl ConnectDialog {
             move |_| {
                 let password = password_text.value();
                 let password = if password.is_empty() { None } else { Some(password) };
-                *result.borrow_mut() = Some(ServerBrowserAction::JoinServer {
+                *result.borrow_mut() = Some(ConnectionInfo {
                     addr,
                     password,
                     battleye_required,
@@ -88,12 +87,12 @@ impl ConnectDialog {
         Self { window, result }
     }
 
-    pub fn run(&self) -> Option<ServerBrowserAction> {
+    pub fn run(&self) -> Option<ConnectionInfo> {
         let mut window = self.window.clone();
         window.make_modal(true);
         window.show();
 
-        while window.shown() {
+        while window.shown() && !fltk::app::should_program_quit() {
             fltk::app::wait();
         }
 

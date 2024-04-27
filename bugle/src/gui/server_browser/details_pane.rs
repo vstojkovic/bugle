@@ -6,11 +6,11 @@ use nom::combinator::map_res;
 use nom::sequence::{separated_pair, terminated};
 use nom::IResult;
 
-use crate::game::platform::ModDirectory;
 use crate::game::settings::server::DropOnDeath;
 use crate::game::settings::Hours;
 use crate::gui::weekday_name;
 use crate::gui::widgets::{use_inspector_macros, Inspector, PropertiesTable, PropertyRow};
+use crate::mod_manager::ModManager;
 use crate::servers::{Server, Validity};
 use crate::util::weekday_iter;
 
@@ -21,12 +21,12 @@ pub(super) struct DetailsPane {
 }
 
 struct InspectorCtx {
-    mod_resolver: Rc<dyn ModDirectory>,
+    mod_manager: Rc<ModManager>,
 }
 
 impl DetailsPane {
-    pub fn new(mod_resolver: Rc<dyn ModDirectory>) -> Self {
-        let ctx = InspectorCtx { mod_resolver };
+    pub fn new(mod_manager: Rc<ModManager>) -> Self {
+        let ctx = InspectorCtx { mod_manager };
         Self {
             table: PropertiesTable::new(ctx, SERVER_DETAILS_ROWS, "Server Details"),
         }
@@ -111,7 +111,7 @@ impl InspectorCtx {
             resolution[idx].0 = id;
         }
 
-        Rc::clone(&self.mod_resolver).resolve(&mut resolution[0..resolve_count]);
+        Rc::clone(&self.mod_manager).resolve_mods(&mut resolution[0..resolve_count]);
         for (id, name) in &resolution[0..resolve_count] {
             match name {
                 Some(name) => row_consumer([header.into(), name.clone().into()]),

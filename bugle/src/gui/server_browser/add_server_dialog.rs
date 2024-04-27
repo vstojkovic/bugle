@@ -23,7 +23,7 @@ use crate::gui::{alert_error, wrapper_factory};
 use crate::servers::{Mode, Ownership, Region, Server, ServerData};
 use crate::util::weak_cb;
 
-use super::{mode_name, region_name, ServerBrowserAction};
+use super::{mode_name, region_name};
 
 pub struct AddServerDialog {
     build_id: u32,
@@ -35,7 +35,7 @@ pub struct AddServerDialog {
     region_input: DropDownList,
     pwd_prot_check: CheckButton,
     battleye_check: CheckButton,
-    result: RefCell<Option<ServerBrowserAction>>,
+    result: RefCell<Option<Server>>,
 }
 
 impl AddServerDialog {
@@ -157,12 +157,12 @@ impl AddServerDialog {
         this
     }
 
-    pub fn run(&self) -> Option<ServerBrowserAction> {
+    pub fn run(&self) -> Option<Server> {
         let mut window = self.window.clone();
         window.make_modal(true);
         window.show();
 
-        while window.shown() {
+        while window.shown() && !fltk::app::should_program_quit() {
             fltk::app::wait();
         }
 
@@ -177,8 +177,7 @@ impl AddServerDialog {
                 return;
             }
         };
-        *self.result.borrow_mut() =
-            Some(ServerBrowserAction::ToggleSavedServer { server, idx: None });
+        *self.result.borrow_mut() = Some(server);
         self.window.clone().hide();
     }
 

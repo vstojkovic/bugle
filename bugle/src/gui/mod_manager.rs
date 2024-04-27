@@ -1,13 +1,14 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use bbscope::{BBCode, BBCodeTagConfig};
 use bit_vec::BitVec;
-use dynabus::Bus;
 use fltk::app;
 use fltk::button::Button;
+use fltk::dialog::{alert_default, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::enums::{Align, Event, FrameType};
 use fltk::group::{Group, Tile};
 use fltk::prelude::*;
@@ -20,8 +21,8 @@ use lazy_static::lazy_static;
 use size::Size;
 use slog::{error, Logger};
 
-use crate::bus::AppBus;
-use crate::game::{Branch, ModEntry, ModProvenance, ModRef, Mods};
+use crate::game::{Game, ModEntry, ModProvenance, ModRef, Mods};
+use crate::mod_manager::ModManager;
 use crate::util::weak_cb;
 
 use super::prelude::*;
@@ -29,19 +30,7 @@ use super::widgets::{
     use_inspector_macros, DataTable, DataTableProperties, DataTableUpdate, Inspector,
     PropertiesTable, PropertyRow,
 };
-use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, Handler};
-
-pub enum ModManagerAction {
-    LoadModList,
-    SaveModList(Vec<ModRef>),
-    ImportModList,
-    ExportModList(Vec<ModRef>),
-    UpdateMods,
-    FixModListErrors(Vec<ModRef>),
-}
-
-#[derive(dynabus::Event)]
-pub struct PopulateModList(pub Vec<ModRef>);
+use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory};
 
 enum Selection {
     Available(usize),
@@ -104,10 +93,10 @@ type ModRow = [String; 4];
 
 pub(super) struct ModManagerTab {
     logger: Logger,
-    branch: Branch,
+    game: Arc<Game>,
+    mod_mgr: Rc<ModManager>,
     grid: Grid<Tile>,
     root: Tile,
-    on_action: Box<dyn Handler<ModManagerAction>>,
     available_list: DataTable<ModRow>,
     active_list: DataTable<ModRow>,
     details_table: PropertiesTable<ModEntry, ()>,
@@ -125,13 +114,7 @@ pub(super) struct ModManagerTab {
 }
 
 impl ModManagerTab {
-    pub fn new(
-        logger: &Logger,
-        bus: &mut AppBus,
-        mods: Arc<Mods>,
-        branch: Branch,
-        on_action: impl Handler<ModManagerAction> + 'static,
-    ) -> Rc<Self> {
+    pub fn new(logger: &Logger, game: Arc<Game>, mod_mgr: Rc<ModManager>) -> Rc<Self> {
         let mut row_tiles = GridBuilder::with_factory(Tile::default_fill(), wrapper_factory());
         row_tiles.col().with_stretch(1).add();
 
@@ -429,12 +412,14 @@ impl ModManagerTab {
 
         root.hide();
 
+        let state = RefCell::new(ModListState::new(Arc::clone(game.installed_mods())));
+
         let this = Rc::new(Self {
             logger: logger.clone(),
-            branch,
+            game,
+            mod_mgr,
             grid,
             root: root.clone(),
-            on_action: Box::new(on_action),
             available_list: available_list.clone(),
             active_list: active_list.clone(),
             details_table,
@@ -448,7 +433,7 @@ impl ModManagerTab {
             description_button: description_button.clone(),
             change_notes_button: change_notes_button.clone(),
             update_mods_button: update_mods_button.clone(),
-            state: RefCell::new(ModListState::new(mods)),
+            state,
         });
 
         this.update_actions();
@@ -501,10 +486,6 @@ impl ModManagerTab {
         description_button.set_callback(weak_cb!([this] => |_| this.show_description()));
         change_notes_button.set_callback(weak_cb!([this] => |_| this.show_change_notes()));
 
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |PopulateModList(active_mods)| this.populate_state(active_mods)
-        ));
-
         this
     }
 
@@ -513,10 +494,16 @@ impl ModManagerTab {
     }
 
     fn on_show(&self) {
-        if let Err(err) = (self.on_action)(ModManagerAction::LoadModList) {
-            error!(self.logger, "Error loading mod list"; "error" => %err);
-            alert_error(ERR_LOADING_MOD_LIST, &err);
-        }
+        self.mod_mgr.check_mod_updates();
+        let active_mods = match self.game.load_mod_list() {
+            Ok(mods) => mods,
+            Err(err) => {
+                error!(self.logger, "Error loading mod list"; "error" => %err);
+                alert_error(ERR_LOADING_MOD_LIST, &err);
+                return;
+            }
+        };
+        self.populate_state(active_mods);
     }
 
     fn populate_state(&self, active_mods: Vec<ModRef>) {
@@ -637,15 +624,47 @@ impl ModManagerTab {
     }
 
     fn import_clicked(&self) {
-        if let Err(err) = (self.on_action)(ModManagerAction::ImportModList) {
-            error!(self.logger, "Error importing mod list"; "error" => %err);
-            alert_error(ERR_LOADING_MOD_LIST, &err);
+        let mut dialog = NativeFileChooser::new(FileDialogType::BrowseFile);
+        dialog.set_filter(DLG_FILTER_MODLIST);
+        dialog.set_directory(&mod_list_dir(&self.game)).ok();
+        dialog.show();
+
+        let mod_list_path = dialog.filename();
+        if mod_list_path.as_os_str().is_empty() {
+            return;
         }
+
+        let active_mods = match self.mod_mgr.import_mod_list(&mod_list_path) {
+            Ok(mods) => mods,
+            Err(err) => {
+                error!(self.logger, "Error importing mod list"; "error" => %err);
+                alert_error(ERR_LOADING_MOD_LIST, &err);
+                return;
+            }
+        };
+        self.populate_state(active_mods);
     }
 
     fn export_clicked(&self) {
         let state = self.state.borrow();
-        if let Err(err) = (self.on_action)(ModManagerAction::ExportModList(state.active.clone())) {
+        let mut dialog = NativeFileChooser::new(FileDialogType::BrowseSaveFile);
+        dialog.set_filter(DLG_FILTER_MODLIST);
+        dialog.set_directory(&mod_list_dir(&self.game)).ok();
+        dialog.set_option(FileDialogOptions::SaveAsConfirm);
+        dialog.show();
+
+        let mut mod_list_path = dialog.filename();
+        if mod_list_path.as_os_str().is_empty() {
+            return;
+        }
+        if mod_list_path.extension().is_none() {
+            mod_list_path.set_extension("txt");
+        }
+
+        if let Err(err) = self
+            .game
+            .save_mod_list_to(&mod_list_path, state.active.iter())
+        {
             error!(self.logger, "Error exporting mod list"; "error" => %err);
             alert_error(ERR_SAVING_MOD_LIST, &err);
         }
@@ -662,7 +681,7 @@ impl ModManagerTab {
                     .info
                     .as_ref()
                     .ok()
-                    .and_then(|info| info.steam_file_id(self.branch))
+                    .and_then(|info| info.steam_file_id(self.game.branch()))
                 {
                     write!(text, ",{}", id).unwrap();
                 } else {
@@ -686,14 +705,19 @@ impl ModManagerTab {
     }
 
     fn fix_errors_clicked(&self) {
-        let mod_list = {
+        let mut mod_list = {
             let state = self.state.borrow();
             state.active.clone()
         };
-        if let Err(err) = (self.on_action)(ModManagerAction::FixModListErrors(mod_list)) {
+        if !self.mod_mgr.fix_mod_list(&mut mod_list) {
+            alert_default("Could not fix all of the errors in the mod list.");
+        }
+        if let Err(err) = self.game.save_mod_list(mod_list.iter()) {
             error!(self.logger, "Error saving mod list"; "error" => %err);
             alert_error(ERR_SAVING_MOD_LIST, &err);
+            return;
         }
+        self.populate_state(mod_list);
     }
 
     fn activate_clicked(&self) {
@@ -806,7 +830,16 @@ impl ModManagerTab {
     }
 
     fn update_mods_clicked(&self) {
-        (self.on_action)(ModManagerAction::UpdateMods).unwrap();
+        let outdated_mods = self
+            .game
+            .installed_mods()
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.needs_update())
+            .map(|(idx, _)| ModRef::Installed(idx))
+            .collect();
+        self.mod_mgr.update_mods(outdated_mods);
+        self.mod_mgr.check_mod_updates();
         self.populate_tables();
     }
 
@@ -816,7 +849,7 @@ impl ModManagerTab {
     }
 
     fn save_mod_list(&self, mod_list: Vec<ModRef>) -> bool {
-        match (self.on_action)(ModManagerAction::SaveModList(mod_list)) {
+        match self.game.save_mod_list(mod_list.iter()) {
             Ok(()) => true,
             Err(err) => {
                 error!(self.logger, "Error saving mod list"; "error" => %err);
@@ -855,7 +888,7 @@ impl ModManagerTab {
         let webview = Webview::create(false, &mut popup);
         webview.set_html(&html);
 
-        while popup.shown() {
+        while popup.shown() && !app::should_program_quit() {
             app::wait();
         }
     }
@@ -871,6 +904,7 @@ impl LayoutElement for ModManagerTab {
     }
 }
 
+const DLG_FILTER_MODLIST: &str = "Mod List Files\t*.txt";
 const PROMPT_CLEAR_MODS: &str = "Are you sure you want to clear the mod list?";
 const ERR_LOADING_MOD_LIST: &str = "Error while loading the mod list.";
 const ERR_SAVING_MOD_LIST: &str = "Error while saving the mod list.";
@@ -932,6 +966,12 @@ const MOD_DETAILS_ROWS: &[Inspector<ModEntry, ()>] = &[
 
 lazy_static! {
     static ref BBCODE: BBCode = BBCode::from_config(BBCodeTagConfig::extended(), None).unwrap();
+}
+
+fn mod_list_dir(game: &Arc<Game>) -> &Path {
+    let path = game.save_path();
+    std::fs::create_dir_all(path).ok();
+    path
 }
 
 fn populate_table(table: &DataTable<ModRow>, mods: &Mods, refs: &Vec<ModRef>) {

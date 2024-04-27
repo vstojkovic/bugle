@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use fltk::app;
@@ -12,10 +13,14 @@ use fltk_float::overlay::OverlayBuilder;
 use fltk_float::LayoutElement;
 use slog::Logger;
 
+use crate::auth_manager::AuthManager;
 use crate::bus::AppBus;
-use crate::config::Config;
-use crate::game::platform::ModDirectory;
+use crate::config::ConfigManager;
 use crate::game::Game;
+use crate::launcher::Launcher;
+use crate::mod_manager::ModManager;
+use crate::saved_games_manager::SavedGamesManager;
+use crate::server_manager::ServerManager;
 
 use super::home::HomeTab;
 use super::main_menu::MainMenu;
@@ -23,29 +28,25 @@ use super::mod_manager::ModManagerTab;
 use super::server_browser::ServerBrowserTab;
 use super::single_player::SinglePlayerTab;
 use super::wrapper_factory;
-use super::{Action, Handler};
 
 pub struct LauncherWindow {
     window: Window,
-    on_action: Rc<RefCell<Box<dyn Handler<Action>>>>,
 }
 
 impl LauncherWindow {
     pub fn new(
         logger: &Logger,
-        bus: &mut AppBus,
+        bus: Rc<RefCell<AppBus>>,
         game: Arc<Game>,
-        config: &Config,
-        mod_resolver: Rc<dyn ModDirectory>,
-        log_level_overridden: bool,
+        config: Rc<ConfigManager>,
+        log_level: Option<Arc<AtomicUsize>>,
+        auth: Rc<AuthManager>,
+        launcher: Rc<Launcher>,
+        servers: Rc<ServerManager>,
+        saves: Rc<SavedGamesManager>,
+        mod_manager: Rc<ModManager>,
         can_switch_branch: bool,
-        can_save_servers: bool,
     ) -> Self {
-        let on_action: Rc<RefCell<Box<dyn Handler<Action>>>> =
-            Rc::new(RefCell::new(Box::new(|_| {
-                panic!("Action handler not yet assigned");
-            })));
-
         let mut window = Window::default().with_size(1280, 760).with_label("BUGLE");
 
         let root = Grid::builder_with_factory(wrapper_factory());
@@ -66,53 +67,43 @@ impl LauncherWindow {
 
         let mut content_overlay = OverlayBuilder::new(Wizard::default_fill());
 
-        let home = {
-            let on_action = Rc::clone(&on_action);
-            HomeTab::new(
+        let home_tab = HomeTab::new(
+            logger,
+            Rc::clone(&bus),
+            Arc::clone(&game),
+            Rc::clone(&config),
+            log_level,
+            Rc::clone(&auth),
+            Rc::clone(&launcher),
+            can_switch_branch,
+        );
+        content_overlay.add_shared(Rc::<HomeTab>::clone(&home_tab));
+
+        let server_browser_tab = ServerBrowserTab::new(
+            logger,
+            Rc::clone(&bus),
+            Arc::clone(&game),
+            Rc::clone(&config),
+            Rc::clone(&launcher),
+            Rc::clone(&servers),
+            Rc::clone(&mod_manager),
+        );
+        content_overlay.add_shared(Rc::<ServerBrowserTab>::clone(&server_browser_tab));
+
+        let single_player_tab = {
+            SinglePlayerTab::new(
                 logger,
-                bus,
+                Rc::clone(&bus),
                 Arc::clone(&game),
-                config,
-                log_level_overridden,
-                can_switch_branch,
-                move |home_action| on_action.borrow()(Action::HomeAction(home_action)),
+                Rc::clone(&launcher),
+                Rc::clone(&saves),
             )
         };
-        content_overlay.add_shared(Rc::<HomeTab>::clone(&home));
+        content_overlay.add_shared(Rc::<SinglePlayerTab>::clone(&single_player_tab));
 
-        let server_browser = {
-            let on_action = Rc::clone(&on_action);
-            ServerBrowserTab::new(
-                logger,
-                bus,
-                Arc::clone(&game),
-                &config.server_browser,
-                mod_resolver,
-                can_save_servers,
-                move |browser_action| on_action.borrow()(Action::ServerBrowser(browser_action)),
-            )
-        };
-        content_overlay.add_shared(Rc::<ServerBrowserTab>::clone(&server_browser));
-
-        let single_player = {
-            let on_action = Rc::clone(&on_action);
-            SinglePlayerTab::new(logger, bus, Arc::clone(game.maps()), move |sp_action| {
-                on_action.borrow()(Action::SinglePlayer(sp_action))
-            })
-        };
-        content_overlay.add_shared(Rc::<SinglePlayerTab>::clone(&single_player));
-
-        let mod_manager = {
-            let on_action = Rc::clone(&on_action);
-            ModManagerTab::new(
-                logger,
-                bus,
-                Arc::clone(game.installed_mods()),
-                game.branch(),
-                move |mod_mgr_action| on_action.borrow()(Action::ModManager(mod_mgr_action)),
-            )
-        };
-        content_overlay.add_shared(Rc::<ModManagerTab>::clone(&mod_manager));
+        let mod_manager_tab =
+            ModManagerTab::new(logger, Arc::clone(&game), Rc::clone(&mod_manager));
+        content_overlay.add_shared(Rc::<ModManagerTab>::clone(&mod_manager_tab));
 
         let content_overlay = content_overlay.end();
         let mut content_group = content_overlay.group();
@@ -132,40 +123,36 @@ impl LauncherWindow {
         window.make_resizable(true);
         window.resize_callback(move |_, _, _, _, _| root.layout_children());
 
-        content_group.set_current_widget(home.root());
+        content_group.set_current_widget(home_tab.root());
 
         {
             let mut content_group = content_group.clone();
-            let home = Rc::clone(&home);
-            main_menu.set_on_home(move || content_group.set_current_widget(home.root()));
+            let home_tab = Rc::clone(&home_tab);
+            main_menu.set_on_home(move || content_group.set_current_widget(home_tab.root()));
         }
 
         {
             let mut content_group = content_group.clone();
-            let server_browser = Rc::clone(&server_browser);
+            let server_browser_tab = Rc::clone(&server_browser_tab);
             main_menu
-                .set_on_online(move || content_group.set_current_widget(server_browser.root()));
+                .set_on_online(move || content_group.set_current_widget(server_browser_tab.root()));
         }
 
         {
             let mut content_group = content_group.clone();
-            let single_player = Rc::clone(&single_player);
+            let single_player_tab = Rc::clone(&single_player_tab);
             main_menu.set_on_single_player(move || {
-                content_group.set_current_widget(single_player.root())
+                content_group.set_current_widget(single_player_tab.root())
             });
         }
 
         {
             let mut content_group = content_group.clone();
-            let mod_manager = Rc::clone(&mod_manager);
-            main_menu.set_on_mods(move || content_group.set_current_widget(mod_manager.root()));
+            let mod_manager_tab = Rc::clone(&mod_manager_tab);
+            main_menu.set_on_mods(move || content_group.set_current_widget(mod_manager_tab.root()));
         }
 
-        Self { window, on_action }
-    }
-
-    pub fn set_on_action(&self, on_action: impl Handler<Action> + 'static) {
-        *self.on_action.borrow_mut() = Box::new(on_action);
+        Self { window }
     }
 
     pub fn show(&self) {

@@ -1,11 +1,20 @@
+use std::cell::{Ref, RefCell};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use anyhow::Result;
 use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
+use slog::{warn, Logger};
 
 use crate::env::current_exe_dir;
 use crate::game::Branch;
 use crate::servers::{Filter, Mode, Region, SortCriteria, SortKey, TypeFilter};
+
+pub struct ConfigManager {
+    logger: Logger,
+    config: RefCell<Config>,
+    persister: Box<dyn ConfigPersister>,
+}
 
 #[derive(Debug, Default)]
 pub struct Config {
@@ -17,6 +26,42 @@ pub struct Config {
     pub mod_mismatch_checks: ModMismatchChecks,
     pub theme: ThemeChoice,
     pub server_browser: ServerBrowserConfig,
+}
+
+pub trait ConfigPersister {
+    fn load(&self) -> Result<Config>;
+    fn save(&self, config: &Config) -> Result<()>;
+}
+
+impl ConfigManager {
+    pub fn new(logger: &Logger, persister: Box<dyn ConfigPersister>) -> Rc<Self> {
+        let logger = logger.clone();
+        let config = RefCell::new(persister.load().unwrap_or_else(|err| {
+            warn!(logger, "Error while loading the configuration"; "error" => err.to_string());
+            Config::default()
+        }));
+        Rc::new(Self {
+            logger,
+            config,
+            persister,
+        })
+    }
+
+    pub fn get(&self) -> Ref<Config> {
+        self.config.borrow()
+    }
+
+    pub fn update(&self, mutator: impl FnOnce(&mut Config)) {
+        if let Err(err) = self.try_update(mutator) {
+            warn!(self.logger, "Error while saving the configuration"; "error" => err.to_string());
+        }
+    }
+
+    pub fn try_update(&self, mutator: impl FnOnce(&mut Config)) -> Result<()> {
+        let mut config = self.config.borrow_mut();
+        mutator(&mut config);
+        self.persister.save(&config)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,11 +114,6 @@ pub struct ServerBrowserConfig {
     pub filter: Filter,
     pub sort_criteria: SortCriteria,
     pub scroll_lock: bool,
-}
-
-pub trait ConfigPersister {
-    fn load(&self) -> Result<Config>;
-    fn save(&self, config: &Config) -> Result<()>;
 }
 
 pub struct TransientConfig;

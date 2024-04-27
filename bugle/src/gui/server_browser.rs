@@ -1,6 +1,5 @@
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -17,10 +16,12 @@ use slog::{error, Logger};
 use strum::IntoEnumIterator;
 
 use crate::bus::AppBus;
-use crate::config::ServerBrowserConfig;
-use crate::game::platform::ModDirectory;
+use crate::config::{ConfigManager, ServerBrowserConfig};
 use crate::game::settings::server::Community;
 use crate::game::Game;
+use crate::launcher::{ConnectionInfo, Launcher};
+use crate::mod_manager::ModManager;
+use crate::server_manager::ServerManager;
 use crate::servers::{
     FavoriteServer, Mode, PingRequest, PingResponse, PingResult, Region, Server, SortCriteria,
     SortKey, TypeFilter,
@@ -28,7 +29,7 @@ use crate::servers::{
 use crate::util::weak_cb;
 
 use super::data::{IterableTableSource, Reindex, RowFilter};
-use super::{alert_error, glyph, wrapper_factory, Handler};
+use super::{alert_error, glyph, wrapper_factory};
 
 mod actions_pane;
 mod add_server_dialog;
@@ -45,23 +46,6 @@ use self::details_pane::DetailsPane;
 use self::filter_pane::{FilterHolder, FilterPane};
 use self::list_pane::ListPane;
 use self::state::{Filter, ServerBrowserState, SortOrder};
-
-pub enum ServerBrowserAction {
-    LoadServers,
-    JoinServer {
-        addr: SocketAddr,
-        password: Option<String>,
-        battleye_required: Option<bool>,
-    },
-    PingServer(PingRequest),
-    PingServers(Vec<PingRequest>),
-    UpdateFavorites(Vec<FavoriteServer>),
-    UpdateConfig(ServerBrowserConfig),
-    ToggleSavedServer {
-        server: Server,
-        idx: Option<usize>,
-    },
-}
 
 #[derive(dynabus::Event)]
 pub struct PopulateServers {
@@ -87,9 +71,11 @@ pub struct RefreshServerDetails;
 pub(super) struct ServerBrowserTab {
     logger: Logger,
     game: Arc<Game>,
+    config: Rc<ConfigManager>,
+    launcher: Rc<Launcher>,
+    server_mgr: Rc<ServerManager>,
     grid: Grid,
     root: Group,
-    on_action: Box<dyn Handler<ServerBrowserAction>>,
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
     actions_pane: Rc<ActionsPane>,
@@ -112,17 +98,18 @@ enum DeferredAction {
 impl ServerBrowserTab {
     pub fn new(
         logger: &Logger,
-        bus: &mut AppBus,
+        bus: Rc<RefCell<AppBus>>,
         game: Arc<Game>,
-        config: &ServerBrowserConfig,
-        mod_resolver: Rc<dyn ModDirectory>,
-        can_save_servers: bool,
-        on_action: impl Handler<ServerBrowserAction> + 'static,
+        config: Rc<ConfigManager>,
+        launcher: Rc<Launcher>,
+        server_mgr: Rc<ServerManager>,
+        mod_manager: Rc<ModManager>,
     ) -> Rc<Self> {
+        let browser_cfg = Ref::map(config.get(), |config| &config.server_browser);
         let state = Rc::new(RefCell::new(ServerBrowserState::new(
             Vec::new(),
-            Filter::from_config(config),
-            SortOrder::new(config.sort_criteria, region_sort_order()),
+            Filter::from_config(&*browser_cfg),
+            SortOrder::new(browser_cfg.sort_criteria, region_sort_order()),
         )));
 
         let mut grid = Grid::builder_with_factory(wrapper_factory())
@@ -131,7 +118,7 @@ impl ServerBrowserTab {
         grid.col().with_stretch(1).add();
 
         grid.row().add();
-        let filter_pane = FilterPane::new(Arc::clone(game.maps()));
+        let filter_pane = FilterPane::new(game.maps());
         grid.cell()
             .unwrap()
             .add_shared(Rc::<FilterPane>::clone(&filter_pane));
@@ -187,7 +174,7 @@ impl ServerBrowserTab {
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(upper_tile.clone(), Default::default()));
 
-        let list_pane = ListPane::new(&state.borrow().order().criteria, config.scroll_lock);
+        let list_pane = ListPane::new(&state.borrow().order().criteria, browser_cfg.scroll_lock);
 
         upper_tile.end();
 
@@ -199,7 +186,7 @@ impl ServerBrowserTab {
             .with_vert_align(CellAlign::Stretch)
             .add(SimpleWrapper::new(lower_tile.clone(), Default::default()));
 
-        let details_pane = DetailsPane::new(mod_resolver);
+        let details_pane = DetailsPane::new(mod_manager);
 
         lower_tile.end();
 
@@ -213,7 +200,7 @@ impl ServerBrowserTab {
             .add(tiles);
 
         grid.row().add();
-        let actions_pane = ActionsPane::new(config.scroll_lock, can_save_servers);
+        let actions_pane = ActionsPane::new(browser_cfg.scroll_lock, server_mgr.can_save_servers());
         grid.cell().unwrap().add(actions_pane.element());
 
         let grid = grid.end();
@@ -222,12 +209,16 @@ impl ServerBrowserTab {
         let mut root = grid.group();
         root.hide();
 
+        drop(browser_cfg);
+
         let this = Rc::new(Self {
             logger: logger.clone(),
             game,
+            config,
+            launcher,
+            server_mgr,
             grid,
             root: root.clone(),
-            on_action: Box::new(on_action),
             list_pane: Rc::clone(&list_pane),
             details_pane,
             actions_pane: Rc::clone(&actions_pane),
@@ -270,7 +261,7 @@ impl ServerBrowserTab {
                 match action {
                     Action::Join => {
                         if let Some(server_idx) = this.list_pane.selected_index() {
-                            let action = {
+                            let conn_info = {
                                 let state = this.state.borrow();
                                 let server = &state[server_idx];
                                 if server.password_protected {
@@ -282,18 +273,18 @@ impl ServerBrowserTab {
                                     drop(state);
 
                                     match dialog.run() {
-                                        Some(action) => action,
+                                        Some(conn_info) => conn_info,
                                         None => return,
                                     }
                                 } else {
-                                    ServerBrowserAction::JoinServer {
+                                    ConnectionInfo {
                                         addr: server.game_addr().unwrap(),
                                         password: None,
                                         battleye_required: Some(server.general.battleye_required),
                                     }
                                 }
                             };
-                            if let Err(err) = (this.on_action)(action) {
+                            if let Err(err) = this.launcher.join_server(conn_info) {
                                 error!(this.logger, "Error joining server"; "error" => %err);
                                 alert_error(ERR_JOINING_SERVER, &err);
                             }
@@ -305,7 +296,6 @@ impl ServerBrowserTab {
                             let server = &state[server_idx];
                             let source_idx = state.to_source_index(server_idx);
                             let request = PingRequest::for_server(source_idx, server).unwrap();
-                            let action = ServerBrowserAction::PingServer(request);
                             drop(state);
 
                             this.update_servers(1, |all_servers, updated_indices, _, _| {
@@ -314,7 +304,7 @@ impl ServerBrowserTab {
                                 Reindex::Nothing
                             });
 
-                            if let Err(err) = (this.on_action)(action) {
+                            if let Err(err) = this.server_mgr.ping_server(request) {
                                 error!(this.logger, "Error pinging server"; "error" => %err);
                                 alert_error(ERR_PINGING_SERVERS, &err);
                             }
@@ -328,11 +318,12 @@ impl ServerBrowserTab {
                             if !server.is_saved() {
                                 server.merged = true;
                             }
-                            let action = ServerBrowserAction::ToggleSavedServer {
-                                server,
-                                idx: Some(src_idx),
+                            let result = if server.is_saved() {
+                                this.server_mgr.unsave_server(server, Some(src_idx))
+                            } else {
+                                this.server_mgr.save_server(server, Some(src_idx))
                             };
-                            if let Err(err) = (this.on_action)(action) {
+                            if let Err(err) = result {
                                 error!(
                                     this.logger,
                                     "Error updating saved servers";
@@ -362,10 +353,9 @@ impl ServerBrowserTab {
                                     } else {
                                         None
                                     }
-                                })
-                                .collect();
-                            let action = ServerBrowserAction::UpdateFavorites(favorites);
-                            if let Err(err) = (this.on_action)(action) {
+                                });
+
+                            if let Err(err) = this.game.save_favorites(favorites) {
                                 error!(
                                     this.logger,
                                     "Error updating favorites";
@@ -388,26 +378,24 @@ impl ServerBrowserTab {
                         let mut total_players_text = this.total_players_text.clone();
                         total_players_text.set_label("?");
                         total_players_text.redraw();
-                        (this.on_action)(ServerBrowserAction::LoadServers).unwrap();
+                        this.server_mgr.load_server_list();
                     }
                     Action::DirectConnect => {
                         let dialog = ConnectDialog::direct_connect(&this.root);
-                        let action = match dialog.run() {
-                            Some(action) => action,
-                            None => return,
+                        let Some(conn_info) = dialog.run() else {
+                            return;
                         };
-                        if let Err(err) = (this.on_action)(action) {
+                        if let Err(err) = this.launcher.join_server(conn_info) {
                             error!(this.logger, "Error on direct connect"; "error" => %err);
                             alert_error(ERR_JOINING_SERVER, &err);
                         }
                     }
                     Action::AddSaved => {
                         let dialog = AddServerDialog::new(&this.root, Arc::clone(&this.game));
-                        let action = match dialog.run() {
-                            Some(action) => action,
-                            None => return,
+                        let Some(server) = dialog.run() else {
+                            return;
                         };
-                        if let Err(err) = (this.on_action)(action) {
+                        if let Err(err) = this.server_mgr.save_server(server, None) {
                             error!(this.logger, "Error on adding saved server"; "error" => %err);
                             alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
                         }
@@ -420,17 +408,21 @@ impl ServerBrowserTab {
             }
         ));
 
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |PopulateServers { payload, done }| this.populate_servers(payload, done)
-        ));
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |pongs: ProcessPongs| this.update_pinged_servers(pongs)
-        ));
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |UpdateServer { idx, server }| this.update_server(idx, server)
-        ));
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |RefreshServerDetails| this.refresh_server_details()));
+        {
+            let mut bus = bus.borrow_mut();
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |PopulateServers { payload, done }| this.populate_servers(payload, done)
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |pongs: ProcessPongs| this.update_pinged_servers(pongs)
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |UpdateServer { idx, server }| this.update_server(idx, server)
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |RefreshServerDetails| this.refresh_server_details()
+            ));
+        }
 
         this
     }
@@ -443,7 +435,7 @@ impl ServerBrowserTab {
         match self.deferred_action.take() {
             None => (),
             Some(DeferredAction::Refresh) => {
-                (self.on_action)(ServerBrowserAction::LoadServers).unwrap();
+                self.server_mgr.load_server_list();
             }
             Some(DeferredAction::AlertError(msg, err)) => {
                 alert_error(msg, &err);
@@ -518,7 +510,7 @@ impl ServerBrowserTab {
 
         self.set_total_player_count(0);
 
-        if let Err(err) = (self.on_action)(ServerBrowserAction::PingServers(ping_requests)) {
+        if let Err(err) = self.server_mgr.ping_servers(ping_requests) {
             error!(self.logger, "Error pinging server list"; "error" => %err);
             alert_error(ERR_PINGING_SERVERS, &err);
         }
@@ -540,9 +532,8 @@ impl ServerBrowserTab {
             |all_servers, updated_indices, filter, sort_criteria| {
                 let mut reindex = Reindex::Nothing;
                 for update in updates {
-                    let server = match all_servers.get_mut(update.server_idx) {
-                        Some(server) => server,
-                        None => continue,
+                    let Some(server) = all_servers.get_mut(update.server_idx) else {
+                        continue;
                     };
                     updated_indices.push(update.server_idx);
                     if Self::update_pinged_server(server, update, filter, &mut total_players) {
@@ -675,12 +666,13 @@ impl ServerBrowserTab {
         let state = self.state.borrow();
         let filter = state.filter();
         let order = state.order();
-        let config = ServerBrowserConfig {
+        let browser_cfg = ServerBrowserConfig {
             filter: filter.as_ref().clone(),
             sort_criteria: order.criteria,
             scroll_lock: self.list_pane.scroll_lock(),
         };
-        (self.on_action)(ServerBrowserAction::UpdateConfig(config)).unwrap();
+        self.config
+            .update(|config| config.server_browser = browser_cfg);
     }
 }
 

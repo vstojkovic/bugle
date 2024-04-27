@@ -19,24 +19,17 @@ use fltk_float::{LayoutElement, SimpleWrapper};
 use slog::{error, Logger};
 
 use crate::bus::AppBus;
-use crate::game::{GameDB, Maps};
+use crate::game::{Game, GameDB};
+use crate::launcher::Launcher;
+use crate::saved_games_manager::SavedGamesManager;
 use crate::util::weak_cb;
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
 use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
-use super::Handler;
-use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory};
-
-pub enum SinglePlayerAction {
-    ListSavedGames,
-    NewSavedGame { map_id: usize },
-    ContinueSavedGame { map_id: usize },
-    LoadSavedGame { map_id: usize, backup_name: PathBuf },
-    SaveGame { map_id: usize, backup_name: PathBuf },
-    DeleteSavedGame { backup_name: PathBuf },
-    EditSettings,
-}
+use super::{
+    alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, ServerSettingsDialog,
+};
 
 #[derive(dynabus::Event)]
 pub struct PopulateSinglePlayerGames(pub Result<Vec<GameDB>>);
@@ -81,9 +74,11 @@ impl SinglePlayerState {
 
 pub struct SinglePlayerTab {
     logger: Logger,
+    game: Arc<Game>,
+    launcher: Rc<Launcher>,
+    saves: Rc<SavedGamesManager>,
     grid: Grid,
     root: Group,
-    on_action: Box<dyn Handler<SinglePlayerAction>>,
     in_progress_table: DataTable<Vec<String>>,
     backups_table: DataTable<Vec<String>>,
     continue_button: Button,
@@ -91,16 +86,16 @@ pub struct SinglePlayerTab {
     save_button: Button,
     save_as_button: Button,
     delete_button: Button,
-    maps: Arc<Maps>,
     state: RefCell<SinglePlayerState>,
 }
 
 impl SinglePlayerTab {
     pub fn new(
         logger: &Logger,
-        bus: &mut AppBus,
-        maps: Arc<Maps>,
-        on_action: impl Handler<SinglePlayerAction> + 'static,
+        bus: Rc<RefCell<AppBus>>,
+        game: Arc<Game>,
+        launcher: Rc<Launcher>,
+        saves: Rc<SavedGamesManager>,
     ) -> Rc<Self> {
         let mut grid = Grid::builder_with_factory(wrapper_factory())
             .with_col_spacing(10)
@@ -116,13 +111,13 @@ impl SinglePlayerTab {
             .wrap(Frame::default())
             .with_label("Map:");
         let mut map_input = grid.cell().unwrap().wrap(InputChoice::default_fill());
-        for map in maps.iter() {
+        for map in game.maps().iter() {
             map_input.add(&map.display_name);
         }
         map_input.input().set_readonly(true);
         map_input.input().clear_visible_focus();
         map_input.set_value_index(0);
-        let selected_map_id = maps.iter().next().unwrap().id;
+        let selected_map_id = game.maps().iter().next().unwrap().id;
         let mut new_button = grid
             .cell()
             .unwrap()
@@ -204,9 +199,11 @@ impl SinglePlayerTab {
 
         let this = Rc::new(Self {
             logger: logger.clone(),
+            game,
+            launcher,
+            saves,
             grid,
             root: root.clone(),
-            on_action: Box::new(on_action),
             in_progress_table,
             backups_table: backups_table.clone(),
             continue_button: continue_button.clone(),
@@ -214,7 +211,6 @@ impl SinglePlayerTab {
             save_button: save_button.clone(),
             save_as_button: save_as_button.clone(),
             delete_button: delete_button.clone(),
-            maps,
             state: RefCell::new(SinglePlayerState::new(selected_map_id)),
         });
 
@@ -245,9 +241,12 @@ impl SinglePlayerTab {
         delete_button.set_callback(weak_cb!([this] => |_| this.delete_clicked()));
         settings_button.set_callback(weak_cb!([this] => |_| this.settings_clicked()));
 
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |PopulateSinglePlayerGames(payload)| this.populate_games(payload)
-        ));
+        {
+            let mut bus = bus.borrow_mut();
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |PopulateSinglePlayerGames(payload)| this.populate_games(payload)
+            ));
+        }
 
         this
     }
@@ -257,7 +256,7 @@ impl SinglePlayerTab {
     }
 
     fn on_show(&self) {
-        (self.on_action)(SinglePlayerAction::ListSavedGames).unwrap();
+        self.saves.list_games();
     }
 
     fn populate_games(&self, payload: Result<Vec<GameDB>>) {
@@ -278,7 +277,7 @@ impl SinglePlayerTab {
             let mut idx = 0;
             while idx < games.len() {
                 let game = &games[idx];
-                if game.file_name == self.maps[game.map_id].db_name {
+                if game.file_name == self.game.maps()[game.map_id].db_name {
                     state.in_progress.insert(game.map_id, games.remove(idx));
                 } else {
                     idx += 1;
@@ -296,7 +295,7 @@ impl SinglePlayerTab {
     fn map_selected(&self, idx: usize) {
         {
             let mut state = self.state.borrow_mut();
-            let map_id = self.maps[idx].id;
+            let map_id = self.game.maps()[idx].id;
             state.backups.update_filter(|filter| filter.map_id = map_id);
         }
 
@@ -323,7 +322,7 @@ impl SinglePlayerTab {
         }
         drop(state);
 
-        if let Err(err) = (self.on_action)(SinglePlayerAction::NewSavedGame { map_id }) {
+        if let Err(err) = self.launcher.start_new_singleplayer_game(map_id) {
             error!(self.logger, "Error launching singleplayer game"; "error" => %err);
             alert_error(ERR_LAUNCHING_SP, &err);
             return;
@@ -338,7 +337,7 @@ impl SinglePlayerTab {
 
     fn continue_clicked(&self) {
         let map_id = self.state.borrow().filter().map_id;
-        if let Err(err) = (self.on_action)(SinglePlayerAction::ContinueSavedGame { map_id }) {
+        if let Err(err) = self.launcher.continue_singleplayer_game(map_id) {
             error!(self.logger, "Error launching singleplayer game"; "error" => %err);
             alert_error(ERR_LAUNCHING_SP, &err);
         }
@@ -352,13 +351,9 @@ impl SinglePlayerTab {
             return;
         }
         let backup_name = state.backups[backup_idx].file_name.clone();
-        let action = SinglePlayerAction::LoadSavedGame {
-            map_id,
-            backup_name,
-        };
         drop(state);
 
-        if let Err(err) = (self.on_action)(action) {
+        if let Err(err) = self.saves.restore_backup(map_id, backup_name) {
             error!(self.logger, "Error loading singleplayer backup"; "error" => %err);
             alert_error(ERR_LOADING_GAME, &err);
             return;
@@ -366,7 +361,7 @@ impl SinglePlayerTab {
 
         {
             let mut state = self.state.borrow_mut();
-            let in_progress_name = &self.maps[map_id].db_name;
+            let in_progress_name = &self.game.maps()[map_id].db_name;
             let new_in_progress = GameDB::copy_from(&state.backups[backup_idx], in_progress_name);
             state.in_progress.insert(map_id, new_in_progress);
         }
@@ -382,13 +377,9 @@ impl SinglePlayerTab {
         let backup_idx = state.selected_backup_idx.unwrap();
         let map_id = state.filter().map_id;
         let backup_name = state.backups[backup_idx].file_name.clone();
-        let action = SinglePlayerAction::SaveGame {
-            map_id,
-            backup_name,
-        };
         drop(state);
 
-        if let Err(err) = (self.on_action)(action) {
+        if let Err(err) = self.saves.create_backup(map_id, backup_name) {
             error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
             alert_error(ERR_SAVING_GAME, &err);
             return;
@@ -435,13 +426,9 @@ impl SinglePlayerTab {
             return;
         }
 
-        let action = SinglePlayerAction::SaveGame {
-            map_id,
-            backup_name: backup_name.clone(),
-        };
         drop(state);
 
-        if let Err(err) = (self.on_action)(action) {
+        if let Err(err) = self.saves.create_backup(map_id, backup_name.clone()) {
             error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
             alert_error(ERR_SAVING_GAME, &err);
             return;
@@ -471,10 +458,9 @@ impl SinglePlayerTab {
         let state = self.state.borrow();
         let backup_idx = state.selected_backup_idx.unwrap();
         let backup_name = state.backups[backup_idx].file_name.clone();
-        let action = SinglePlayerAction::DeleteSavedGame { backup_name };
         drop(state);
 
-        if let Err(err) = (self.on_action)(action) {
+        if let Err(err) = self.saves.delete_backup(backup_name) {
             error!(self.logger, "Error deleting singleplayer backup"; "error" => %err);
             alert_error(ERR_DELETING_GAME, &err);
             return;
@@ -491,7 +477,18 @@ impl SinglePlayerTab {
     }
 
     fn settings_clicked(&self) {
-        (self.on_action)(SinglePlayerAction::EditSettings).unwrap();
+        let settings = match self.game.load_server_settings() {
+            Ok(settings) => settings,
+            Err(err) => {
+                alert_error(ERR_LOADING_SETTINGS, &err);
+                return;
+            }
+        };
+        let dialog = ServerSettingsDialog::new(settings);
+        let Some(settings) = dialog.run() else { return };
+        if let Err(err) = self.game.save_server_settings(settings) {
+            alert_error(ERR_SAVING_SETTINGS, &err);
+        }
     }
 
     fn populate_list(&self) {
@@ -569,6 +566,9 @@ const ERR_DELETING_GAME: &str = "Error while deleting a saved game.";
 const ERR_INVALID_BACKUP_NAME: &str =
     "Invalid backup name. Please use a non-empty filename without a path.";
 const ERR_PREFIX_INVALID_NAME: &str = "Invalid filename";
+const ERR_LOADING_SETTINGS: &str = "Error while loading the game settings.";
+const ERR_SAVING_SETTINGS: &str = "Error while saving the game settings.";
+
 const PROMPT_REPLACE_IN_PROGRESS: &str = "Are you sure you want to overwrite the in-progress game?";
 const PROMPT_REPLACE_BACKUP: &str = "Are you sure you want to overwrite this backup?";
 const PROMPT_BACKUP_NAME: &str = "Backup name:";

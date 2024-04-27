@@ -18,7 +18,7 @@ pub struct ModUpdateSelectionDialog {
 }
 
 impl ModUpdateSelectionDialog {
-    pub fn new(parent: &Window, mods: &Arc<Mods>, outdated_mods: Vec<ModRef>) -> Self {
+    pub fn new(parent: &impl WindowExt, mods: &Arc<Mods>, outdated_mods: Vec<ModRef>) -> Self {
         let mut window = Window::default()
             .with_size(480, 480)
             .with_label("Update Mods");
@@ -114,7 +114,8 @@ impl ModUpdateSelectionDialog {
         window.show();
 
         while window.shown() {
-            if !fltk::app::wait() {
+            fltk::app::wait();
+            if fltk::app::should_program_quit() {
                 return None;
             }
         }

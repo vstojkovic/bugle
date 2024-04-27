@@ -1,5 +1,6 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use dynabus::Bus;
@@ -15,9 +16,12 @@ use fltk_float::{LayoutElement, LayoutWidgetWrapper};
 use slog::{error, FilterLevel, Logger};
 
 use crate::auth::AuthState;
+use crate::auth_manager::AuthManager;
 use crate::bus::AppBus;
-use crate::config::{BattlEyeUsage, Config, LogLevel, ModMismatchChecks, ThemeChoice};
+use crate::config::{BattlEyeUsage, ConfigManager, LogLevel, ModMismatchChecks, ThemeChoice};
+use crate::env;
 use crate::game::{Branch, Game, MapRef, Maps, ServerRef, Session};
+use crate::launcher::Launcher;
 use crate::util::weak_cb;
 use crate::workers::TaskState;
 
@@ -25,20 +29,7 @@ use super::assets::Assets;
 use super::prelude::*;
 use super::theme::Theme;
 use super::widgets::{DropDownList, ReadOnlyText};
-use super::{alert_error, wrapper_factory, Handler};
-
-pub enum HomeAction {
-    Launch,
-    Continue,
-    SwitchBranch(Branch),
-    ConfigureLogLevel(LogLevel),
-    ConfigureBattlEye(BattlEyeUsage),
-    ConfigureUseAllCores(bool),
-    ConfigureExtraArgs(String),
-    ConfigureModMismatchChecks(ModMismatchChecks),
-    ConfigureTheme(ThemeChoice),
-    RefreshAuthState,
-}
+use super::{alert_error, wrapper_factory};
 
 #[derive(dynabus::Event)]
 pub struct UpdateLastSession;
@@ -64,15 +55,14 @@ pub struct HomeTab {
 impl HomeTab {
     pub fn new(
         logger: &Logger,
-        bus: &mut AppBus,
+        bus: Rc<RefCell<AppBus>>,
         game: Arc<Game>,
-        config: &Config,
-        log_level_overridden: bool,
+        config: Rc<ConfigManager>,
+        log_level: Option<Arc<AtomicUsize>>,
+        auth: Rc<AuthManager>,
+        launcher: Rc<Launcher>,
         can_switch_branch: bool,
-        on_action: impl Handler<HomeAction> + 'static,
     ) -> Rc<Self> {
-        let on_action = Rc::new(on_action);
-
         let (branch_name, other_branch_name, other_branch) = match game.branch() {
             Branch::Main => ("Live", "TestLive", Branch::PublicBeta),
             Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
@@ -313,16 +303,24 @@ impl HomeTab {
         let mut root = grid.group();
         root.hide();
 
+        refresh_platform_button.set_callback({
+            let auth = Rc::clone(&auth);
+            move |_| auth.check_auth_state()
+        });
+        refresh_fls_button.set_callback({
+            let auth = Rc::clone(&auth);
+            move |_| auth.check_auth_state()
+        });
         refresh_platform_button.deactivate();
         refresh_fls_button.deactivate();
 
-        battleye_input.set_value(match config.use_battleye {
+        battleye_input.set_value(match config.get().use_battleye {
             BattlEyeUsage::Always(true) => 0,
             BattlEyeUsage::Always(false) => 1,
             BattlEyeUsage::Auto => 2,
         });
         battleye_input.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let config = Rc::clone(&config);
             move |input| {
                 let use_battleye = match input.value() {
                     0 => BattlEyeUsage::Always(true),
@@ -330,19 +328,19 @@ impl HomeTab {
                     2 => BattlEyeUsage::Auto,
                     _ => unreachable!(),
                 };
-                on_action(HomeAction::ConfigureBattlEye(use_battleye)).unwrap();
+                config.update(|config| config.use_battleye = use_battleye);
             }
         });
 
-        use_all_cores_button.set_checked(config.use_all_cores);
+        use_all_cores_button.set_checked(config.get().use_all_cores);
         use_all_cores_button.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let config = Rc::clone(&config);
             move |input| {
-                on_action(HomeAction::ConfigureUseAllCores(input.is_checked())).unwrap();
+                config.update(|config| config.use_all_cores = input.is_checked());
             }
         });
 
-        extra_args_input.set_value(&config.extra_args);
+        extra_args_input.set_value(&config.get().extra_args);
         let extra_args_dirty = Rc::new(Cell::new(false));
         extra_args_input.set_trigger(CallbackTrigger::Changed);
         extra_args_input.set_callback({
@@ -350,49 +348,55 @@ impl HomeTab {
             move |_| extra_args_dirty.set(true)
         });
         extra_args_input.handle({
-            let on_action = Rc::clone(&on_action);
+            let config = Rc::clone(&config);
             move |input, event| {
                 if let Event::Unfocus | Event::Hide = event {
                     if extra_args_dirty.take() {
-                        on_action(HomeAction::ConfigureExtraArgs(input.value())).unwrap();
+                        config.update(|config| config.extra_args = input.value());
                     }
                 }
                 false
             }
         });
 
-        mod_mismatch_check_button.set_checked(match config.mod_mismatch_checks {
+        mod_mismatch_check_button.set_checked(match config.get().mod_mismatch_checks {
             ModMismatchChecks::Enabled => true,
             ModMismatchChecks::Disabled => false,
         });
         mod_mismatch_check_button.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let config = Rc::clone(&config);
             move |input| {
                 let checks = if input.is_checked() {
                     ModMismatchChecks::Enabled
                 } else {
                     ModMismatchChecks::Disabled
                 };
-                on_action(HomeAction::ConfigureModMismatchChecks(checks)).unwrap();
+                config.update(|config| config.mod_mismatch_checks = checks);
             }
         });
 
-        log_level_input.set_value(log_level_to_index(&config.log_level));
+        log_level_input.set_value(log_level_to_index(&config.get().log_level));
+        log_level_input.set_activated(log_level.is_some());
         log_level_input.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let config = Rc::clone(&config);
             move |input| {
-                let log_level = index_to_log_level(input.value());
-                on_action(HomeAction::ConfigureLogLevel(log_level)).unwrap();
+                let new_log_level = index_to_log_level(input.value());
+                config.update(|config| config.log_level = new_log_level);
+                if let Some(log_level) = log_level.as_ref() {
+                    log_level.store(
+                        new_log_level.0.as_usize(),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
             }
         });
-        log_level_input.set_activated(!log_level_overridden);
 
-        theme_input.set_value(match config.theme {
+        theme_input.set_value(match config.get().theme {
             ThemeChoice::Light => 0,
             ThemeChoice::Dark => 1,
         });
         theme_input.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let config = Rc::clone(&config);
             move |input| {
                 let theme = match input.value() {
                     0 => ThemeChoice::Light,
@@ -400,20 +404,11 @@ impl HomeTab {
                     _ => unreachable!(),
                 };
                 Theme::from_config(theme).apply();
-                on_action(HomeAction::ConfigureTheme(theme)).unwrap();
+                config.update(|config| config.theme = theme);
             }
         });
 
         privacy_switch.clear_visible_focus();
-
-        refresh_platform_button.set_callback({
-            let on_action = Rc::clone(&on_action);
-            move |_| on_action(HomeAction::RefreshAuthState).unwrap()
-        });
-        refresh_fls_button.set_callback({
-            let on_action = Rc::clone(&on_action);
-            move |_| on_action(HomeAction::RefreshAuthState).unwrap()
-        });
 
         privacy_switch.set_callback({
             let mut platform_user_id_text = platform_user_id_text.clone();
@@ -442,20 +437,20 @@ impl HomeTab {
         });
 
         launch_button.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let launcher = Rc::clone(&launcher);
             let logger = logger.clone();
             move |_| {
-                if let Err(err) = on_action(HomeAction::Launch) {
+                if let Err(err) = launcher.launch_game() {
                     error!(logger, "Error launching game"; "error" => %err);
                     alert_error(ERR_LAUNCHING_GAME, &err);
                 }
             }
         });
         continue_button.set_callback({
-            let on_action = Rc::clone(&on_action);
+            let launcher = Rc::clone(&launcher);
             let logger = logger.clone();
             move |_| {
-                if let Err(err) = on_action(HomeAction::Continue) {
+                if let Err(err) = launcher.continue_last_session() {
                     error!(logger, "Error launching game"; "error" => %err);
                     alert_error(ERR_LAUNCHING_GAME, &err);
                 }
@@ -463,22 +458,28 @@ impl HomeTab {
         });
         if let Some(mut button) = switch_branch_button {
             button.set_callback({
-                let on_action = Rc::clone(&on_action);
+                let config = Rc::clone(&config);
                 let logger = logger.clone();
                 let branch = game.branch();
                 move |_| {
-                    if let Err(err) = on_action(HomeAction::SwitchBranch(other_branch)) {
-                        error!(
-                            logger,
-                            "Error switching to other branch";
-                            "branch" => ?other_branch,
-                            "error" => %err,
-                        );
-                        let err_msg = match branch {
-                            Branch::Main => ERR_SWITCHING_TO_MAIN,
-                            Branch::PublicBeta => ERR_SWITCHING_TO_PUBLIC_BETA,
-                        };
-                        alert_error(err_msg, &err);
+                    let result = config
+                        .try_update(|config| config.branch = branch)
+                        .and_then(|_| Ok(env::restart_process()?));
+                    match result {
+                        Ok(_) => fltk::app::quit(),
+                        Err(err) => {
+                            error!(
+                                logger,
+                                "Error switching to other branch";
+                                "branch" => ?other_branch,
+                                "error" => %err,
+                            );
+                            let err_msg = match branch {
+                                Branch::Main => ERR_SWITCHING_TO_MAIN,
+                                Branch::PublicBeta => ERR_SWITCHING_TO_PUBLIC_BETA,
+                            };
+                            alert_error(err_msg, &err);
+                        }
                     }
                 }
             });
@@ -492,20 +493,23 @@ impl HomeTab {
             game,
             platform_user_id_text,
             platform_user_name_text,
-            refresh_platform_button,
+            refresh_platform_button: refresh_platform_button.clone(),
             fls_acct_id_text,
             fls_acct_name_text,
-            refresh_fls_button,
+            refresh_fls_button: refresh_fls_button.clone(),
             online_play_text,
             sp_play_text,
             last_session_text,
         });
 
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |UpdateLastSession| this.update_last_session()
-        ));
-        bus.subscribe_consumer(weak_cb!(
-            [this] => |UpdateAuthState(state)| this.update_auth_state(state)));
+        {
+            let mut bus = bus.borrow_mut();
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |UpdateLastSession| this.update_last_session()
+            ));
+            bus.subscribe_consumer(weak_cb!(
+                [this] => |UpdateAuthState(state)| this.update_auth_state(state)));
+        }
 
         this
     }

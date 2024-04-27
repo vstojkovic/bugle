@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use fltk::button::CheckButton;
 use fltk::enums::{CallbackTrigger, Event};
@@ -41,7 +40,7 @@ pub(super) struct FilterPane {
 }
 
 impl FilterPane {
-    pub fn new(maps: Arc<Maps>) -> Rc<Self> {
+    pub fn new(maps: &Maps) -> Rc<Self> {
         let mut grid = Grid::builder_with_factory(wrapper_factory())
             .with_col_spacing(10)
             .with_row_spacing(10);

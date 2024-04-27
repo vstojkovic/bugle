@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use dynabus::local::LocalBus;
 use dynabus::mpsc::{ChannelBus, Message, Sender};
 use fltk::app;
@@ -19,7 +22,10 @@ impl Sender for AppSender {
 
 pub type AppBus = ChannelBus<AppSender, CrossBeamRx, LocalBus>;
 
-pub fn bus() -> AppBus {
+pub fn bus() -> Rc<RefCell<AppBus>> {
     let (tx, rx) = crossbeam_channel::unbounded();
-    AppBus::new((AppSender(tx), rx), LocalBus::new())
+    Rc::new(RefCell::new(AppBus::new(
+        (AppSender(tx), rx),
+        LocalBus::new(),
+    )))
 }

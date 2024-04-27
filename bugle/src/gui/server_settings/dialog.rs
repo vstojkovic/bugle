@@ -166,7 +166,7 @@ impl ServerSettingsDialog {
         window.make_modal(true);
         window.show();
 
-        while window.shown() {
+        while window.shown() && !fltk::app::should_program_quit() {
             fltk::app::wait();
         }
 

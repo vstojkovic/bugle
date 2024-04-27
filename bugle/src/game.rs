@@ -44,7 +44,7 @@ pub struct Game {
     server_settings_path: PathBuf,
     mod_list_path: PathBuf,
     installed_mods: Arc<Mods>,
-    maps: Arc<Maps>,
+    maps: Maps,
     last_session: Mutex<Option<Session>>,
     battleye_installed: Option<bool>,
 }
@@ -206,7 +206,7 @@ impl Game {
             server_settings_path,
             mod_list_path,
             installed_mods: Arc::new(installed_mods),
-            maps: Arc::new(maps),
+            maps,
             last_session: Mutex::new(last_session),
             battleye_installed,
         })
@@ -246,7 +246,7 @@ impl Game {
         &self.installed_mods
     }
 
-    pub fn maps(&self) -> &Arc<Maps> {
+    pub fn maps(&self) -> &Maps {
         &self.maps
     }
 

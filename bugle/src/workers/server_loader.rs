@@ -51,10 +51,6 @@ impl ServerLoaderWorker {
         server_loader.pinger = None;
     }
 
-    pub fn is_loading(&self) -> bool {
-        self.server_loader.lock().unwrap().fetcher.is_some()
-    }
-
     pub fn ping_servers(self: &Arc<Self>, requests: Vec<PingRequest>) -> Result<()> {
         self.with_ping_client(|client| client.send(requests))
     }
@@ -93,7 +89,7 @@ impl ServerLoaderWorker {
             &ping_logger,
             self.game.build_id(),
             move |response| {
-                // TODO: Improve generation handling?
+                // TODO: Improve generation handling
                 if self.server_loader.lock().unwrap().generation != generation {
                     return;
                 }
