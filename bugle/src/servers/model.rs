@@ -243,8 +243,12 @@ impl Similarity {
 #[derive(Debug, Clone, Copy)]
 #[repr(isize)]
 pub enum Confidence {
+    #[allow(unused)]
     Low = 6,
+
     High = 10,
+
+    #[allow(unused)]
     Full = 16,
 }
 
