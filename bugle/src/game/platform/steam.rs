@@ -1,8 +1,8 @@
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
-use dynabus::mpsc::BusSender;
 use keyvalues_parser::Vdf;
 use slog::{debug, o, Logger};
 use steamlocate::SteamDir;
@@ -12,7 +12,7 @@ mod mod_directory;
 
 pub use self::client::{PlatformReady, SteamClient, SteamTicket};
 pub use self::mod_directory::SteamModDirectory;
-use crate::bus::AppSender;
+use crate::bus::AppBus;
 use crate::game::{Branch, Game, ModLibraryBuilder, ModProvenance};
 use crate::util::PathExt;
 
@@ -96,8 +96,8 @@ impl Steam {
         Ok(game)
     }
 
-    pub fn init_client(&self, game: &Game, tx: BusSender<AppSender>) -> Rc<SteamClient> {
-        SteamClient::new(&self.logger, game.branch(), tx)
+    pub fn init_client(&self, game: &Game, bus: Rc<RefCell<AppBus>>) -> Rc<SteamClient> {
+        SteamClient::new(&self.logger, game.branch(), bus)
     }
 }
 

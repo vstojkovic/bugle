@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 
 use dynabus::mpsc::BusSender;
+use dynabus::Bus;
 use fltk::app::{self, TimeoutHandle};
 use slog::{debug, o, trace, warn, Logger};
 use steamworks::networking_types::NetworkingIdentity;
@@ -11,9 +12,10 @@ use steamworks::{
     AuthTicket, CallbackHandle, Client, ClientManager, DownloadItemResult, ItemState,
     PublishedFileId, SingleClient, SteamError, User,
 };
+use tokio::task::JoinHandle;
 
 use crate::auth::PlatformUser;
-use crate::bus::AppSender;
+use crate::bus::{AppBus, AppSender};
 use crate::game::Branch;
 use crate::logger::IteratorFormatter;
 use crate::util::weak_cb;
@@ -24,6 +26,7 @@ pub struct SteamClient {
     logger: Logger,
     branch: Branch,
     api: RefCell<Option<SteamAPI>>,
+    api_initializer: RefCell<Option<JoinHandle<()>>>,
     tx: BusSender<AppSender>,
     ticket: RefCell<Option<Rc<SteamTicket>>>,
     downloads: RefCell<Downloads>,
@@ -42,6 +45,9 @@ struct SteamAPI {
     cb_runner: SingleClient,
 }
 
+#[derive(dynabus::Event)]
+struct InitializerDone(Option<SteamAPI>);
+
 #[derive(Default)]
 struct Downloads {
     api_callback_handle: Option<CallbackHandle>,
@@ -49,19 +55,35 @@ struct Downloads {
 }
 
 impl SteamClient {
-    pub(super) fn new(logger: &Logger, branch: Branch, tx: BusSender<AppSender>) -> Rc<Self> {
+    pub(super) fn new(logger: &Logger, branch: Branch, bus: Rc<RefCell<AppBus>>) -> Rc<Self> {
         let logger = logger.new(o!("branch" => format!("{:?}", branch)));
+        let tx = bus.borrow().sender().clone();
         let callback_timer = Rc::new(RefCell::new(CallbackTimer::new(&logger)));
-        Rc::new(Self {
+        let this = Rc::new(Self {
             logger,
             branch,
             api: RefCell::new(init_client(branch)),
+            api_initializer: RefCell::new(None),
             tx,
             ticket: RefCell::new(None),
             downloads: RefCell::new(Default::default()),
             callback_timer,
             _marker: PhantomData,
-        })
+        });
+
+        {
+            let mut bus = bus.borrow_mut();
+            bus.subscribe_consumer(weak_cb!([this] => |InitializerDone(maybe_api)| {
+                let ready = maybe_api.is_some();
+                *this.api.borrow_mut() = maybe_api;
+                *this.api_initializer.borrow_mut() = None;
+                if ready {
+                    this.tx.send(PlatformReady).ok();
+                }
+            }));
+        }
+
+        this
     }
 
     pub fn branch(&self) -> Branch {
@@ -205,11 +227,16 @@ impl SteamClient {
     }
 
     fn check_client(&self) -> Option<RefMut<Client>> {
-        let mut api = self.api.borrow_mut();
+        let api = self.api.borrow_mut();
         if api.is_none() {
-            *api = init_client(self.branch);
-            if api.is_some() {
-                self.tx.send(PlatformReady).ok();
+            let mut initializer = self.api_initializer.borrow_mut();
+            if initializer.is_none() {
+                let branch = self.branch;
+                let tx = self.tx.clone();
+                *initializer = Some(tokio::spawn(async move {
+                    let maybe_api = init_client(branch);
+                    tx.send(InitializerDone(maybe_api)).ok();
+                }));
             }
         }
         RefMut::filter_map(api, |opt| opt.as_mut().map(|api| &mut api.client)).ok()

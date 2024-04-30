@@ -74,7 +74,7 @@ impl LauncherApp {
         let game = Arc::new(game);
         let bus = bus::bus();
 
-        let steam = steam.init_client(&*game, bus.borrow().sender().clone());
+        let steam = steam.init_client(&*game, Rc::clone(&bus));
         let mod_directory = SteamModDirectory::new(
             &logger,
             Rc::clone(&steam),

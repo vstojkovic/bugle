@@ -8,7 +8,7 @@ use slog::{warn, Logger};
 
 use crate::auth::{Account, AuthState, CachedUser, CachedUsers, Capability, PlatformUser};
 use crate::bus::AppBus;
-use crate::game::platform::steam::SteamClient;
+use crate::game::platform::steam::{PlatformReady, SteamClient};
 use crate::game::Game;
 use crate::gui::UpdateAuthState;
 use crate::util::weak_cb;
@@ -64,6 +64,7 @@ impl AuthManager {
 
         {
             let mut bus = this.bus.borrow_mut();
+            bus.subscribe_observer(weak_cb!([this] => |&PlatformReady| this.check_auth_state()));
             bus.subscribe_consumer(weak_cb!(
                 [this] => |LoginComplete(payload)| this.login_complete(payload)
             ));
@@ -82,7 +83,6 @@ impl AuthManager {
     }
 
     pub fn check_auth_state(&self) {
-        // TODO: Initializing Steam client can make the app unresponsive
         let platform_user = self.steam.user().ok_or(anyhow!("Steam not running"));
         let fls_account = match &platform_user {
             Ok(user) => {
