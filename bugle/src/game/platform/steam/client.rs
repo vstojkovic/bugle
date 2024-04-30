@@ -6,6 +6,7 @@ use std::rc::Rc;
 use dynabus::mpsc::BusSender;
 use fltk::app::{self, TimeoutHandle};
 use slog::{debug, o, trace, warn, Logger};
+use steamworks::networking_types::NetworkingIdentity;
 use steamworks::{
     AuthTicket, CallbackHandle, Client, ClientManager, DownloadItemResult, ItemState,
     PublishedFileId, SingleClient, SteamError, User,
@@ -234,7 +235,8 @@ pub struct SteamTicket {
 
 impl SteamTicket {
     fn new(user: User<ClientManager>) -> Self {
-        let (ticket, data) = user.authentication_session_ticket();
+        let identity = NetworkingIdentity::new_steam_id(user.steam_id());
+        let (ticket, data) = user.authentication_session_ticket(identity);
         Self { user, ticket, data }
     }
 
