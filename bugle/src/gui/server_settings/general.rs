@@ -53,7 +53,7 @@ pub struct GeneralTab {
 }
 
 impl GeneralTab {
-    pub fn new(settings: GeneralSettings) -> Rc<Self> {
+    pub fn new(settings: &GeneralSettings) -> Rc<Self> {
         let input_width = min_input_width(&["23:59", "99999"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -71,18 +71,15 @@ impl GeneralTab {
 
         grid.row().add();
         grid.cell().unwrap().wrap(make_label("Message of the day:"));
-        let mut motd_prop = grid.span(1, 5).unwrap().wrap(Input::default());
-        motd_prop.set_value(&settings.motd);
+        let motd_prop = grid.span(1, 5).unwrap().wrap(Input::default());
 
         grid.row().add();
         grid.cell().unwrap().wrap(make_label("Server password:"));
-        let mut server_password_prop = grid.span(1, 5).unwrap().wrap(SecretInput::default());
-        server_password_prop.set_value(&settings.server_password);
+        let server_password_prop = grid.span(1, 5).unwrap().wrap(SecretInput::default());
 
         grid.row().add();
         grid.cell().unwrap().wrap(make_label("Admin password:"));
-        let mut admin_password_prop = grid.span(1, 5).unwrap().wrap(SecretInput::default());
-        admin_password_prop.set_value(&settings.admin_password);
+        let admin_password_prop = grid.span(1, 5).unwrap().wrap(SecretInput::default());
 
         grid.row().add();
         grid.span(1, 6)
@@ -90,9 +87,9 @@ impl GeneralTab {
             .with_top_padding(25)
             .add(EmptyElement);
 
-        let pvp_enabled_prop = grid.bool_prop("PVP enabled", settings.pvp_enabled);
-        let pvp_restricted_prop = grid.bool_prop("Time restrict PVP", settings.pvp_restricted);
-        let pvp_hours_prop = grid.daily_hours_prop("PVP allowed", &settings.pvp_hours);
+        let pvp_enabled_prop = grid.bool_prop("PVP enabled");
+        let pvp_restricted_prop = grid.bool_prop("Time restrict PVP");
+        let pvp_hours_prop = grid.daily_hours_prop("PVP allowed");
 
         grid.row().add();
         grid.span(1, 6)
@@ -100,20 +97,11 @@ impl GeneralTab {
             .with_top_padding(25)
             .add(EmptyElement);
 
-        let raid_enabled_prop =
-            grid.bool_prop("PVP building damage enabled", settings.raid_enabled);
-        let raid_restricted_prop =
-            grid.bool_prop("Time restrict building damage", settings.raid_restricted);
-        let raid_hours_prop = grid.daily_hours_prop("Damage allowed", &settings.raid_hours);
-        let dbd_enabled_prop = grid.bool_prop("Dynamic building damage", settings.dbd_enabled);
-        let dbd_period_prop = grid.range_prop(
-            "DBD period:",
-            1.0,
-            3600.0,
-            1.0,
-            1,
-            settings.dbd_period.num_seconds() as f64,
-        );
+        let raid_enabled_prop = grid.bool_prop("PVP building damage enabled");
+        let raid_restricted_prop = grid.bool_prop("Time restrict building damage");
+        let raid_hours_prop = grid.daily_hours_prop("Damage allowed");
+        let dbd_enabled_prop = grid.bool_prop("Dynamic building damage");
+        let dbd_period_prop = grid.range_prop("DBD period:", 1.0, 3600.0, 1.0, 1);
 
         grid.row().add();
         grid.span(1, 6)
@@ -121,30 +109,12 @@ impl GeneralTab {
             .with_top_padding(25)
             .add(EmptyElement);
 
-        let no_ownership_prop = grid.bool_prop("No ownership", settings.no_ownership);
-        let containers_ignore_ownership_prop = grid.bool_prop(
-            "Containers ignore ownership",
-            settings.containers_ignore_ownership,
-        );
-        let sandstorm_enabled_prop = grid.bool_prop("Enable sandstorm", settings.sandstorm_enabled);
-        let clan_markers_enabled_prop =
-            grid.bool_prop("Enable clan map markers", settings.clan_markers_enabled);
-        let max_clan_size_prop = grid.range_prop(
-            "Clan max size:",
-            1.0,
-            60.0,
-            1.0,
-            1,
-            settings.max_clan_size as f64,
-        );
-        let tether_distance_prop = grid.range_prop(
-            "Tethering distance:",
-            12000.0,
-            52000.0,
-            1.0,
-            1,
-            settings.tether_distance,
-        );
+        let no_ownership_prop = grid.bool_prop("No ownership");
+        let containers_ignore_ownership_prop = grid.bool_prop("Containers ignore ownership");
+        let sandstorm_enabled_prop = grid.bool_prop("Enable sandstorm");
+        let clan_markers_enabled_prop = grid.bool_prop("Enable clan map markers");
+        let max_clan_size_prop = grid.range_prop("Clan max size:", 1.0, 60.0, 1.0, 1);
+        let tether_distance_prop = grid.range_prop("Tethering distance:", 12000.0, 52000.0, 1.0, 1);
 
         grid.row().add();
         grid.span(1, 6)
@@ -152,42 +122,18 @@ impl GeneralTab {
             .with_top_padding(25)
             .add(EmptyElement);
 
-        let max_nudity_prop = grid.enum_prop(
-            "Maximum nudity:",
-            &["None", "Partial", "Full"],
-            settings.max_nudity as u8,
-        );
-        let voice_chat_enabled_prop =
-            grid.bool_prop("Enable voice chat", settings.voice_chat_enabled);
-        let enforce_whitelist_prop = grid.bool_prop(
-            "Only allow whitelisted players to join",
-            settings.enforce_whitelist,
-        );
-        let claim_popup_disabled_prop = grid.bool_prop(
-            "Disable landclaim notifications",
-            settings.claim_popup_disabled,
-        );
-        let log_privacy_prop = grid.enum_prop(
-            "Event log privacy:",
-            &["Everybody", "Admins", "Nobody"],
-            settings.log_privacy as u8,
-        );
-        let family_share_allowed_prop = grid.bool_prop(
-            "Allow family shared accounts",
-            settings.family_share_allowed,
-        );
-        let healthbar_distance_prop = grid.range_prop(
-            "Healthbar visibility distance:",
-            0.0,
-            15000.0,
-            1.0,
-            1,
-            settings.healthbar_distance,
-        );
+        let max_nudity_prop = grid.enum_prop("Maximum nudity:", &["None", "Partial", "Full"]);
+        let voice_chat_enabled_prop = grid.bool_prop("Enable voice chat");
+        let enforce_whitelist_prop = grid.bool_prop("Only allow whitelisted players to join");
+        let claim_popup_disabled_prop = grid.bool_prop("Disable landclaim notifications");
+        let log_privacy_prop =
+            grid.enum_prop("Event log privacy:", &["Everybody", "Admins", "Nobody"]);
+        let family_share_allowed_prop = grid.bool_prop("Allow family shared accounts");
+        let healthbar_distance_prop =
+            grid.range_prop("Healthbar visibility distance:", 0.0, 15000.0, 1.0, 1);
         let online_info_visibility_prop = grid.enum_prop(
             "Online player info visibility:",
             &["Show All", "Show Clan", "Show Nobody"],
-            settings.online_info_visibility as u8,
         );
 
         let root = root.add(grid.end());
@@ -268,6 +214,52 @@ impl GeneralTab {
             )
             .unwrap(),
         }
+    }
+
+    pub fn set_values(&self, settings: &GeneralSettings) {
+        self.motd_prop.clone().set_value(&settings.motd);
+        self.server_password_prop
+            .clone()
+            .set_value(&settings.server_password);
+        self.admin_password_prop
+            .clone()
+            .set_value(&settings.admin_password);
+        self.pvp_enabled_prop.set_checked(settings.pvp_enabled);
+        self.pvp_restricted_prop
+            .set_checked(settings.pvp_restricted);
+        self.pvp_hours_prop.set_value(&settings.pvp_hours);
+        self.raid_enabled_prop.set_checked(settings.raid_enabled);
+        self.raid_restricted_prop
+            .set_checked(settings.raid_restricted);
+        self.raid_hours_prop.set_value(&settings.raid_hours);
+        self.dbd_enabled_prop.set_checked(settings.dbd_enabled);
+        self.dbd_period_prop
+            .set_value(settings.dbd_period.num_seconds() as f64);
+        self.no_ownership_prop.set_checked(settings.no_ownership);
+        self.containers_ignore_ownership_prop
+            .set_checked(settings.containers_ignore_ownership);
+        self.sandstorm_enabled_prop
+            .set_checked(settings.sandstorm_enabled);
+        self.clan_markers_enabled_prop
+            .set_checked(settings.clan_markers_enabled);
+        self.max_clan_size_prop
+            .set_value(settings.max_clan_size as f64);
+        self.tether_distance_prop
+            .set_value(settings.tether_distance);
+        self.max_nudity_prop.set_value(settings.max_nudity as u8);
+        self.voice_chat_enabled_prop
+            .set_checked(settings.voice_chat_enabled);
+        self.enforce_whitelist_prop
+            .set_checked(settings.enforce_whitelist);
+        self.claim_popup_disabled_prop
+            .set_checked(settings.claim_popup_disabled);
+        self.log_privacy_prop.set_value(settings.log_privacy as u8);
+        self.family_share_allowed_prop
+            .set_checked(settings.family_share_allowed);
+        self.healthbar_distance_prop
+            .set_value(settings.healthbar_distance);
+        self.online_info_visibility_prop
+            .set_value(settings.online_info_visibility as u8);
     }
 }
 

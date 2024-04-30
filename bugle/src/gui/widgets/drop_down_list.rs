@@ -57,9 +57,11 @@ impl DropDownList {
         self.menu.value()
     }
 
-    pub fn set_value(&mut self, value: i32) {
-        self.menu.set_value(value);
-        self.text.set_label(&self.choice().unwrap_or_default());
+    pub fn set_value<V: Into<i32>>(&self, value: V) {
+        self.menu.clone().set_value(value.into());
+        self.text
+            .clone()
+            .set_label(&self.choice().unwrap_or_default());
     }
 
     pub fn set_callback<F: FnMut(&mut Self) + 'static>(&mut self, mut cb: F) {

@@ -50,7 +50,7 @@ pub struct MaelstromTab {
 }
 
 impl MaelstromTab {
-    pub fn new(settings: MaelstromSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["23:59", "9999.99"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -66,163 +66,59 @@ impl MaelstromTab {
         grid.col().add(); // end label
         grid.col().with_min_size(input_width).add(); // end input
 
-        let storm_enabled_prop = grid.bool_prop("Enable Maelstrom", settings.storm_enabled);
-        let storm_hours_prop = grid.weekly_hours_prop(&settings.storm_hours);
-        let storm_min_online_players_prop = grid.range_prop(
-            "Maelstrom minimum online players:",
-            0.0,
-            40.0,
-            1.0,
-            1,
-            settings.storm_min_online_players as f64,
-        );
-        let storm_endurance_drain_mult_prop = grid.range_prop(
-            "Maelstrom endurance drain multiplier:",
-            0.1,
-            1.0,
-            1.0,
-            10,
-            settings.storm_endurance_drain_mult,
-        );
-        let build_in_storm_enabled_prop = grid.bool_prop(
-            "Allow building in Maelstrom",
-            settings.build_in_storm_enabled,
-        );
-        let storm_map_blocker_prop =
-            grid.bool_prop("Show Maelstrom on map", settings.storm_map_blocker);
-        let monsters_enabled_prop =
-            grid.bool_prop("Elder Things enabled", settings.monsters_enabled);
-        let monster_idle_lifespan_prop = grid.range_prop(
-            "Elder Thing idle lifespan:",
-            30.0,
-            1800.0,
-            1.0,
-            1,
-            settings.monster_idle_lifespan.num_seconds() as f64,
-        );
-        let monster_spawn_rate_mult_prop = grid.range_prop(
-            "Elder Thing spawn rate:",
-            0.1,
-            9.0,
-            1.0,
-            10,
-            settings.monster_spawn_rate_mult,
-        );
-        let env_monster_respawn_rate_mult_prop = grid.range_prop(
-            "Ambient Elder Thing respawn rate:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.env_monster_respawn_rate_mult,
-        );
-        let max_env_monsters_prop = grid.range_prop(
-            "Max ambient Elder Things:",
-            1.0,
-            700.0,
-            1.0,
-            1,
-            settings.max_env_monsters as f64,
-        );
-        let max_ambush_monsters_prop = grid.range_prop(
-            "Max ambush Elder Things:",
-            1.0,
-            300.0,
-            1.0,
-            1,
-            settings.max_ambush_monsters as f64,
-        );
-        let siege_monsters_enabled_prop = grid.bool_prop(
-            "Siege Elder Things enabled",
-            settings.siege_monsters_enabled,
-        );
-        let siege_monster_map_markers_prop = grid.bool_prop(
-            "Siege Elder Thing map markers",
-            settings.siege_monster_map_markers,
-        );
+        let storm_enabled_prop = grid.bool_prop("Enable Maelstrom");
+        let storm_hours_prop = grid.weekly_hours_prop();
+        let storm_min_online_players_prop =
+            grid.range_prop("Maelstrom minimum online players:", 0.0, 40.0, 1.0, 1);
+        let storm_endurance_drain_mult_prop =
+            grid.range_prop("Maelstrom endurance drain multiplier:", 0.1, 1.0, 1.0, 10);
+        let build_in_storm_enabled_prop = grid.bool_prop("Allow building in Maelstrom");
+        let storm_map_blocker_prop = grid.bool_prop("Show Maelstrom on map");
+        let monsters_enabled_prop = grid.bool_prop("Elder Things enabled");
+        let monster_idle_lifespan_prop =
+            grid.range_prop("Elder Thing idle lifespan:", 30.0, 1800.0, 1.0, 1);
+        let monster_spawn_rate_mult_prop =
+            grid.range_prop("Elder Thing spawn rate:", 0.1, 9.0, 1.0, 10);
+        let env_monster_respawn_rate_mult_prop =
+            grid.range_prop("Ambient Elder Thing respawn rate:", 0.1, 10.0, 1.0, 10);
+        let max_env_monsters_prop =
+            grid.range_prop("Max ambient Elder Things:", 1.0, 700.0, 1.0, 1);
+        let max_ambush_monsters_prop =
+            grid.range_prop("Max ambush Elder Things:", 1.0, 300.0, 1.0, 1);
+        let siege_monsters_enabled_prop = grid.bool_prop("Siege Elder Things enabled");
+        let siege_monster_map_markers_prop = grid.bool_prop("Siege Elder Thing map markers");
         let siege_monster_dmg_mult_prop = grid.range_prop(
             "Elder Thing siege damage multiplier:",
             1.0,
             2500.0,
             1.0,
             100,
-            settings.siege_monster_dmg_mult,
         );
-        let min_siege_build_size_prop = grid.range_prop(
-            "Minimum building size to be sieged:",
-            0.0,
-            1000.0,
-            1.0,
-            1,
-            settings.min_siege_build_size as f64,
-        );
-        let siege_monster_respawn_rate_mult_prop = grid.range_prop(
-            "Siege Elder Thing respawn rate:",
-            0.01,
-            10.0,
-            1.0,
-            100,
-            settings.siege_monster_respawn_rate_mult,
-        );
-        let max_siege_monsters_prop = grid.range_prop(
-            "Max siege Elder Things:",
-            1.0,
-            25.0,
-            1.0,
-            1,
-            settings.max_siege_monsters as f64,
-        );
+        let min_siege_build_size_prop =
+            grid.range_prop("Minimum building size to be sieged:", 0.0, 1000.0, 1.0, 1);
+        let siege_monster_respawn_rate_mult_prop =
+            grid.range_prop("Siege Elder Thing respawn rate:", 0.01, 10.0, 1.0, 100);
+        let max_siege_monsters_prop = grid.range_prop("Max siege Elder Things:", 1.0, 25.0, 1.0, 1);
         let siege_build_size_mult_prop = grid.range_prop(
             "Elder Thing siege building size multiplier:",
             0.1,
             10.0,
             1.0,
             10,
-            settings.siege_build_size_mult,
         );
-        let storm_cooldown_prop = grid.range_prop(
-            "Maelstrom cooldown:",
-            1.0,
-            1440.0,
-            1.0,
-            1,
-            settings.storm_cooldown.num_minutes() as f64,
-        );
-        let storm_accumulation_prop = grid.range_prop(
-            "Maelstrom accumulation time:",
-            1.0,
-            1440.0,
-            1.0,
-            1,
-            settings.storm_accumulation.num_minutes() as f64,
-        );
-        let storm_duration_prop = grid.range_prop(
-            "Maelstrom duration:",
-            1.0,
-            1440.0,
-            1.0,
-            1,
-            settings.storm_duration.num_minutes() as f64,
-        );
-        let storm_dissipation_prop = grid.range_prop(
-            "Maelstrom dissipation time:",
-            1.0,
-            1440.0,
-            1.0,
-            1,
-            settings.storm_dissipation.num_minutes() as f64,
-        );
-        let storm_build_dmg_enabled_prop = grid.bool_prop(
-            "Maelstrom building damage enabled",
-            settings.storm_build_dmg_enabled,
-        );
+        let storm_cooldown_prop = grid.range_prop("Maelstrom cooldown:", 1.0, 1440.0, 1.0, 1);
+        let storm_accumulation_prop =
+            grid.range_prop("Maelstrom accumulation time:", 1.0, 1440.0, 1.0, 1);
+        let storm_duration_prop = grid.range_prop("Maelstrom duration:", 1.0, 1440.0, 1.0, 1);
+        let storm_dissipation_prop =
+            grid.range_prop("Maelstrom dissipation time:", 1.0, 1440.0, 1.0, 1);
+        let storm_build_dmg_enabled_prop = grid.bool_prop("Maelstrom building damage enabled");
         let min_storm_build_size_prop = grid.range_prop(
             "Minimum building pieces for Maelstrom damage:",
             0.0,
             1000.0,
             1.0,
             1,
-            settings.min_storm_build_size,
         );
         let storm_build_dmg_rate_mult_prop = grid.range_prop(
             "Maelstrom building damage rate multiplier:",
@@ -230,55 +126,20 @@ impl MaelstromTab {
             20.0,
             1.0,
             10,
-            settings.storm_build_dmg_rate_mult,
         );
-        let storm_build_dmg_mult_prop = grid.range_prop(
-            "Maelstrom building damage multiplier:",
-            0.1,
-            20.0,
-            1.0,
-            10,
-            settings.storm_build_dmg_mult,
-        );
-        let vault_refresh_time_prop = grid.range_prop(
-            "Vault refresh time:",
-            2.0,
-            10800.0,
-            1.0,
-            1,
-            settings.vault_refresh_time.num_minutes() as f64,
-        );
-        let vault_refresh_deviation_prop = grid.range_prop(
-            "Vault refresh deviation:",
-            0.0,
-            3600.0,
-            1.0,
-            1,
-            settings.vault_refresh_deviation.num_minutes() as f64,
-        );
-        let surge_cost_mult_prop = grid.range_prop(
-            "Surge cost multiplier:",
-            0.1,
-            5.0,
-            1.0,
-            10,
-            settings.surge_cost_mult,
-        );
-        let surge_despawn_time_prop = grid.range_prop(
-            "Surge despawn timer:",
-            5.0,
-            300.0,
-            1.0,
-            1,
-            settings.surge_despawn_time.num_minutes() as f64,
-        );
+        let storm_build_dmg_mult_prop =
+            grid.range_prop("Maelstrom building damage multiplier:", 0.1, 20.0, 1.0, 10);
+        let vault_refresh_time_prop = grid.range_prop("Vault refresh time:", 2.0, 10800.0, 1.0, 1);
+        let vault_refresh_deviation_prop =
+            grid.range_prop("Vault refresh deviation:", 0.0, 3600.0, 1.0, 1);
+        let surge_cost_mult_prop = grid.range_prop("Surge cost multiplier:", 0.1, 5.0, 1.0, 10);
+        let surge_despawn_time_prop = grid.range_prop("Surge despawn timer:", 5.0, 300.0, 1.0, 1);
         let shrine_defense_duration_mult_prop = grid.range_prop(
             "Leyshrine defense active time multiplier:",
             0.1,
             10.0,
             1.0,
             10,
-            settings.shrine_defense_duration_mult,
         );
 
         let grid = grid.end();
@@ -377,6 +238,71 @@ impl MaelstromTab {
                 .unwrap(),
             shrine_defense_duration_mult: self.shrine_defense_duration_mult_prop.value().into(),
         }
+    }
+
+    pub fn set_values(&self, settings: &MaelstromSettings) {
+        self.storm_enabled_prop.set_checked(settings.storm_enabled);
+        self.storm_hours_prop.set_value(&settings.storm_hours);
+        self.storm_min_online_players_prop
+            .set_value(settings.storm_min_online_players);
+        self.storm_endurance_drain_mult_prop
+            .set_value(settings.storm_endurance_drain_mult);
+        self.build_in_storm_enabled_prop
+            .set_checked(settings.build_in_storm_enabled);
+        self.storm_map_blocker_prop
+            .set_checked(settings.storm_map_blocker);
+        self.monsters_enabled_prop
+            .set_checked(settings.monsters_enabled);
+        self.monster_idle_lifespan_prop
+            .set_value(settings.monster_idle_lifespan.num_seconds() as f64);
+        self.monster_spawn_rate_mult_prop
+            .set_value(settings.monster_spawn_rate_mult);
+        self.env_monster_respawn_rate_mult_prop
+            .set_value(settings.env_monster_respawn_rate_mult);
+        self.max_env_monsters_prop
+            .set_value(settings.max_env_monsters);
+        self.max_ambush_monsters_prop
+            .set_value(settings.max_ambush_monsters);
+        self.siege_monsters_enabled_prop
+            .set_checked(settings.siege_monsters_enabled);
+        self.siege_monster_map_markers_prop
+            .set_checked(settings.siege_monster_map_markers);
+        self.siege_monster_dmg_mult_prop
+            .set_value(settings.siege_monster_dmg_mult);
+        self.min_siege_build_size_prop
+            .set_value(settings.min_siege_build_size);
+        self.siege_monster_respawn_rate_mult_prop
+            .set_value(settings.siege_monster_respawn_rate_mult);
+        self.max_siege_monsters_prop
+            .set_value(settings.max_siege_monsters);
+        self.siege_build_size_mult_prop
+            .set_value(settings.siege_build_size_mult);
+        self.storm_cooldown_prop
+            .set_value(settings.storm_cooldown.num_minutes() as f64);
+        self.storm_accumulation_prop
+            .set_value(settings.storm_accumulation.num_minutes() as f64);
+        self.storm_duration_prop
+            .set_value(settings.storm_duration.num_minutes() as f64);
+        self.storm_dissipation_prop
+            .set_value(settings.storm_dissipation.num_minutes() as f64);
+        self.storm_build_dmg_enabled_prop
+            .set_checked(settings.storm_build_dmg_enabled);
+        self.min_storm_build_size_prop
+            .set_value(settings.min_storm_build_size);
+        self.storm_build_dmg_rate_mult_prop
+            .set_value(settings.storm_build_dmg_rate_mult);
+        self.storm_build_dmg_mult_prop
+            .set_value(settings.storm_build_dmg_mult);
+        self.vault_refresh_time_prop
+            .set_value(settings.vault_refresh_time.num_minutes() as f64);
+        self.vault_refresh_deviation_prop
+            .set_value(settings.vault_refresh_deviation.num_minutes() as f64);
+        self.surge_cost_mult_prop
+            .set_value(settings.surge_cost_mult);
+        self.surge_despawn_time_prop
+            .set_value(settings.surge_despawn_time.num_minutes() as f64);
+        self.shrine_defense_duration_mult_prop
+            .set_value(settings.shrine_defense_duration_mult);
     }
 }
 

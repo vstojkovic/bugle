@@ -19,7 +19,7 @@ pub struct HarvestingTab {
 }
 
 impl HarvestingTab {
-    pub fn new(settings: HarvestingSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["99.9"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -32,38 +32,14 @@ impl HarvestingTab {
         grid.col().with_stretch(1).add();
         grid.col().with_min_size(input_width).add();
 
-        let item_spoil_rate_mult_prop = grid.range_prop(
-            "Item spoil rate scale:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.item_spoil_rate_mult,
-        );
-        let harvest_amount_mult_prop = grid.range_prop(
-            "Harvest amount multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.harvest_amount_mult,
-        );
-        let rsrc_respawn_speed_mult_prop = grid.range_prop(
-            "Resource respawn speed multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.rsrc_respawn_speed_mult,
-        );
-        let claim_radius_mult_prop = grid.range_prop(
-            "Land claim radius multiplier:",
-            0.25,
-            2.5,
-            1.0,
-            100,
-            settings.claim_radius_mult,
-        );
+        let item_spoil_rate_mult_prop =
+            grid.range_prop("Item spoil rate scale:", 0.1, 10.0, 1.0, 10);
+        let harvest_amount_mult_prop =
+            grid.range_prop("Harvest amount multiplier:", 0.1, 10.0, 1.0, 10);
+        let rsrc_respawn_speed_mult_prop =
+            grid.range_prop("Resource respawn speed multiplier:", 0.1, 10.0, 1.0, 10);
+        let claim_radius_mult_prop =
+            grid.range_prop("Land claim radius multiplier:", 0.25, 2.5, 1.0, 100);
 
         let root = root.add(grid.end());
         root.group().hide();
@@ -90,6 +66,17 @@ impl HarvestingTab {
             },
             claim_radius_mult: self.claim_radius_mult_prop.value().into(),
         }
+    }
+
+    pub fn set_values(&self, settings: &HarvestingSettings) {
+        self.item_spoil_rate_mult_prop
+            .set_value(settings.item_spoil_rate_mult);
+        self.harvest_amount_mult_prop
+            .set_value(settings.harvest_amount_mult);
+        self.rsrc_respawn_speed_mult_prop
+            .set_value(settings.rsrc_respawn_speed_mult);
+        self.claim_radius_mult_prop
+            .set_value(settings.claim_radius_mult);
     }
 }
 

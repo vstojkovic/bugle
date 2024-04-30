@@ -335,6 +335,7 @@ impl Validity {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, AsRefStr, EnumIter, EnumString, FromRepr)]
 #[strum(ascii_case_insensitive)]
+#[repr(u8)]
 pub enum TypeFilter {
     All,
     Official,

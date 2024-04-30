@@ -19,7 +19,7 @@ pub struct CraftingTab {
 }
 
 impl CraftingTab {
-    pub fn new(settings: CraftingSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["99.99"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -32,38 +32,14 @@ impl CraftingTab {
         grid.col().with_stretch(1).add();
         grid.col().with_min_size(input_width).add();
 
-        let crafting_time_mult_prop = grid.range_prop(
-            "Crafting time multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            100,
-            settings.crafting_time_mult,
-        );
-        let thrall_crafting_time_mult_prop = grid.range_prop(
-            "Thrall crafting time multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            100,
-            settings.thrall_crafting_time_mult,
-        );
-        let fuel_burn_time_mult_prop = grid.range_prop(
-            "Fuel burn time multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            100,
-            settings.fuel_burn_time_mult,
-        );
-        let crafting_cost_mult_prop = grid.range_prop(
-            "Crafting cost multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            100,
-            settings.crafting_cost_mult,
-        );
+        let crafting_time_mult_prop =
+            grid.range_prop("Crafting time multiplier:", 0.1, 10.0, 1.0, 100);
+        let thrall_crafting_time_mult_prop =
+            grid.range_prop("Thrall crafting time multiplier:", 0.1, 10.0, 1.0, 100);
+        let fuel_burn_time_mult_prop =
+            grid.range_prop("Fuel burn time multiplier:", 0.1, 10.0, 1.0, 100);
+        let crafting_cost_mult_prop =
+            grid.range_prop("Crafting cost multiplier:", 0.1, 10.0, 1.0, 100);
 
         let root = root.add(grid.end());
         root.group().hide();
@@ -90,6 +66,17 @@ impl CraftingTab {
             fuel_burn_time_mult: self.fuel_burn_time_mult_prop.value().into(),
             crafting_cost_mult: self.crafting_cost_mult_prop.value().into(),
         }
+    }
+
+    pub fn set_values(&self, settings: &CraftingSettings) {
+        self.crafting_time_mult_prop
+            .set_value(settings.crafting_time_mult);
+        self.thrall_crafting_time_mult_prop
+            .set_value(settings.thrall_crafting_time_mult);
+        self.fuel_burn_time_mult_prop
+            .set_value(settings.fuel_burn_time_mult);
+        self.crafting_cost_mult_prop
+            .set_value(settings.crafting_cost_mult);
     }
 }
 

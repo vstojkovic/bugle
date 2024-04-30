@@ -484,7 +484,7 @@ impl SinglePlayerTab {
                 return;
             }
         };
-        let dialog = ServerSettingsDialog::new(settings);
+        let dialog = ServerSettingsDialog::new(&self.logger, Arc::clone(&self.game), settings);
         let Some(settings) = dialog.run() else { return };
         if let Err(err) = self.game.save_server_settings(settings) {
             alert_error(ERR_SAVING_SETTINGS, &err);

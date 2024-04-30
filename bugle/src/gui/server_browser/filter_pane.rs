@@ -153,7 +153,9 @@ impl FilterPane {
     fn populate(&self, filter: &Filter) {
         self.name_input.clone().set_value(filter.name());
         self.map_input.clone().set_value(filter.map());
-        self.type_input.clone().set_value(filter.type_filter() as _);
+        self.type_input
+            .clone()
+            .set_value(filter.type_filter() as u8);
         self.mode_input.clone().set_value(match filter.mode() {
             Some(mode) => (mode as i32) + 1,
             None => 0,

@@ -1,17 +1,21 @@
 use std::borrow::Borrow;
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use fltk::button::{Button, RadioButton, ReturnButton};
+use fltk::dialog::{FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::group::{Group, Wizard};
 use fltk::prelude::*;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 use fltk_float::overlay::OverlayBuilder;
 use fltk_float::{LayoutElement, WrapperFactory};
+use slog::{error, Logger};
 
 use crate::game::settings::server::ServerSettings;
-use crate::gui::wrapper_factory;
+use crate::game::Game;
+use crate::gui::{alert_error, wrapper_factory};
 use crate::util::weak_cb;
 
 use super::building::BuildingTab;
@@ -27,6 +31,8 @@ use super::progression::ProgressionTab;
 use super::survival::SurvivalTab;
 
 pub struct ServerSettingsDialog {
+    logger: Logger,
+    game: Arc<Game>,
     window: Window,
     general_tab: Rc<GeneralTab>,
     progression_tab: Rc<ProgressionTab>,
@@ -43,7 +49,7 @@ pub struct ServerSettingsDialog {
 }
 
 impl ServerSettingsDialog {
-    pub fn new(settings: ServerSettings) -> Rc<Self> {
+    pub fn new(logger: &Logger, game: Arc<Game>, settings: ServerSettings) -> Rc<Self> {
         let mut window = GridBuilder::with_factory(
             Window::default()
                 .with_size(800, 600)
@@ -77,17 +83,17 @@ impl ServerSettingsDialog {
         window.col().with_stretch(1).add();
         let mut content = OverlayBuilder::with_factory(Wizard::default(), wrapper_factory())
             .with_padding(10, 10, 10, 10);
-        let general_tab = add_tab(&mut content, GeneralTab::new(settings.general));
-        let progression_tab = add_tab(&mut content, ProgressionTab::new(settings.progression));
-        let daylight_tab = add_tab(&mut content, DaylightTab::new(settings.daylight));
-        let survival_tab = add_tab(&mut content, SurvivalTab::new(settings.survival));
-        let combat_tab = add_tab(&mut content, CombatTab::new(settings.combat));
-        let harvesting_tab = add_tab(&mut content, HarvestingTab::new(settings.harvesting));
-        let crafting_tab = add_tab(&mut content, CraftingTab::new(settings.crafting));
-        let building_tab = add_tab(&mut content, BuildingTab::new(settings.building));
-        let chat_tab = add_tab(&mut content, ChatTab::new(settings.chat));
-        let followers_tab = add_tab(&mut content, FollowersTab::new(settings.followers));
-        let maelstrom_tab = add_tab(&mut content, MaelstromTab::new(settings.maelstrom));
+        let general_tab = add_tab(&mut content, GeneralTab::new(&settings.general));
+        let progression_tab = add_tab(&mut content, ProgressionTab::new());
+        let daylight_tab = add_tab(&mut content, DaylightTab::new());
+        let survival_tab = add_tab(&mut content, SurvivalTab::new(&settings.survival));
+        let combat_tab = add_tab(&mut content, CombatTab::new());
+        let harvesting_tab = add_tab(&mut content, HarvestingTab::new());
+        let crafting_tab = add_tab(&mut content, CraftingTab::new());
+        let building_tab = add_tab(&mut content, BuildingTab::new());
+        let chat_tab = add_tab(&mut content, ChatTab::new());
+        let followers_tab = add_tab(&mut content, FollowersTab::new());
+        let maelstrom_tab = add_tab(&mut content, MaelstromTab::new());
         let content = content.end();
         let mut content_group = content.group();
         window.cell().unwrap().add(content);
@@ -97,9 +103,18 @@ impl ServerSettingsDialog {
             .with_col_spacing(10)
             .with_top_padding(10);
         actions.row().add();
-        actions.col().with_stretch(1).add();
         let col_group = actions.col_group().add();
         actions.extend_group(col_group).batch(2);
+        actions.col().with_stretch(1).add();
+        actions.extend_group(col_group).batch(2);
+        let mut import_button = actions
+            .cell()
+            .unwrap()
+            .wrap(Button::default().with_label("Import..."));
+        let mut export_button = actions
+            .cell()
+            .unwrap()
+            .wrap(Button::default().with_label("Export..."));
         actions.cell().unwrap().skip();
         let mut ok_button = actions
             .cell()
@@ -140,6 +155,8 @@ impl ServerSettingsDialog {
         let window = window.group();
 
         let this = Rc::new(Self {
+            logger: logger.clone(),
+            game,
             window,
             general_tab,
             progression_tab,
@@ -154,9 +171,12 @@ impl ServerSettingsDialog {
             maelstrom_tab,
             result: Cell::new(None),
         });
+        this.set_values(&settings);
 
         ok_button.set_callback(weak_cb!([this] => |_| this.ok_clicked()));
         cancel_button.set_callback(weak_cb!([this] => |_| this.cancel_clicked()));
+        import_button.set_callback(weak_cb!([this] => |_| this.import_clicked()));
+        export_button.set_callback(weak_cb!([this] => |_| this.export_clicked()));
 
         this
     }
@@ -183,6 +203,48 @@ impl ServerSettingsDialog {
         self.window.clone().hide();
     }
 
+    fn import_clicked(&self) {
+        let mut dialog = NativeFileChooser::new(FileDialogType::BrowseFile);
+        dialog.set_filter(DLG_FILTER_INI);
+        dialog.set_directory(&self.game.config_path()).ok();
+        dialog.show();
+
+        let path = dialog.filename();
+        if path.as_os_str().is_empty() {
+            return;
+        }
+
+        let settings = match ServerSettings::load_from_file(path) {
+            Ok(settings) => settings,
+            Err(err) => {
+                error!(self.logger, "Error importing settings"; "error" => %err);
+                alert_error(ERR_IMPORTING_SETTINGS, &err);
+                return;
+            }
+        };
+        self.set_values(&settings);
+    }
+
+    fn export_clicked(&self) {
+        let mut dialog = NativeFileChooser::new(FileDialogType::BrowseSaveFile);
+        dialog.set_filter(DLG_FILTER_INI);
+        dialog.set_directory(&self.game.config_path()).ok();
+        dialog.set_option(FileDialogOptions::SaveAsConfirm);
+        dialog.show();
+
+        let mut path = dialog.filename();
+        if path.as_os_str().is_empty() {
+            return;
+        }
+        if path.extension().is_none() {
+            path.set_extension("ini");
+        }
+        if let Err(err) = self.values().save_to_file(path) {
+            error!(self.logger, "Error exporting settings"; "error" => %err);
+            alert_error(ERR_EXPORTING_SETTINGS, &err);
+        }
+    }
+
     fn values(&self) -> ServerSettings {
         ServerSettings {
             general: self.general_tab.values(),
@@ -198,7 +260,25 @@ impl ServerSettingsDialog {
             maelstrom: self.maelstrom_tab.values(),
         }
     }
+
+    fn set_values(&self, settings: &ServerSettings) {
+        self.general_tab.set_values(&settings.general);
+        self.progression_tab.set_values(&settings.progression);
+        self.daylight_tab.set_values(&settings.daylight);
+        self.survival_tab.set_values(&settings.survival);
+        self.combat_tab.set_values(&settings.combat);
+        self.harvesting_tab.set_values(&settings.harvesting);
+        self.crafting_tab.set_values(&settings.crafting);
+        self.building_tab.set_values(&settings.building);
+        self.chat_tab.set_values(&settings.chat);
+        self.followers_tab.set_values(&settings.followers);
+        self.maelstrom_tab.set_values(&settings.maelstrom);
+    }
 }
+
+const DLG_FILTER_INI: &str = "Ini Files\t*.ini";
+const ERR_IMPORTING_SETTINGS: &str = "Error while importing the settings.";
+const ERR_EXPORTING_SETTINGS: &str = "Error while exporting the settings.";
 
 fn tab_button<F: Borrow<WrapperFactory>>(
     tabs: &mut GridBuilder<Group, F>,

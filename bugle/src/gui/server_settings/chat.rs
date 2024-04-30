@@ -20,7 +20,7 @@ pub struct ChatTab {
 }
 
 impl ChatTab {
-    pub fn new(settings: ChatSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["99999.9"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -33,23 +33,9 @@ impl ChatTab {
         grid.col().with_stretch(1).add();
         grid.col().with_min_size(input_width).add();
 
-        let local_radius_prop = grid.range_prop(
-            "Chat local radius:",
-            0.0,
-            20000.0,
-            1.0,
-            10,
-            settings.local_radius,
-        );
-        let max_msg_len_prop = grid.range_prop(
-            "Max message length:",
-            0.0,
-            1024.0,
-            1.0,
-            1,
-            settings.max_msg_len as f64,
-        );
-        let global_enabled_prop = grid.bool_prop("Chat has global", settings.global_enabled);
+        let local_radius_prop = grid.range_prop("Chat local radius:", 0.0, 20000.0, 1.0, 10);
+        let max_msg_len_prop = grid.range_prop("Max message length:", 0.0, 1024.0, 1.0, 1);
+        let global_enabled_prop = grid.bool_prop("Chat has global");
 
         let root = root.add(grid.end());
         root.group().hide();
@@ -72,6 +58,13 @@ impl ChatTab {
             max_msg_len: self.max_msg_len_prop.value().to_u16().unwrap(),
             global_enabled: self.global_enabled_prop.is_checked(),
         }
+    }
+
+    pub fn set_values(&self, settings: &ChatSettings) {
+        self.local_radius_prop.set_value(settings.local_radius);
+        self.max_msg_len_prop.set_value(settings.max_msg_len as f64);
+        self.global_enabled_prop
+            .set_checked(settings.global_enabled);
     }
 }
 

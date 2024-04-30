@@ -92,8 +92,10 @@ impl SliderInput {
         self.slider.value()
     }
 
-    fn set_value(&self, value: f64) {
-        let value = value.clamp(self.slider.minimum(), self.slider.maximum());
+    fn set_value<V: Into<f64>>(&self, value: V) {
+        let value = value
+            .into()
+            .clamp(self.slider.minimum(), self.slider.maximum());
         self.slider.clone().set_value(value);
         self.input
             .clone()
@@ -109,8 +111,9 @@ struct HoursInput {
 }
 
 impl HoursInput {
-    fn new(init_value: &Hours) -> Self {
-        let value = Rc::new(Cell::new(*init_value));
+    fn new() -> Self {
+        let init_value = Hours::default();
+        let value = Rc::new(Cell::new(init_value));
 
         let mut start_input = Input::default();
         start_input.set_value(&init_value.start.to_string());
@@ -168,6 +171,12 @@ impl HoursInput {
     fn value(&self) -> Hours {
         self.value.get()
     }
+
+    fn set_value(&self, value: Hours) {
+        self.value.set(value);
+        self.start_input.clone().set_value(&value.start.to_string());
+        self.end_input.clone().set_value(&value.end.to_string());
+    }
 }
 
 struct DailyHoursInput(HashMap<Weekday, (CheckButton, HoursInput)>);
@@ -187,6 +196,14 @@ impl DailyHoursInput {
             })
             .collect()
     }
+
+    fn set_value(&self, value: &DailyHours) {
+        for (day, entry) in value.iter() {
+            let (enabled, hours) = &self.0[&day];
+            enabled.set_checked(entry.enabled);
+            hours.set_value(entry.hours);
+        }
+    }
 }
 
 struct WeeklyHoursInput {
@@ -195,10 +212,10 @@ struct WeeklyHoursInput {
 }
 
 impl WeeklyHoursInput {
-    fn new(init_value: &WeeklyHours) -> Self {
+    fn new() -> Self {
         Self {
-            weekday: HoursInput::new(&init_value.weekday_hours),
-            weekend: HoursInput::new(&init_value.weekend_hours),
+            weekday: HoursInput::new(),
+            weekend: HoursInput::new(),
         }
     }
 
@@ -207,6 +224,11 @@ impl WeeklyHoursInput {
             weekday_hours: self.weekday.value(),
             weekend_hours: self.weekend.value(),
         }
+    }
+
+    fn set_value(&self, value: &WeeklyHours) {
+        self.weekday.set_value(value.weekday_hours);
+        self.weekend.set_value(value.weekend_hours);
     }
 }
 
@@ -226,46 +248,38 @@ fn make_label(text: &str) -> Frame {
 }
 
 trait EditorBuilder {
-    fn bool_prop<I: Into<bool>>(&mut self, label: &str, init_value: I) -> CheckButton;
-    fn range_prop<I: Into<f64>>(
+    fn bool_prop(&mut self, label: &str) -> CheckButton;
+    fn range_prop(
         &mut self,
         label: &str,
         min: f64,
         max: f64,
         step: f64,
         step_div: i32,
-        init_value: I,
     ) -> SliderInput;
-    fn enum_prop<I: Into<i32>>(
-        &mut self,
-        label: &str,
-        values: &[&str],
-        init_value: I,
-    ) -> DropDownList;
-    fn daily_hours_prop(&mut self, check_label: &str, init_value: &DailyHours) -> DailyHoursInput;
-    fn weekly_hours_prop(&mut self, init_value: &WeeklyHours) -> WeeklyHoursInput;
+    fn enum_prop(&mut self, label: &str, values: &[&str]) -> DropDownList;
+    fn daily_hours_prop(&mut self, check_label: &str) -> DailyHoursInput;
+    fn weekly_hours_prop(&mut self) -> WeeklyHoursInput;
 }
 
 impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuilder<G, F> {
-    fn bool_prop<I: Into<bool>>(&mut self, label: &str, init_value: I) -> CheckButton {
+    fn bool_prop(&mut self, label: &str) -> CheckButton {
         let span_cols = self.num_cols();
         self.row().add();
         let button = self
             .span(1, span_cols)
             .unwrap()
             .wrap(CheckButton::default().with_label(label));
-        button.set_checked(init_value.into());
         button
     }
 
-    fn range_prop<I: Into<f64>>(
+    fn range_prop(
         &mut self,
         label: &str,
         min: f64,
         max: f64,
         step: f64,
         step_div: i32,
-        init_value: I,
     ) -> SliderInput {
         let span_cols = self.num_cols() - 2;
         self.row().add();
@@ -279,16 +293,10 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
                 Default::default(),
             ));
         self.cell().unwrap().wrap(slider_input.input.clone());
-        slider_input.set_value(init_value.into());
         slider_input
     }
 
-    fn enum_prop<I: Into<i32>>(
-        &mut self,
-        label: &str,
-        values: &[&str],
-        init_value: I,
-    ) -> DropDownList {
+    fn enum_prop(&mut self, label: &str, values: &[&str]) -> DropDownList {
         let span_cols = self.num_cols() - 1;
         self.row().add();
         self.cell().unwrap().wrap(make_label(label));
@@ -299,18 +307,12 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
         for value in values {
             input.add(value);
         }
-        input.set_value(init_value.into());
         input
     }
 
-    fn daily_hours_prop(&mut self, check_label: &str, init_value: &DailyHours) -> DailyHoursInput {
+    fn daily_hours_prop(&mut self, check_label: &str) -> DailyHoursInput {
         let mut result = HashMap::with_capacity(7);
         for day in weekday_iter() {
-            let (enabled, value) = match init_value.get(day) {
-                Some(value) => (true, *value),
-                None => (false, Hours::default()),
-            };
-
             self.row().add();
             self.cell().unwrap().wrap(
                 Frame::default()
@@ -321,7 +323,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
                 .cell()
                 .unwrap()
                 .wrap(CheckButton::default().with_label(check_label));
-            let input = HoursInput::new(&value);
+            let input = HoursInput::new();
             self.cell()
                 .unwrap()
                 .wrap(Frame::default().with_label("Start:"));
@@ -331,15 +333,13 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
                 .wrap(Frame::default().with_label("End:"));
             self.cell().unwrap().wrap(input.end_input.clone());
 
-            enabled_check.set_checked(enabled);
-
             result.insert(day, (enabled_check, input));
         }
         DailyHoursInput(result)
     }
 
-    fn weekly_hours_prop(&mut self, init_value: &WeeklyHours) -> WeeklyHoursInput {
-        let input = WeeklyHoursInput::new(init_value);
+    fn weekly_hours_prop(&mut self) -> WeeklyHoursInput {
+        let input = WeeklyHoursInput::new();
 
         let span_cols = self.num_cols() - 4;
         self.row().add();

@@ -8,8 +8,6 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
 use ini::Properties;
-use ini_persist::load::LoadProperty;
-use ini_persist::save::SaveProperty;
 use slog::{debug, info, warn, Logger};
 use walkdir::WalkDir;
 
@@ -40,6 +38,7 @@ pub struct Game {
     needs_update: bool,
     version: (u32, u16),
     save_path: PathBuf,
+    config_path: PathBuf,
     game_ini_path: PathBuf,
     server_settings_path: PathBuf,
     mod_list_path: PathBuf,
@@ -202,6 +201,7 @@ impl Game {
             needs_update,
             version,
             save_path,
+            config_path,
             game_ini_path,
             server_settings_path,
             mod_list_path,
@@ -236,6 +236,10 @@ impl Game {
 
     pub fn save_path(&self) -> &Path {
         &self.save_path
+    }
+
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
     }
 
     pub fn in_progress_game_path(&self, map_id: usize) -> PathBuf {
@@ -422,22 +426,11 @@ impl Game {
     }
 
     pub fn load_server_settings(&self) -> Result<ServerSettings> {
-        let ini = config::load_ini(&self.server_settings_path)?;
-        let mut settings = ServerSettings::default();
-        if let Some(section) = ini.section(Some(SECTION_SERVER_SETTINGS)) {
-            settings.load_in(section, "")?;
-        }
-        Ok(settings)
+        ServerSettings::load_from_file(&self.server_settings_path)
     }
 
     pub fn save_server_settings(&self, settings: ServerSettings) -> Result<()> {
-        let mut ini = config::load_ini(&self.server_settings_path)?;
-        let section = ini
-            .entry(Some(SECTION_SERVER_SETTINGS.into()))
-            .or_insert_with(Properties::default);
-        ServerSettings::remove(section, "");
-        settings.append(section, "");
-        config::save_ini(&ini, &self.server_settings_path)
+        settings.save_to_file(&self.server_settings_path)
     }
 
     pub fn last_session(&self) -> MutexGuard<Option<Session>> {
@@ -517,7 +510,6 @@ const SECTION_FAVORITE_SERVERS: &str = "FavoriteServers";
 const SECTION_FUNCOM_LIVE_SERVICES: &str = "FuncomLiveServices";
 const SECTION_SAVED_SERVERS: &str = "SavedServers";
 const SECTION_SAVED_COOP_DATA: &str = "SavedCoopData";
-const SECTION_SERVER_SETTINGS: &str = "ServerSettings";
 
 const KEY_CACHED_USERS: &str = "CachedUsers";
 const KEY_LAST_CONNECTED: &str = "LastConnected";

@@ -1,4 +1,6 @@
 use std::cell::{Ref, RefCell};
+use std::fs::{File, OpenOptions};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -291,7 +293,11 @@ impl ConfigPersister for IniConfigPersister {
 }
 
 pub fn load_ini<P: AsRef<Path>>(path: P) -> Result<Ini> {
-    let text = load_text_lossy(path)?;
+    load_ini_from_file(File::open(path.as_ref())?)
+}
+
+pub fn load_ini_from_file(file: File) -> Result<Ini> {
+    let text = load_text_lossy(file)?;
     Ok(Ini::load_from_str_opt(
         &text,
         ParseOption {
@@ -302,8 +308,17 @@ pub fn load_ini<P: AsRef<Path>>(path: P) -> Result<Ini> {
 }
 
 pub fn save_ini<P: AsRef<Path>>(ini: &Ini, path: P) -> Result<()> {
-    Ok(ini.write_to_file_opt(
-        path,
+    let file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(path.as_ref())?;
+    save_ini_to_file(ini, file)
+}
+
+pub fn save_ini_to_file(ini: &Ini, mut file: File) -> Result<()> {
+    Ok(ini.write_to_opt(
+        &mut file,
         WriteOption {
             escape_policy: EscapePolicy::Nothing,
             line_separator: LineSeparator::SystemDefault,
@@ -311,8 +326,9 @@ pub fn save_ini<P: AsRef<Path>>(ini: &Ini, path: P) -> Result<()> {
     )?)
 }
 
-fn load_text_lossy<P: AsRef<Path>>(path: P) -> std::io::Result<String> {
-    let bytes = std::fs::read(path.as_ref())?;
+fn load_text_lossy(mut file: File) -> std::io::Result<String> {
+    let mut bytes = vec![];
+    file.read_to_end(&mut bytes)?;
 
     // check for UTF-16LE BOM
     if bytes.len() >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe {

@@ -26,7 +26,7 @@ pub struct BuildingTab {
 }
 
 impl BuildingTab {
-    pub fn new(settings: BuildingSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["99.9"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -42,44 +42,18 @@ impl BuildingTab {
         let creative_mode_prop = grid.enum_prop(
             "Creative mode server:",
             &["Admins Only", "Everyone", "Force for Everyone"],
-            settings.creative_mode as u8,
         );
-        let build_anywhere_prop =
-            grid.bool_prop("Allow building anywhere", settings.build_anywhere);
-        let stability_loss_mult_prop = grid.range_prop(
-            "Stability loss multiplier:",
-            0.0,
-            5.0,
-            1.0,
-            100,
-            settings.stability_loss_mult,
-        );
-        let build_during_pvp_disabled_prop = grid.bool_prop(
-            "Disable building during time-restricted PVP",
-            settings.build_during_pvp_disabled,
-        );
-        let abandonment_disabled_prop = grid.bool_prop(
-            "Disable building abandonment",
-            settings.abandonment_disabled,
-        );
-        let decay_time_mult_prop = grid.range_prop(
-            "Building decay time multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.decay_time_mult,
-        );
-        let thrall_decay_disabled_prop =
-            grid.bool_prop("Disable thrall decay", settings.thrall_decay_disabled);
-        let thrall_decay_time_prop = grid.range_prop(
-            "Thrall decay time (days):",
-            1.0,
-            30.0,
-            1.0,
-            1,
-            settings.thrall_decay_time.num_days() as f64,
-        );
+        let build_anywhere_prop = grid.bool_prop("Allow building anywhere");
+        let stability_loss_mult_prop =
+            grid.range_prop("Stability loss multiplier:", 0.0, 5.0, 1.0, 100);
+        let build_during_pvp_disabled_prop =
+            grid.bool_prop("Disable building during time-restricted PVP");
+        let abandonment_disabled_prop = grid.bool_prop("Disable building abandonment");
+        let decay_time_mult_prop =
+            grid.range_prop("Building decay time multiplier:", 0.1, 10.0, 1.0, 10);
+        let thrall_decay_disabled_prop = grid.bool_prop("Disable thrall decay");
+        let thrall_decay_time_prop =
+            grid.range_prop("Thrall decay time (days):", 1.0, 30.0, 1.0, 1);
 
         let root = root.add(grid.end());
         root.group().hide();
@@ -113,6 +87,25 @@ impl BuildingTab {
             thrall_decay_time: TimeDelta::try_days(self.thrall_decay_time_prop.value() as i64)
                 .unwrap(),
         }
+    }
+
+    pub fn set_values(&self, settings: &BuildingSettings) {
+        self.creative_mode_prop
+            .set_value(settings.creative_mode as u8);
+        self.build_anywhere_prop
+            .set_checked(settings.build_anywhere);
+        self.stability_loss_mult_prop
+            .set_value(settings.stability_loss_mult);
+        self.build_during_pvp_disabled_prop
+            .set_checked(settings.build_during_pvp_disabled);
+        self.abandonment_disabled_prop
+            .set_checked(settings.abandonment_disabled);
+        self.decay_time_mult_prop
+            .set_value(settings.decay_time_mult);
+        self.thrall_decay_disabled_prop
+            .set_checked(settings.thrall_decay_disabled);
+        self.thrall_decay_time_prop
+            .set_value(settings.thrall_decay_time.num_days() as f64);
     }
 }
 

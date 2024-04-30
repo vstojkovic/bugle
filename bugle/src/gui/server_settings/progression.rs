@@ -20,7 +20,7 @@ pub struct ProgressionTab {
 }
 
 impl ProgressionTab {
-    pub fn new(settings: ProgressionSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["99.9"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -33,46 +33,12 @@ impl ProgressionTab {
         grid.col().with_stretch(1).add();
         grid.col().with_min_size(input_width).add();
 
-        let xp_rate_mult_prop = grid.range_prop(
-            "Player XP rate multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.xp_rate_mult,
-        );
-        let xp_time_mult_prop = grid.range_prop(
-            "Player XP time multiplier:",
-            0.0,
-            10.0,
-            1.0,
-            10,
-            settings.xp_time_mult,
-        );
-        let xp_kill_mult_prop = grid.range_prop(
-            "Player XP kill multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.xp_kill_mult,
-        );
-        let xp_harvest_mult_prop = grid.range_prop(
-            "Player XP harvest multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.xp_harvest_mult,
-        );
-        let xp_craft_mult_prop = grid.range_prop(
-            "Player XP craft multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.xp_craft_mult,
-        );
+        let xp_rate_mult_prop = grid.range_prop("Player XP rate multiplier:", 0.1, 10.0, 1.0, 10);
+        let xp_time_mult_prop = grid.range_prop("Player XP time multiplier:", 0.0, 10.0, 1.0, 10);
+        let xp_kill_mult_prop = grid.range_prop("Player XP kill multiplier:", 0.1, 10.0, 1.0, 10);
+        let xp_harvest_mult_prop =
+            grid.range_prop("Player XP harvest multiplier:", 0.1, 10.0, 1.0, 10);
+        let xp_craft_mult_prop = grid.range_prop("Player XP craft multiplier:", 0.1, 10.0, 1.0, 10);
 
         let root = root.add(grid.end());
         root.group().hide();
@@ -101,6 +67,15 @@ impl ProgressionTab {
             xp_harvest_mult: self.xp_harvest_mult_prop.value().into(),
             xp_craft_mult: self.xp_craft_mult_prop.value().into(),
         }
+    }
+
+    pub fn set_values(&self, settings: &ProgressionSettings) {
+        self.xp_rate_mult_prop.set_value(settings.xp_rate_mult);
+        self.xp_time_mult_prop.set_value(settings.xp_time_mult);
+        self.xp_kill_mult_prop.set_value(settings.xp_kill_mult);
+        self.xp_harvest_mult_prop
+            .set_value(settings.xp_harvest_mult);
+        self.xp_craft_mult_prop.set_value(settings.xp_craft_mult);
     }
 }
 

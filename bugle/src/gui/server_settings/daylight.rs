@@ -22,7 +22,7 @@ pub struct DaylightTab {
 }
 
 impl DaylightTab {
-    pub fn new(settings: DaylightSettings) -> Rc<Self> {
+    pub fn new() -> Rc<Self> {
         let input_width = min_input_width(&["99.9"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -35,42 +35,13 @@ impl DaylightTab {
         grid.col().with_stretch(1).add();
         grid.col().with_min_size(input_width).add();
 
-        let day_cycle_speed_mult_prop = grid.range_prop(
-            "Day cycle speed:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.day_cycle_speed_mult,
-        );
-        let day_time_speed_mult_prop = grid.range_prop(
-            "Day time speed:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.day_time_speed_mult,
-        );
-        let night_time_speed_mult_prop = grid.range_prop(
-            "Night time speed:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.night_time_speed_mult,
-        );
-        let dawn_dusk_speed_mult_prop = grid.range_prop(
-            "Dawn/dusk time speed:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.dawn_dusk_speed_mult,
-        );
-        let use_catch_up_time_prop =
-            grid.bool_prop("Use catch up time", settings.use_catch_up_time);
-        let catch_up_time_prop =
-            grid.range_prop("Catch up time:", 1.0, 24.0, 1.0, 1, settings.catch_up_time);
+        let day_cycle_speed_mult_prop = grid.range_prop("Day cycle speed:", 0.1, 10.0, 1.0, 10);
+        let day_time_speed_mult_prop = grid.range_prop("Day time speed:", 0.1, 10.0, 1.0, 10);
+        let night_time_speed_mult_prop = grid.range_prop("Night time speed:", 0.1, 10.0, 1.0, 10);
+        let dawn_dusk_speed_mult_prop =
+            grid.range_prop("Dawn/dusk time speed:", 0.1, 10.0, 1.0, 10);
+        let use_catch_up_time_prop = grid.bool_prop("Use catch up time");
+        let catch_up_time_prop = grid.range_prop("Catch up time:", 1.0, 24.0, 1.0, 1);
 
         let root = root.add(grid.end());
         root.group().hide();
@@ -101,6 +72,20 @@ impl DaylightTab {
             night_time_speed_mult: self.night_time_speed_mult_prop.value().into(),
             catch_up_time: self.catch_up_time_prop.value(),
         }
+    }
+
+    pub fn set_values(&self, settings: &DaylightSettings) {
+        self.day_cycle_speed_mult_prop
+            .set_value(settings.day_cycle_speed_mult);
+        self.day_time_speed_mult_prop
+            .set_value(settings.day_time_speed_mult);
+        self.night_time_speed_mult_prop
+            .set_value(settings.night_time_speed_mult);
+        self.dawn_dusk_speed_mult_prop
+            .set_value(settings.dawn_dusk_speed_mult);
+        self.use_catch_up_time_prop
+            .set_checked(settings.use_catch_up_time);
+        self.catch_up_time_prop.set_value(settings.catch_up_time);
     }
 }
 

@@ -28,7 +28,7 @@ pub struct SurvivalTab {
 }
 
 impl SurvivalTab {
-    pub fn new(settings: SurvivalSettings) -> Rc<Self> {
+    pub fn new(settings: &SurvivalSettings) -> Rc<Self> {
         let input_width = min_input_width(&["99.9"]);
 
         let root = Scrollable::builder().with_gap(10, 10);
@@ -41,76 +41,31 @@ impl SurvivalTab {
         grid.col().with_stretch(1).add();
         grid.col().with_min_size(input_width).add();
 
-        let stamina_cost_mult_prop = grid.range_prop(
-            "Stamina cost multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.stamina_cost_mult,
-        );
-        let active_thirst_mult_prop = grid.range_prop(
-            "Player active thirst multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.active_thirst_mult,
-        );
-        let active_hunger_mult_prop = grid.range_prop(
-            "Player active hunger multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.active_hunger_mult,
-        );
-        let idle_thirst_mult_prop = grid.range_prop(
-            "Player idle thirst multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.idle_thirst_mult,
-        );
-        let idle_hunger_mult_prop = grid.range_prop(
-            "Player idle hunger multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.idle_hunger_mult,
-        );
+        let stamina_cost_mult_prop =
+            grid.range_prop("Stamina cost multiplier:", 0.1, 10.0, 1.0, 10);
+        let active_thirst_mult_prop =
+            grid.range_prop("Player active thirst multiplier:", 0.1, 10.0, 1.0, 10);
+        let active_hunger_mult_prop =
+            grid.range_prop("Player active hunger multiplier:", 0.1, 10.0, 1.0, 10);
+        let idle_thirst_mult_prop =
+            grid.range_prop("Player idle thirst multiplier:", 0.1, 10.0, 1.0, 10);
+        let idle_hunger_mult_prop =
+            grid.range_prop("Player idle hunger multiplier:", 0.1, 10.0, 1.0, 10);
         let drop_items_on_death_prop = grid.enum_prop(
             "Drop equipment on death:",
             &["Everything", "Backpack", "Nothing"],
-            settings.drop_items_on_death as u8,
         );
-        let anyone_can_loot_corpse_prop =
-            grid.bool_prop("Everybody can loot corpse", settings.anyone_can_loot_corpse);
-        let corruption_removal_mult_prop = grid.range_prop(
-            "Thrall corruption removal multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.corruption_removal_mult,
-        );
-        let corruption_gain_mult_prop = grid.range_prop(
-            "Player corruption gain multiplier:",
-            0.1,
-            10.0,
-            1.0,
-            10,
-            settings.corruption_gain_mult,
-        );
+        let anyone_can_loot_corpse_prop = grid.bool_prop("Everybody can loot corpse");
+        let corruption_removal_mult_prop =
+            grid.range_prop("Thrall corruption removal multiplier:", 0.1, 10.0, 1.0, 10);
+        let corruption_gain_mult_prop =
+            grid.range_prop("Player corruption gain multiplier:", 0.1, 10.0, 1.0, 10);
         let sorcery_corruption_gain_mult_prop = grid.range_prop(
             "Player sorcerous corruption gain multiplier:",
             0.1,
             10.0,
             1.0,
             10,
-            settings.sorcery_corruption_gain_mult,
         );
 
         let root = root.add(grid.end());
@@ -155,6 +110,29 @@ impl SurvivalTab {
             corruption_gain_mult: self.corruption_gain_mult_prop.value().into(),
             sorcery_corruption_gain_mult: self.sorcery_corruption_gain_mult_prop.value().into(),
         }
+    }
+
+    pub fn set_values(&self, settings: &SurvivalSettings) {
+        self.stamina_cost_mult_prop
+            .set_value(settings.stamina_cost_mult);
+        self.active_thirst_mult_prop
+            .set_value(settings.active_thirst_mult);
+        self.active_hunger_mult_prop
+            .set_value(settings.active_hunger_mult);
+        self.idle_thirst_mult_prop
+            .set_value(settings.idle_thirst_mult);
+        self.idle_hunger_mult_prop
+            .set_value(settings.idle_hunger_mult);
+        self.drop_items_on_death_prop
+            .set_value(settings.drop_items_on_death as u8);
+        self.anyone_can_loot_corpse_prop
+            .set_checked(settings.anyone_can_loot_corpse);
+        self.corruption_removal_mult_prop
+            .set_value(settings.corruption_removal_mult);
+        self.corruption_gain_mult_prop
+            .set_value(settings.corruption_gain_mult);
+        self.sorcery_corruption_gain_mult_prop
+            .set_value(settings.sorcery_corruption_gain_mult);
     }
 }
 
