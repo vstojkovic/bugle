@@ -5,15 +5,17 @@ use std::sync::Arc;
 
 use fltk::button::{Button, RadioButton, ReturnButton};
 use fltk::dialog::{FileDialogOptions, FileDialogType, NativeFileChooser};
+use fltk::enums::Shortcut;
 use fltk::group::{Group, Wizard};
+use fltk::menu::{MenuButton, MenuFlag};
 use fltk::prelude::*;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 use fltk_float::overlay::OverlayBuilder;
 use fltk_float::{LayoutElement, WrapperFactory};
-use slog::{error, Logger};
+use slog::{error, warn, Logger};
 
-use crate::game::settings::server::ServerSettings;
+use crate::game::settings::server::{Preset, ServerSettings};
 use crate::game::Game;
 use crate::gui::{alert_error, wrapper_factory};
 use crate::util::weak_cb;
@@ -104,7 +106,7 @@ impl ServerSettingsDialog {
             .with_top_padding(10);
         actions.row().add();
         let col_group = actions.col_group().add();
-        actions.extend_group(col_group).batch(2);
+        actions.extend_group(col_group).batch(3);
         actions.col().with_stretch(1).add();
         actions.extend_group(col_group).batch(2);
         let mut import_button = actions
@@ -115,6 +117,10 @@ impl ServerSettingsDialog {
             .cell()
             .unwrap()
             .wrap(Button::default().with_label("Export..."));
+        let mut preset_button = actions
+            .cell()
+            .unwrap()
+            .wrap(MenuButton::default().with_label("Preset"));
         actions.cell().unwrap().skip();
         let mut ok_button = actions
             .cell()
@@ -177,6 +183,30 @@ impl ServerSettingsDialog {
         cancel_button.set_callback(weak_cb!([this] => |_| this.cancel_clicked()));
         import_button.set_callback(weak_cb!([this] => |_| this.import_clicked()));
         export_button.set_callback(weak_cb!([this] => |_| this.export_clicked()));
+        preset_button.add(
+            "Civilized",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.preset_clicked(Preset::Civilized);
+            }),
+        );
+        preset_button.add(
+            "Decadent",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.preset_clicked(Preset::Decadent);
+            }),
+        );
+        preset_button.add(
+            "Barbaric",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.preset_clicked(Preset::Barbaric);
+            }),
+        );
 
         this
     }
@@ -243,6 +273,18 @@ impl ServerSettingsDialog {
             error!(self.logger, "Error exporting settings"; "error" => %err);
             alert_error(ERR_EXPORTING_SETTINGS, &err);
         }
+    }
+
+    fn preset_clicked(&self, preset: Preset) {
+        let nudity = match self.game.max_nudity() {
+            Ok(nudity) => nudity,
+            Err(err) => {
+                warn!(self.logger, "Error reading game settings"; "error" => %err);
+                Default::default()
+            }
+        };
+        let settings = ServerSettings::preset(preset, nudity);
+        self.set_values(&settings);
     }
 
     fn values(&self) -> ServerSettings {

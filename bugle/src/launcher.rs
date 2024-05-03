@@ -10,6 +10,7 @@ use slog::{trace, Logger};
 use crate::auth_manager::AuthManager;
 use crate::config::{BattlEyeUsage, ConfigManager};
 use crate::game::platform::steam::SteamClient;
+use crate::game::settings::server::ServerSettings;
 use crate::game::{Game, Launch, LaunchOptions, MapRef, ServerRef, Session};
 use crate::gui::Dialog;
 use crate::mod_manager::ModManager;
@@ -168,7 +169,11 @@ impl Launcher {
         Ok(())
     }
 
-    pub fn start_new_singleplayer_game(&self, map_id: usize) -> Result<()> {
+    pub fn start_new_singleplayer_game(
+        &self,
+        map_id: usize,
+        settings: ServerSettings,
+    ) -> Result<()> {
         if !self.can_launch() {
             return Ok(());
         }
@@ -182,6 +187,7 @@ impl Launcher {
             }
             self.show_offline_singleplayer_bug_warning();
         }
+        self.game.save_server_settings(settings)?;
         self.saves
             .clear_progress(map_id, fls_account_id.as_deref())?;
         self.launch_single_player(map_id, true)

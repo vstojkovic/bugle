@@ -255,6 +255,12 @@ pub enum Nudity {
     Full,
 }
 
+impl Default for Nudity {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 fn parse_seconds(value: &str) -> ini_persist::Result<TimeDelta> {
     parse_delta(value, "seconds", 1.0)
 }

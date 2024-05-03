@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
 use ini::Properties;
+use ini_persist::load::ConstructProperty;
 use slog::{debug, info, warn, Logger};
 use walkdir::WalkDir;
 
@@ -30,6 +31,7 @@ use self::engine::version::get_game_version;
 pub use self::launch::Launch;
 pub use self::mod_info::{ModEntry, ModLibraryBuilder, ModProvenance, ModRef, Mods};
 use self::settings::server::ServerSettings;
+use self::settings::Nudity;
 
 pub struct Game {
     logger: Logger,
@@ -423,6 +425,15 @@ impl Game {
         }
 
         Ok(saves)
+    }
+
+    pub fn max_nudity(&self) -> Result<Nudity> {
+        let game_ini = config::load_ini(&self.game_ini_path)?;
+        let Some(section) = game_ini.section(Some("Settings.Gameplay")) else {
+            return Ok(Nudity::default());
+        };
+        let nudity = Nudity::load(section, "NudityLevel")?;
+        Ok(nudity.unwrap_or_default())
     }
 
     pub fn load_server_settings(&self) -> Result<ServerSettings> {

@@ -4,6 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 use ini_persist::load::{IniLoad, LoadProperty};
 use ini_persist::save::{IniSave, SaveProperty};
+use strum_macros::{EnumIter, FromRepr};
 
 use crate::config;
 
@@ -16,6 +17,7 @@ mod followers;
 mod general;
 mod harvesting;
 mod maelstrom;
+mod presets;
 mod progression;
 mod survival;
 
@@ -33,6 +35,8 @@ pub use self::harvesting::{BaseHarvestingSettings, HarvestingSettings};
 pub use self::maelstrom::MaelstromSettings;
 pub use self::progression::{BaseProgressionSettings, ProgressionSettings};
 pub use self::survival::{BaseSurvivalSettings, DropOnDeath, SurvivalSettings};
+
+use super::Nudity;
 
 #[derive(Debug, Clone, Default, IniLoad, IniSave)]
 pub struct ServerSettingsFile {
@@ -76,6 +80,13 @@ pub struct ServerSettings {
     pub maelstrom: MaelstromSettings,
 }
 
+#[derive(Debug, Clone, Copy, EnumIter, FromRepr)]
+pub enum Preset {
+    Civilized,
+    Decadent,
+    Barbaric,
+}
+
 impl ServerSettings {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let file = OpenOptions::new()
@@ -99,5 +110,15 @@ impl ServerSettings {
         let file = ServerSettingsFile { settings: self };
         file.save_to_ini(&mut ini);
         config::save_ini(&ini, path.as_ref())
+    }
+
+    pub fn preset(preset: Preset, nudity: Nudity) -> ServerSettings {
+        let mut result = match preset {
+            Preset::Civilized => presets::civilized(),
+            Preset::Decadent => presets::decadent(),
+            Preset::Barbaric => presets::barbaric(),
+        };
+        result.general.max_nudity = nudity;
+        result
     }
 }

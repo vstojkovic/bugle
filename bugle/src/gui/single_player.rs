@@ -8,17 +8,19 @@ use anyhow::{bail, Result};
 use dynabus::Bus;
 use fltk::button::Button;
 use fltk::dialog;
-use fltk::enums::{CallbackTrigger, Event};
+use fltk::enums::{CallbackTrigger, Event, Shortcut};
 use fltk::frame::Frame;
 use fltk::group::Group;
+use fltk::menu::{MenuButton, MenuFlag};
 use fltk::misc::InputChoice;
 use fltk::prelude::*;
 use fltk::table::TableContext;
 use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::{LayoutElement, SimpleWrapper};
-use slog::{error, Logger};
+use slog::{error, warn, Logger};
 
 use crate::bus::AppBus;
+use crate::game::settings::server::{Preset, ServerSettings};
 use crate::game::{Game, GameDB};
 use crate::launcher::Launcher;
 use crate::saved_games_manager::SavedGamesManager;
@@ -121,7 +123,7 @@ impl SinglePlayerTab {
         let mut new_button = grid
             .cell()
             .unwrap()
-            .wrap(Button::default())
+            .wrap(MenuButton::default())
             .with_label("New")
             .with_tooltip("Start a new singleplayer game from scratch");
         let mut continue_button = grid
@@ -233,7 +235,38 @@ impl SinglePlayerTab {
             }
         ));
 
-        new_button.set_callback(weak_cb!([this] => |_| this.new_clicked()));
+        new_button.add(
+            "Civilized",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.new_clicked(Some(Preset::Civilized));
+            }),
+        );
+        new_button.add(
+            "Decadent",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.new_clicked(Some(Preset::Decadent));
+            }),
+        );
+        new_button.add(
+            "Barbaric",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.new_clicked(Some(Preset::Barbaric));
+            }),
+        );
+        new_button.add(
+            "Custom...",
+            Shortcut::None,
+            MenuFlag::Normal,
+            weak_cb!([this] => |_| {
+                this.new_clicked(None);
+            }),
+        );
         continue_button.set_callback(weak_cb!([this] => |_| this.continue_clicked()));
         load_button.set_callback(weak_cb!([this] => |_| this.load_clicked()));
         save_button.set_callback(weak_cb!([this] => |_| this.save_clicked()));
@@ -314,7 +347,7 @@ impl SinglePlayerTab {
         }
     }
 
-    fn new_clicked(&self) {
+    fn new_clicked(&self, preset: Option<Preset>) {
         let state = self.state.borrow();
         let map_id = state.filter().map_id;
         if state.in_progress.contains_key(&map_id) && !prompt_confirm(PROMPT_REPLACE_IN_PROGRESS) {
@@ -322,7 +355,24 @@ impl SinglePlayerTab {
         }
         drop(state);
 
-        if let Err(err) = self.launcher.start_new_singleplayer_game(map_id) {
+        let settings = match preset {
+            Some(preset) => {
+                let nudity = match self.game.max_nudity() {
+                    Ok(nudity) => nudity,
+                    Err(err) => {
+                        warn!(self.logger, "Error reading game settings"; "error" => %err);
+                        Default::default()
+                    }
+                };
+                ServerSettings::preset(preset, nudity)
+            }
+            None => match self.edit_settings() {
+                Some(settings) => settings,
+                None => return,
+            },
+        };
+
+        if let Err(err) = self.launcher.start_new_singleplayer_game(map_id, settings) {
             error!(self.logger, "Error launching singleplayer game"; "error" => %err);
             alert_error(ERR_LAUNCHING_SP, &err);
             return;
@@ -477,15 +527,9 @@ impl SinglePlayerTab {
     }
 
     fn settings_clicked(&self) {
-        let settings = match self.game.load_server_settings() {
-            Ok(settings) => settings,
-            Err(err) => {
-                alert_error(ERR_LOADING_SETTINGS, &err);
-                return;
-            }
+        let Some(settings) = self.edit_settings() else {
+            return;
         };
-        let dialog = ServerSettingsDialog::new(&self.logger, Arc::clone(&self.game), settings);
-        let Some(settings) = dialog.run() else { return };
         if let Err(err) = self.game.save_server_settings(settings) {
             alert_error(ERR_SAVING_SETTINGS, &err);
         }
@@ -545,6 +589,18 @@ impl SinglePlayerTab {
             .clone()
             .set_activated(in_progress_exists);
         self.delete_button.clone().set_activated(backup_selected);
+    }
+
+    fn edit_settings(&self) -> Option<ServerSettings> {
+        let settings = match self.game.load_server_settings() {
+            Ok(settings) => settings,
+            Err(err) => {
+                alert_error(ERR_LOADING_SETTINGS, &err);
+                return None;
+            }
+        };
+        let dialog = ServerSettingsDialog::new(&self.logger, Arc::clone(&self.game), settings);
+        dialog.run()
     }
 }
 

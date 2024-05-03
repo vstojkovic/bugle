@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::game::settings::{display_seconds, parse_seconds, Multiplier, WeeklyHours};
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
+#[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct BaseCombatSettings {
     #[serde(rename = "S6", default)]
     #[ini(rename = "DurabilityMultiplier")]
@@ -21,6 +21,15 @@ pub struct BaseCombatSettings {
     )]
     #[ini(rename = "UnconsciousTimeSeconds", parse_with = parse_seconds, remove_with = default_remove, display_with = display_seconds)]
     pub thrall_wakeup_time: TimeDelta,
+}
+
+impl Default for BaseCombatSettings {
+    fn default() -> Self {
+        Self {
+            durability_mult: Default::default(),
+            thrall_wakeup_time: default_thrall_wakeup_time(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, LoadProperty, SaveProperty)]
