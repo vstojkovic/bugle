@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::{bail, Result};
 use dynabus::Bus;
 use fltk::button::Button;
-use fltk::dialog;
+use fltk::dialog::{self, FileDialogOptions, FileDialogType, NativeFileChooser};
 use fltk::enums::{CallbackTrigger, Event, Shortcut};
 use fltk::frame::Frame;
 use fltk::group::Group;
@@ -23,7 +23,7 @@ use crate::bus::AppBus;
 use crate::game::settings::server::{Preset, ServerSettings};
 use crate::game::{Game, GameDB};
 use crate::launcher::Launcher;
-use crate::saved_games_manager::SavedGamesManager;
+use crate::saved_games_manager::{SaveGame, SavedGamesManager};
 use crate::util::weak_cb;
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
@@ -87,6 +87,7 @@ pub struct SinglePlayerTab {
     load_button: Button,
     save_button: Button,
     save_as_button: Button,
+    export_button: Button,
     delete_button: Button,
     state: RefCell<SinglePlayerState>,
 }
@@ -105,7 +106,7 @@ impl SinglePlayerTab {
         grid.col().with_default_align(CellAlign::End).add();
         grid.col().with_stretch(1).add();
         let btn_group = grid.col_group().add();
-        grid.extend_group(btn_group).batch(7);
+        grid.extend_group(btn_group).batch(3);
 
         grid.row().add();
         grid.cell()
@@ -132,6 +133,48 @@ impl SinglePlayerTab {
             .wrap(Button::default())
             .with_label("Continue")
             .with_tooltip("Continue the current singleplayer game");
+        let mut settings_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Settings...")
+            .with_tooltip("Edit the server settings");
+
+        grid.row().with_stretch(1).add();
+        grid.cell()
+            .unwrap()
+            .with_vert_align(CellAlign::Start)
+            .wrap(Frame::default())
+            .with_label("In Progress:");
+        let in_progress_table = make_db_list();
+        grid.span(1, 3)
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                in_progress_table.as_base_widget(),
+                Default::default(),
+            ));
+        grid.cell().unwrap().skip();
+
+        grid.row().batch(5);
+        grid.row()
+            .with_default_align(CellAlign::Start)
+            .with_stretch(9)
+            .add();
+        grid.span(6, 1)
+            .unwrap()
+            .with_vert_align(CellAlign::Start)
+            .wrap(Frame::default())
+            .with_label("Backups:");
+        let mut backups_table = make_db_list();
+        grid.span(6, 3)
+            .unwrap()
+            .with_vert_align(CellAlign::Stretch)
+            .add(SimpleWrapper::new(
+                backups_table.as_base_widget(),
+                Default::default(),
+            ));
+
         let mut load_button = grid
             .cell()
             .unwrap()
@@ -150,48 +193,24 @@ impl SinglePlayerTab {
             .wrap(Button::default())
             .with_label("Save As...")
             .with_tooltip("Create a new backup of the current singleplayer game");
+        let mut import_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Import...")
+            .with_tooltip("Import a backup from a file");
+        let mut export_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("Export...")
+            .with_tooltip("Export the selected backup to a file");
         let mut delete_button = grid
             .cell()
             .unwrap()
             .wrap(Button::default())
             .with_label("Delete")
             .with_tooltip("Delete the selected backup");
-        let mut settings_button = grid
-            .cell()
-            .unwrap()
-            .wrap(Button::default())
-            .with_label("Settings...")
-            .with_tooltip("Edit the server settings");
-
-        grid.row().with_stretch(1).add();
-        grid.cell()
-            .unwrap()
-            .with_vert_align(CellAlign::Start)
-            .wrap(Frame::default())
-            .with_label("In Progress:");
-        let in_progress_table = make_db_list();
-        grid.span(1, 8)
-            .unwrap()
-            .with_vert_align(CellAlign::Stretch)
-            .add(SimpleWrapper::new(
-                in_progress_table.as_base_widget(),
-                Default::default(),
-            ));
-
-        grid.row().with_stretch(9).add();
-        grid.cell()
-            .unwrap()
-            .with_vert_align(CellAlign::Start)
-            .wrap(Frame::default())
-            .with_label("Backups:");
-        let mut backups_table = make_db_list();
-        grid.span(1, 8)
-            .unwrap()
-            .with_vert_align(CellAlign::Stretch)
-            .add(SimpleWrapper::new(
-                backups_table.as_base_widget(),
-                Default::default(),
-            ));
 
         let grid = grid.end();
         grid.layout_children();
@@ -212,6 +231,7 @@ impl SinglePlayerTab {
             load_button: load_button.clone(),
             save_button: save_button.clone(),
             save_as_button: save_as_button.clone(),
+            export_button: export_button.clone(),
             delete_button: delete_button.clone(),
             state: RefCell::new(SinglePlayerState::new(selected_map_id)),
         });
@@ -271,6 +291,8 @@ impl SinglePlayerTab {
         load_button.set_callback(weak_cb!([this] => |_| this.load_clicked()));
         save_button.set_callback(weak_cb!([this] => |_| this.save_clicked()));
         save_as_button.set_callback(weak_cb!([this] => |_| this.save_as_clicked()));
+        import_button.set_callback(weak_cb!([this] => |_| this.import_clicked()));
+        export_button.set_callback(weak_cb!([this] => |_| this.export_clicked()));
         delete_button.set_callback(weak_cb!([this] => |_| this.delete_clicked()));
         settings_button.set_callback(weak_cb!([this] => |_| this.settings_clicked()));
 
@@ -403,7 +425,9 @@ impl SinglePlayerTab {
         let backup_name = state.backups[backup_idx].file_name.clone();
         drop(state);
 
-        if let Err(err) = self.saves.restore_backup(map_id, backup_name) {
+        let src = SaveGame::Backup { name: backup_name };
+        let dest = SaveGame::InProgress { map_id };
+        if let Err(err) = self.saves.copy_save(src, dest) {
             error!(self.logger, "Error loading singleplayer backup"; "error" => %err);
             alert_error(ERR_LOADING_GAME, &err);
             return;
@@ -429,7 +453,9 @@ impl SinglePlayerTab {
         let backup_name = state.backups[backup_idx].file_name.clone();
         drop(state);
 
-        if let Err(err) = self.saves.create_backup(map_id, backup_name) {
+        let src = SaveGame::InProgress { map_id };
+        let dest = SaveGame::Backup { name: backup_name };
+        if let Err(err) = self.saves.copy_save(src, dest) {
             error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
             alert_error(ERR_SAVING_GAME, &err);
             return;
@@ -478,7 +504,11 @@ impl SinglePlayerTab {
 
         drop(state);
 
-        if let Err(err) = self.saves.create_backup(map_id, backup_name.clone()) {
+        let src = SaveGame::InProgress { map_id };
+        let dest = SaveGame::Backup {
+            name: backup_name.clone(),
+        };
+        if let Err(err) = self.saves.copy_save(src, dest) {
             error!(self.logger, "Error saving singleplayer backup"; "error" => %err);
             alert_error(ERR_SAVING_GAME, &err);
             return;
@@ -498,6 +528,70 @@ impl SinglePlayerTab {
             }
         }
         self.populate_list();
+    }
+
+    fn import_clicked(&self) {
+        let mut dialog = NativeFileChooser::new(FileDialogType::BrowseFile);
+        dialog.set_filter(DLG_FILTER_GAME_DB);
+        dialog.show();
+
+        let path = dialog.filename();
+        if path.as_os_str().is_empty() {
+            return;
+        }
+        if path.starts_with(self.game.save_path()) {
+            return;
+        }
+        let backup_name = match path.file_name() {
+            Some(name) => name.into(),
+            None => return,
+        };
+
+        let src = SaveGame::External { path };
+        let dest = SaveGame::Backup { name: backup_name };
+        if let Err(err) = self.saves.copy_save(src, dest) {
+            error!(self.logger, "Error exporting singleplayer backup"; "error" => %err);
+            alert_error(ERR_EXPORTING_GAME, &err);
+            return;
+        }
+
+        self.saves.list_games();
+    }
+
+    fn export_clicked(&self) {
+        let state = self.state.borrow();
+        let backup_idx = state.selected_backup_idx.unwrap();
+        let backup_name = state.backups[backup_idx].file_name.clone();
+        drop(state);
+
+        let mut dialog = NativeFileChooser::new(FileDialogType::BrowseSaveFile);
+        dialog.set_filter(DLG_FILTER_GAME_DB);
+        dialog.set_option(FileDialogOptions::SaveAsConfirm);
+        dialog.show();
+
+        let mut path = dialog.filename();
+        if path.as_os_str().is_empty() {
+            return;
+        }
+        if path.extension().is_none() {
+            path.set_extension("db");
+        }
+        let should_reload = path.starts_with(self.game.save_path());
+        if should_reload && (path.file_name().unwrap() == backup_name) {
+            return;
+        }
+
+        let src = SaveGame::Backup { name: backup_name };
+        let dest = SaveGame::External { path };
+        if let Err(err) = self.saves.copy_save(src, dest) {
+            error!(self.logger, "Error exporting singleplayer backup"; "error" => %err);
+            alert_error(ERR_EXPORTING_GAME, &err);
+            return;
+        }
+
+        if should_reload {
+            self.saves.list_games();
+        }
     }
 
     fn delete_clicked(&self) {
@@ -588,6 +682,7 @@ impl SinglePlayerTab {
         self.save_as_button
             .clone()
             .set_activated(in_progress_exists);
+        self.export_button.clone().set_activated(backup_selected);
         self.delete_button.clone().set_activated(backup_selected);
     }
 
@@ -618,6 +713,7 @@ const ERR_LISTING_SAVED_GAMES: &str = "Error while enumerating saves games.";
 const ERR_LAUNCHING_SP: &str = "Error while trying to launch the single-player game.";
 const ERR_LOADING_GAME: &str = "Error while loading a saved game.";
 const ERR_SAVING_GAME: &str = "Error while saving the in-progress game.";
+const ERR_EXPORTING_GAME: &str = "Error while exporting the backup.";
 const ERR_DELETING_GAME: &str = "Error while deleting a saved game.";
 const ERR_INVALID_BACKUP_NAME: &str =
     "Invalid backup name. Please use a non-empty filename without a path.";
@@ -629,6 +725,8 @@ const PROMPT_REPLACE_IN_PROGRESS: &str = "Are you sure you want to overwrite the
 const PROMPT_REPLACE_BACKUP: &str = "Are you sure you want to overwrite this backup?";
 const PROMPT_BACKUP_NAME: &str = "Backup name:";
 const PROMPT_DELETE_BACKUP: &str = "Are you sure you want to delete this backup?";
+
+const DLG_FILTER_GAME_DB: &str = "Game Databases\t*.db";
 
 fn make_db_list() -> DataTable<Vec<String>> {
     let mut db_list = DataTable::default().with_properties(DataTableProperties {

@@ -14,6 +14,12 @@ pub struct SavedGamesManager {
     worker: Arc<SavedGamesWorker>,
 }
 
+pub enum SaveGame {
+    InProgress { map_id: usize },
+    Backup { name: PathBuf },
+    External { path: PathBuf },
+}
+
 impl SavedGamesManager {
     pub fn new(bus: Rc<RefCell<AppBus>>, game: Arc<Game>) -> Rc<Self> {
         let worker = SavedGamesWorker::new(Arc::clone(&game), bus.borrow().sender().clone());
@@ -28,24 +34,22 @@ impl SavedGamesManager {
         create_empty_db(self.game.in_progress_game_path(map_id), fls_account_id)
     }
 
-    pub fn restore_backup(&self, map_id: usize, backup_name: PathBuf) -> Result<()> {
-        let src_db_path = self.game.save_path().join(backup_name);
-        let dest_db_path = self
-            .game
-            .save_path()
-            .join(&self.game.maps()[map_id].db_name);
-        let _ = std::fs::copy(src_db_path, dest_db_path)?;
+    pub fn copy_save(&self, src: SaveGame, dest: SaveGame) -> Result<()> {
+        let src_path = self.save_path(src);
+        let dest_path = self.save_path(dest);
+        std::fs::copy(src_path, dest_path)?;
         Ok(())
     }
 
-    pub fn create_backup(&self, map_id: usize, backup_name: PathBuf) -> Result<()> {
-        let src_db_path = self
-            .game
-            .save_path()
-            .join(&self.game.maps()[map_id].db_name);
-        let dest_db_path = self.game.save_path().join(backup_name);
-        let _ = std::fs::copy(src_db_path, dest_db_path)?;
-        Ok(())
+    fn save_path(&self, save_src: SaveGame) -> PathBuf {
+        match save_src {
+            SaveGame::InProgress { map_id } => self
+                .game
+                .save_path()
+                .join(&self.game.maps()[map_id].db_name),
+            SaveGame::Backup { name } => self.game.save_path().join(name),
+            SaveGame::External { path } => path,
+        }
     }
 
     pub fn delete_backup(&self, backup_name: PathBuf) -> Result<()> {
