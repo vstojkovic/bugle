@@ -161,7 +161,7 @@ impl LauncherApp {
             self.steam.run_callbacks();
 
             let bus = self.bus.borrow();
-            if !bus.recv().unwrap() {
+            if !bus.recv().unwrap().unwrap_or_default() {
                 bus.publish(Idle);
                 return;
             }

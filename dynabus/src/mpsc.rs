@@ -1,5 +1,6 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::local::LocalBus;
 use crate::{Bus, Event};
@@ -14,6 +15,10 @@ pub trait Sender: Clone {
 pub trait Receiver {
     type Error;
     fn try_recv(&self) -> Result<Option<Message>, Self::Error>;
+}
+
+pub trait BlockingReceiver: Receiver {
+    fn recv_deadline(&self, deadline: Instant) -> Result<Option<Message>, Self::Error>;
 }
 
 pub struct ChannelBus<S: Sender, R: Receiver, B: Bus = LocalBus> {
@@ -40,22 +45,43 @@ impl<S: Sender, R: Receiver, B: Bus> ChannelBus<S, R, B> {
         &self.tx
     }
 
-    pub fn recv(&self) -> Result<bool, R::Error> {
+    pub fn recv(&self) -> Result<Option<bool>, R::Error> {
         let Some(message) = self.rx.try_recv()? else {
-            return Ok(false);
+            return Ok(None);
         };
-        let type_id = (&*message).type_id();
-        let Some(receiver) = self.dispatch_map.get(&type_id) else {
-            return Ok(false);
+        Ok(Some(self.dispatch_message(message)))
+    }
+
+    pub fn recv_deadline(&self, deadline: Instant) -> Result<Option<bool>, R::Error>
+    where
+        R: BlockingReceiver,
+    {
+        let Some(message) = self.rx.recv_deadline(deadline)? else {
+            return Ok(None);
         };
-        receiver(self, message);
-        Ok(true)
+        Ok(Some(self.dispatch_message(message)))
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<Option<bool>, R::Error>
+    where
+        R: BlockingReceiver,
+    {
+        self.recv_deadline(Instant::now() + timeout)
     }
 
     fn ensure_dispatch<E: Event + 'static>(&mut self) {
         self.dispatch_map
             .entry(TypeId::of::<E>())
             .or_insert(|bus, message| bus.publish(*message.downcast::<E>().unwrap()));
+    }
+
+    fn dispatch_message(&self, message: Message) -> bool {
+        let type_id = (&*message).type_id();
+        let Some(receiver) = self.dispatch_map.get(&type_id) else {
+            return false;
+        };
+        receiver(self, message);
+        true
     }
 }
 
@@ -103,6 +129,17 @@ impl Receiver for std::sync::mpsc::Receiver<Message> {
             Ok(message) => Ok(Some(message)),
             Err(Self::Error::Empty) => Ok(None),
             Err(err) => Err(err),
+        }
+    }
+}
+
+impl BlockingReceiver for std::sync::mpsc::Receiver<Message> {
+    fn recv_deadline(&self, deadline: Instant) -> Result<Option<Message>, Self::Error> {
+        let timeout = deadline.duration_since(Instant::now());
+        match self.recv_timeout(timeout) {
+            Ok(message) => Ok(Some(message)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(None),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(Self::Error::Disconnected),
         }
     }
 }
