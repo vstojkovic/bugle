@@ -86,6 +86,8 @@ impl<S: Sender, R: Receiver, B: Bus> ChannelBus<S, R, B> {
 }
 
 impl<S: Sender, R: Receiver, B: Bus> Bus for ChannelBus<S, R, B> {
+    type Subscription<E: Event> = B::Subscription<E>;
+
     fn publish<E: Event + 'static>(&self, event: E) -> bool {
         self.backer.publish(event)
     }
@@ -93,19 +95,29 @@ impl<S: Sender, R: Receiver, B: Bus> Bus for ChannelBus<S, R, B> {
     fn subscribe_transform<E: Event + 'static, F: Fn(E) -> Option<E> + 'static>(
         &mut self,
         handler: F,
-    ) {
+    ) -> Self::Subscription<E> {
         self.ensure_dispatch::<E>();
-        self.backer.subscribe_transform(handler);
+        self.backer.subscribe_transform(handler)
     }
 
-    fn subscribe_observer<E: Event + 'static, F: Fn(&E) + 'static>(&mut self, handler: F) {
+    fn subscribe_observer<E: Event + 'static, F: Fn(&E) + 'static>(
+        &mut self,
+        handler: F,
+    ) -> Self::Subscription<E> {
         self.ensure_dispatch::<E>();
-        self.backer.subscribe_observer(handler);
+        self.backer.subscribe_observer(handler)
     }
 
-    fn subscribe_consumer<E: Event + 'static, F: Fn(E) + 'static>(&mut self, handler: F) {
+    fn subscribe_consumer<E: Event + 'static, F: Fn(E) + 'static>(
+        &mut self,
+        handler: F,
+    ) -> Self::Subscription<E> {
         self.ensure_dispatch::<E>();
-        self.backer.subscribe_consumer(handler);
+        self.backer.subscribe_consumer(handler)
+    }
+
+    fn unsubscribe<E: Event + 'static>(&mut self, subscription: Self::Subscription<E>) {
+        self.backer.unsubscribe(subscription)
     }
 }
 
