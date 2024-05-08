@@ -2,7 +2,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::{DeriveInput, Error, Ident, Result, Type};
 
-use super::attr::{FieldAttr, LoadFn};
+use super::attr::{EnumAttr, FieldAttr, LoadFn};
 use super::expand_property_impl;
 
 pub fn expand_load_property(input: DeriveInput) -> Result<TokenStream> {
@@ -12,6 +12,7 @@ pub fn expand_load_property(input: DeriveInput) -> Result<TokenStream> {
         expand_struct_trait,
         expand_repr_variant_match,
         expand_named_variant_match,
+        expand_caseless_variant_match,
         expand_enum_trait,
     )
 }
@@ -62,7 +63,13 @@ fn expand_struct_trait(
 }
 
 fn expand_named_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream {
-    quote_spanned!(span => stringify!(#name) => #enum_name::#name)
+    let name_str = name.to_string();
+    quote_spanned!(span => #name_str => #enum_name::#name)
+}
+
+fn expand_caseless_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream {
+    let name_str = name.to_string().to_lowercase();
+    quote_spanned!(span => #name_str => #enum_name::#name)
 }
 
 fn expand_repr_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream {
@@ -71,6 +78,7 @@ fn expand_repr_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> Tok
 
 fn expand_enum_trait(
     enum_name: &Ident,
+    enum_attr: &EnumAttr,
     repr_type: Option<&Ident>,
     prelude: TokenStream,
     match_arms: Vec<TokenStream>,
@@ -82,13 +90,17 @@ fn expand_enum_trait(
             }
         })
         .unwrap_or_default();
+    let value_expr = match enum_attr.ignore_case {
+        Some(()) => quote!(value.to_lowercase().as_str()),
+        None => quote!(value),
+    };
     quote! {
         #[automatically_derived]
         impl ini_persist::load::ParseProperty for #enum_name {
             fn parse(value: &str) -> ini_persist::Result<Self> {
                 #prelude
                 #parse_repr
-                ini_persist::Result::Ok(match value {
+                ini_persist::Result::Ok(match #value_expr {
                     #(#match_arms,)*
                     _ => return ini_persist::Result::Err(ini_persist::Error::invalid_value(
                         format!("invalid value: {}", value)

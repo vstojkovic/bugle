@@ -1,0 +1,11 @@
+error: cannot specify both `repr` and `ignore_case`
+ --> tests/compile-fail/conflicting_ignore_case.rs:5:7
+  |
+5 | #[ini(ignore_case)]
+  |       ^^^^^^^^^^^
+
+error: cannot specify both `repr` and `ignore_case`
+  --> tests/compile-fail/conflicting_ignore_case.rs:13:7
+   |
+13 | #[ini(repr)]
+   |       ^^^^

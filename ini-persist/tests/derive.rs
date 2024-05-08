@@ -37,8 +37,9 @@ struct Inner {
 #[derive(Debug, Default, PartialEq, LoadProperty, SaveProperty)]
 struct Section {
     #[ini(load_with = helpers::my_load, display_with = helpers::my_display_f64)]
-    olle_bolle: f64,
+    olle: f64,
 
+    bolle: Option<CaselessEnum>,
     snop: Option<EnumByRepr>,
 }
 
@@ -60,6 +61,13 @@ enum EnumByName {
 enum EnumByRepr {
     Glop = 42,
     Glyf = 17,
+}
+
+#[derive(Debug, LoadProperty, SaveProperty, PartialEq, Eq)]
+#[ini(ignore_case)]
+enum CaselessEnum {
+    OlleBolle,
+    SnopSnyf,
 }
 
 mod helpers {
@@ -110,7 +118,7 @@ fn compilation_errors() {
 
 #[test]
 fn comprehensive_loading_test() {
-    let ini = Ini::load_from_str(TEST_INI).unwrap();
+    let ini = Ini::load_from_str(TEST_INI_LOAD).unwrap();
     let mut loaded = Root::default();
     loaded.load_from_ini(&ini).unwrap();
 
@@ -141,7 +149,7 @@ fn comprehensive_saving_test() {
     .unwrap();
     let saved = String::from_utf8(saved).unwrap();
 
-    assert_eq!(saved, TEST_INI);
+    assert_eq!(saved, TEST_INI_SAVE);
 }
 
 fn make_test_data() -> Root {
@@ -159,14 +167,15 @@ fn make_test_data() -> Root {
             },
         },
         section: Section {
-            olle_bolle: 42.0,
+            olle: 42.0,
+            bolle: Some(CaselessEnum::OlleBolle),
             snop: Some(EnumByRepr::Glyf),
         },
         renamed: RenamedSection { snyf: 42 },
     }
 }
 
-const TEST_INI: &str = r#"
+const TEST_INI_LOAD: &str = r#"
 argle=Hello, world!
 Bargle=17
 glop=123
@@ -175,7 +184,25 @@ prefixedglop=456
 prefixedglyf=Argle
 
 [section]
-olle_bolle=84.00
+olle=84.00
+bolle=oLLEbOLLE
+snop=17
+
+[SomethingElse]
+snyf=-42
+"#;
+
+const TEST_INI_SAVE: &str = r#"
+argle=Hello, world!
+Bargle=17
+glop=123
+glyf=Bargle
+prefixedglop=456
+prefixedglyf=Argle
+
+[section]
+olle=84.00
+bolle=OlleBolle
 snop=17
 
 [SomethingElse]

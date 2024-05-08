@@ -20,6 +20,7 @@ pub struct FieldAttr {
 #[derive(Default)]
 pub struct EnumAttr {
     pub repr: Option<()>,
+    pub ignore_case: Option<()>,
 }
 
 pub enum LoadFn {
@@ -164,10 +165,17 @@ impl IniAttr for EnumAttr {
     fn update_from_ast(&mut self, attr: &Attribute) -> Result<()> {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("repr") {
-                if self.repr.is_some() {
-                    return Err(meta.error("duplicate ini property `repr`"));
+                if self.ignore_case.is_some() {
+                    return Err(meta.error("cannot specify both `repr` and `ignore_case`"));
                 }
                 self.repr = Some(());
+                return Ok(());
+            }
+            if meta.path.is_ident("ignore_case") {
+                if self.repr.is_some() {
+                    return Err(meta.error("cannot specify both `repr` and `ignore_case`"));
+                }
+                self.ignore_case = Some(());
                 return Ok(());
             }
             unknown_attr(meta)

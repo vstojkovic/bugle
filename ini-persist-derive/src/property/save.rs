@@ -2,7 +2,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::{DeriveInput, Ident, Result, Type};
 
-use super::attr::{AppendFn, FieldAttr};
+use super::attr::{AppendFn, EnumAttr, FieldAttr};
 use super::expand_property_impl;
 
 pub fn expand_save_property(input: DeriveInput) -> Result<TokenStream> {
@@ -11,6 +11,7 @@ pub fn expand_save_property(input: DeriveInput) -> Result<TokenStream> {
         expand_field,
         expand_struct_trait,
         expand_repr_variant_match,
+        expand_named_variant_match,
         expand_named_variant_match,
         expand_enum_trait,
     )
@@ -82,6 +83,7 @@ fn expand_repr_variant_match(name: &Ident, enum_name: &Ident, span: Span) -> Tok
 
 fn expand_enum_trait(
     enum_name: &Ident,
+    _enum_attr: &EnumAttr,
     _repr_type: Option<&Ident>,
     prelude: TokenStream,
     match_arms: Vec<TokenStream>,

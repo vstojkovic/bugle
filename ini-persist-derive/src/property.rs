@@ -26,6 +26,7 @@ type StructTraitExpander<F> =
 type VariantExpander = fn(name: &Ident, enum_name: &Ident, span: Span) -> TokenStream;
 type EnumTraitExpander = fn(
     enum_name: &Ident,
+    enum_attr: &EnumAttr,
     repr_type: Option<&Ident>,
     prelude: TokenStream,
     match_arms: Vec<TokenStream>,
@@ -37,6 +38,7 @@ fn expand_property_impl<F>(
     struct_trait_expander: StructTraitExpander<F>,
     repr_variant_expander: VariantExpander,
     named_variant_expander: VariantExpander,
+    caseless_variant_expander: VariantExpander,
     enum_trait_expander: EnumTraitExpander,
 ) -> Result<TokenStream> {
     match input.data {
@@ -56,6 +58,7 @@ fn expand_property_impl<F>(
             input.attrs,
             repr_variant_expander,
             named_variant_expander,
+            caseless_variant_expander,
             enum_trait_expander,
         ),
         _ => panic!("Property can only be derived on an enum or a struct with named fields"),
@@ -124,6 +127,7 @@ fn expand_enum_impl(
     attrs: Vec<Attribute>,
     repr_variant_expander: VariantExpander,
     named_variant_expander: VariantExpander,
+    caseless_variant_expander: VariantExpander,
     trait_expander: EnumTraitExpander,
 ) -> Result<TokenStream> {
     for variant in variants.iter() {
@@ -154,9 +158,10 @@ fn expand_enum_impl(
         })
         .unwrap_or_default();
 
-    let match_expander = match attr.repr {
-        Some(()) => repr_variant_expander,
-        None => named_variant_expander,
+    let match_expander = match (attr.repr, attr.ignore_case) {
+        (Some(()), _) => repr_variant_expander,
+        (None, None) => named_variant_expander,
+        (None, Some(())) => caseless_variant_expander,
     };
     let match_arms = variants
         .iter()
@@ -169,6 +174,7 @@ fn expand_enum_impl(
 
     Ok(trait_expander(
         enum_name,
+        &attr,
         attr.repr.map(|_| &repr_type),
         prelude,
         match_arms,
