@@ -29,6 +29,7 @@ mod server_browser;
 mod server_settings;
 mod single_player;
 mod svg_symbol;
+mod task_progress_monitor;
 pub mod theme;
 mod widgets;
 
@@ -39,6 +40,7 @@ pub use self::mod_update::{ModUpdateProgressDialog, ModUpdateSelectionDialog};
 pub use self::server_browser::{PopulateServers, ProcessPongs, RefreshServerDetails, UpdateServer};
 pub use self::server_settings::ServerSettingsDialog;
 pub use self::single_player::PopulateSinglePlayerGames;
+pub use self::task_progress_monitor::{TaskProgressMonitor, TaskProgressUpdate};
 
 pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
 impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
