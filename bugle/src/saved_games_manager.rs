@@ -9,13 +9,11 @@ use fs_extra::file::{copy_with_progress, CopyOptions};
 
 use crate::bus::AppBus;
 use crate::game::{create_empty_db, Game};
-use crate::gui::{TaskProgressMonitor, TaskProgressUpdate};
-use crate::workers::SavedGamesWorker;
+use crate::gui::{PopulateSinglePlayerGames, TaskProgressMonitor, TaskProgressUpdate};
 
 pub struct SavedGamesManager {
     bus: Rc<RefCell<AppBus>>,
     game: Arc<Game>,
-    worker: Arc<SavedGamesWorker>,
 }
 
 pub enum SaveGame {
@@ -26,12 +24,16 @@ pub enum SaveGame {
 
 impl SavedGamesManager {
     pub fn new(bus: Rc<RefCell<AppBus>>, game: Arc<Game>) -> Rc<Self> {
-        let worker = SavedGamesWorker::new(Arc::clone(&game), bus.borrow().sender().clone());
-        Rc::new(Self { bus, game, worker })
+        Rc::new(Self { bus, game })
     }
 
     pub fn list_games(&self) {
-        self.worker.list_games();
+        let game = Arc::clone(&self.game);
+        let tx = self.bus.borrow().sender().clone();
+        tokio::spawn(async move {
+            let games = game.load_saved_games();
+            tx.send(PopulateSinglePlayerGames(games)).ok();
+        });
     }
 
     pub fn clear_progress(&self, map_id: usize, fls_account_id: Option<&str>) -> Result<()> {
