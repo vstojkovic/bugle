@@ -108,7 +108,11 @@ impl Game {
         collect_local_mods(&game_path, &mut installed_mods)?;
         let installed_mods = installed_mods.build();
 
-        let mod_list_path = game_path.join_all(["ConanSandbox", "Mods", "modlist.txt"]);
+        let mod_list_dir = game_path.join_all(["ConanSandbox", "Mods"]);
+        if let Err(err) = std::fs::create_dir_all(&mod_list_dir) {
+            warn!(logger, "Failed to ensure the modlist directory exists"; "error" => %err);
+        }
+        let mod_list_path = mod_list_dir.join("modlist.txt");
 
         let mut maps = Maps::new();
         let map_extractor = MapExtractor::new(&logger);
