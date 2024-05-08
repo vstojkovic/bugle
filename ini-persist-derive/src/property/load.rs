@@ -24,23 +24,46 @@ fn expand_field(
     attr: FieldAttr,
     span: Span,
 ) -> TokenStream {
-    match attr.load_fn {
-        None => quote_spanned! { span =>
-            self.#name.load_in(section, #key)?;
-        },
-        Some(LoadFn::InPlace(path)) => quote_spanned! { span =>
-            #path(&mut self.#name, section, #key)?;
-        },
-        Some(LoadFn::Constructed(path)) => quote_spanned! { span =>
-            if let Some(value) = #path(section, #key)? {
-                self.#name = value;
-            }
-        },
-        Some(LoadFn::Parsed(path)) => quote_spanned! { span =>
-            if let Some(value) = section.get(#key) {
-                self.#name = #path(value)?;
-            }
-        },
+    if attr.ignore_errors.is_some() {
+        match attr.load_fn {
+            None => quote_spanned! { span =>
+                self.#name.load_in(section, #key).ok();
+            },
+            Some(LoadFn::InPlace(path)) => quote_spanned! { span =>
+                #path(&mut self.#name, section, #key).ok();
+            },
+            Some(LoadFn::Constructed(path)) => quote_spanned! { span =>
+                if let Ok(Some(value)) = #path(section, #key) {
+                    self.#name = value;
+                }
+            },
+            Some(LoadFn::Parsed(path)) => quote_spanned! { span =>
+                if let Some(value) = section.get(#key) {
+                    if let Ok(value) = #path(value) {
+                        self.#name = value;
+                    }
+                }
+            },
+        }
+    } else {
+        match attr.load_fn {
+            None => quote_spanned! { span =>
+                self.#name.load_in(section, #key)?;
+            },
+            Some(LoadFn::InPlace(path)) => quote_spanned! { span =>
+                #path(&mut self.#name, section, #key)?;
+            },
+            Some(LoadFn::Constructed(path)) => quote_spanned! { span =>
+                if let Some(value) = #path(section, #key)? {
+                    self.#name = value;
+                }
+            },
+            Some(LoadFn::Parsed(path)) => quote_spanned! { span =>
+                if let Some(value) = section.get(#key) {
+                    self.#name = #path(value)?;
+                }
+            },
+        }
     }
 }
 

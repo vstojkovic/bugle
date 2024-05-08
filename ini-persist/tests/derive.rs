@@ -47,6 +47,51 @@ struct Section {
 struct RenamedSection {
     #[ini(parse_with = helpers::my_parse, display_with = helpers::my_display_i16)]
     snyf: i16,
+
+    #[ini(ignore_errors, load_in_with = helpers::err_load_in)]
+    foo: Foo,
+
+    #[ini(ignore_errors, load_with = helpers::err_load)]
+    bar: Bar,
+
+    #[ini(ignore_errors, parse_with = helpers::err_parse)]
+    baz: Baz,
+
+    #[ini(ignore_errors)]
+    quux: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, SaveProperty)]
+struct Foo {
+    value: u16,
+}
+
+impl Default for Foo {
+    fn default() -> Self {
+        Self { value: 123 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, SaveProperty)]
+struct Bar {
+    value: u16,
+}
+
+impl Default for Bar {
+    fn default() -> Self {
+        Self { value: 234 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, SaveProperty)]
+struct Baz {
+    value: u16,
+}
+
+impl Default for Baz {
+    fn default() -> Self {
+        Self { value: 345 }
+    }
 }
 
 #[derive(Debug, LoadProperty, SaveProperty, PartialEq, Eq)]
@@ -71,9 +116,10 @@ enum CaselessEnum {
 }
 
 mod helpers {
+    use super::{Bar, Baz, Foo};
     use ini::Properties;
     use ini_persist::load::ParseProperty;
-    use ini_persist::Result;
+    use ini_persist::{Error, Result};
 
     pub fn my_load_in(field: &mut i32, _section: &Properties, _key: &str) -> Result<()> {
         *field = 386;
@@ -89,6 +135,18 @@ mod helpers {
 
     pub fn my_parse(value: &str) -> Result<i16> {
         Ok(-i16::parse(value)?)
+    }
+
+    pub fn err_load_in(_field: &mut Foo, _section: &Properties, _key: &str) -> Result<()> {
+        Err(Error::custom("err_load_in"))
+    }
+
+    pub fn err_load(_section: &Properties, _key: &str) -> Result<Option<Bar>> {
+        Err(Error::custom("err_load"))
+    }
+
+    pub fn err_parse(_value: &str) -> Result<Baz> {
+        Err(Error::custom("parse"))
     }
 
     pub fn my_append(_field: &i32, section: &mut Properties, key: &str) {
@@ -171,7 +229,13 @@ fn make_test_data() -> Root {
             bolle: Some(CaselessEnum::OlleBolle),
             snop: Some(EnumByRepr::Glyf),
         },
-        renamed: RenamedSection { snyf: 42 },
+        renamed: RenamedSection {
+            snyf: 42,
+            foo: Foo { value: 123 },
+            bar: Bar { value: 234 },
+            baz: Baz { value: 345 },
+            quux: 0,
+        },
     }
 }
 
@@ -190,6 +254,10 @@ snop=17
 
 [SomethingElse]
 snyf=-42
+foo=whatever
+bar=whatever
+baz=whatever
+quux=whatever
 "#;
 
 const TEST_INI_SAVE: &str = r#"
@@ -207,4 +275,8 @@ snop=17
 
 [SomethingElse]
 snyf=-42
+foovalue=123
+barvalue=234
+bazvalue=345
+quux=0
 "#;

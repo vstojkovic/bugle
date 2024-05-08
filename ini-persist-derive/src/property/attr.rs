@@ -15,6 +15,7 @@ pub struct FieldAttr {
     pub load_fn: Option<LoadFn>,
     pub remove_fn: Option<Path>,
     pub append_fn: Option<AppendFn>,
+    pub ignore_errors: Option<()>,
 }
 
 #[derive(Default)]
@@ -153,6 +154,10 @@ impl IniAttr for FieldAttr {
                     return Err(meta.error("cannot flatten a field with a defined load function"));
                 }
                 self.flatten = Some(());
+                return Ok(());
+            }
+            if meta.path.is_ident("ignore_errors") {
+                self.ignore_errors = Some(());
                 return Ok(());
             }
             unknown_attr(meta)
