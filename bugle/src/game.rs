@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
 use ini::Properties;
-use ini_persist::load::ConstructProperty;
+use ini_persist::load::{ConstructProperty, LoadProperty};
+use ini_persist::save::SaveProperty;
 use slog::{debug, info, warn, Logger};
 use walkdir::WalkDir;
 
@@ -50,15 +51,16 @@ pub struct Game {
     battleye_installed: Option<bool>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, LoadProperty, SaveProperty)]
+#[ini(ignore_case)]
 pub enum Branch {
-    Main,
-    PublicBeta,
+    Live,
+    TestLive,
 }
 
 impl Default for Branch {
     fn default() -> Self {
-        Branch::Main
+        Branch::Live
     }
 }
 

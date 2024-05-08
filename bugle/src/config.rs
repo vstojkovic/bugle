@@ -1,16 +1,20 @@
 use std::cell::{Ref, RefCell};
 use std::fs::{File, OpenOptions};
 use std::io::Read;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::str::FromStr;
 
 use anyhow::Result;
 use ini::{EscapePolicy, Ini, LineSeparator, ParseOption, WriteOption};
+use ini_persist::load::{IniLoad, LoadProperty, ParseProperty};
+use ini_persist::save::{DisplayProperty, IniSave, SaveProperty};
 use slog::{warn, Logger};
 
 use crate::env::current_exe_dir;
 use crate::game::Branch;
-use crate::servers::{Filter, Mode, Region, SortCriteria, SortKey, TypeFilter};
+use crate::servers::{Filter, SortCriteria};
 
 pub struct ConfigManager {
     logger: Logger,
@@ -18,16 +22,62 @@ pub struct ConfigManager {
     persister: Box<dyn ConfigPersister>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, IniLoad, IniSave)]
 pub struct Config {
-    pub log_level: LogLevel,
-    pub branch: Branch,
-    pub use_battleye: BattlEyeUsage,
-    pub use_all_cores: bool,
-    pub extra_args: String,
-    pub mod_mismatch_checks: ModMismatchChecks,
-    pub theme: ThemeChoice,
+    #[ini(general)]
+    pub general: GeneralConfig,
+
+    #[ini(section = "ServerBrowser")]
     pub server_browser: ServerBrowserConfig,
+}
+
+#[derive(Debug, Default, LoadProperty, SaveProperty)]
+pub struct GeneralConfig {
+    #[ini(rename = "LogLevel")]
+    pub log_level: LogLevel,
+
+    #[ini(rename = "Branch", ignore_errors)]
+    pub branch: Branch,
+
+    #[ini(rename = "UseBattlEye", ignore_errors)]
+    pub use_battleye: BattlEyeUsage,
+
+    #[ini(rename = "UseAllCores", ignore_errors)]
+    pub use_all_cores: bool,
+
+    #[ini(rename = "ExtraArgs", ignore_errors)]
+    pub extra_args: String,
+
+    #[ini(rename = "DisableModMismatchChecks", ignore_errors)]
+    pub mod_mismatch_checks: ModMismatchChecks,
+
+    #[ini(rename = "Theme", ignore_errors)]
+    pub theme: ThemeChoice,
+}
+
+#[derive(Debug, Default, LoadProperty, SaveProperty)]
+pub struct ServerBrowserConfig {
+    #[ini(flatten)]
+    pub filter: Filter,
+
+    #[ini(rename = "SortBy")]
+    pub sort_criteria: SortCriteria,
+
+    #[ini(rename = "ScrollLock")]
+    pub scroll_lock: bool,
+}
+
+impl Deref for Config {
+    type Target = GeneralConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.general
+    }
+}
+
+impl DerefMut for Config {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.general
+    }
 }
 
 pub trait ConfigPersister {
@@ -75,6 +125,21 @@ impl Default for LogLevel {
     }
 }
 
+impl ParseProperty for LogLevel {
+    fn parse(text: &str) -> ini_persist::Result<Self> {
+        Ok(match slog::FilterLevel::from_str(text) {
+            Ok(level) => LogLevel(level),
+            Err(_) => LogLevel::default(),
+        })
+    }
+}
+
+impl DisplayProperty for LogLevel {
+    fn display(&self) -> String {
+        self.0.as_str().to_ascii_lowercase()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattlEyeUsage {
     Auto,
@@ -87,7 +152,29 @@ impl Default for BattlEyeUsage {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl ParseProperty for BattlEyeUsage {
+    fn parse(text: &str) -> ini_persist::Result<Self> {
+        Ok(match text.to_lowercase().as_str() {
+            BATTLEYE_AUTO => Self::Auto,
+            BATTLEYE_ALWAYS => Self::Always(true),
+            BATTLEYE_NEVER => Self::Always(false),
+            _ => Self::default(),
+        })
+    }
+}
+
+impl DisplayProperty for BattlEyeUsage {
+    fn display(&self) -> String {
+        match self {
+            Self::Auto => BATTLEYE_AUTO.to_string(),
+            Self::Always(true) => BATTLEYE_ALWAYS.to_string(),
+            Self::Always(false) => BATTLEYE_NEVER.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, LoadProperty, SaveProperty)]
+#[ini(ignore_case)]
 pub enum ModMismatchChecks {
     Enabled,
     Disabled,
@@ -99,7 +186,8 @@ impl Default for ModMismatchChecks {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, LoadProperty, SaveProperty)]
+#[ini(ignore_case)]
 pub enum ThemeChoice {
     Light,
     Dark,
@@ -109,13 +197,6 @@ impl Default for ThemeChoice {
     fn default() -> Self {
         Self::Light
     }
-}
-
-#[derive(Debug, Default)]
-pub struct ServerBrowserConfig {
-    pub filter: Filter,
-    pub sort_criteria: SortCriteria,
-    pub scroll_lock: bool,
 }
 
 pub struct TransientConfig;
@@ -180,114 +261,15 @@ impl IniConfigPersister {
 
 impl ConfigPersister for IniConfigPersister {
     fn load(&self) -> Result<Config> {
-        use std::str::FromStr;
-
         let ini = load_ini(&self.config_path)?;
-        let section = ini.section(None::<String>);
-        let log_level = section
-            .and_then(|section| section.get(KEY_LOG_LEVEL))
-            .and_then(|value| slog::FilterLevel::from_str(value.trim()).ok())
-            .map(|level| LogLevel(level))
-            .unwrap_or_default();
-        let branch = section
-            .and_then(|section| section.get(KEY_BRANCH))
-            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
-                BRANCH_MAIN => Some(Branch::Main),
-                BRANCH_PUBLIC_BETA => Some(Branch::PublicBeta),
-                _ => None,
-            })
-            .unwrap_or_default();
-        let use_battleye = section
-            .and_then(|section| section.get(KEY_USE_BATTLEYE))
-            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
-                BATTLEYE_AUTO => Some(BattlEyeUsage::Auto),
-                BATTLEYE_ALWAYS => Some(BattlEyeUsage::Always(true)),
-                BATTLEYE_NEVER => Some(BattlEyeUsage::Always(false)),
-                _ => None,
-            })
-            .unwrap_or_default();
-        let use_all_cores = section
-            .and_then(|section| section.get(KEY_USE_ALL_CORES))
-            .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
-            .unwrap_or_default();
-        let extra_args = section
-            .and_then(|section| section.get(KEY_EXTRA_ARGS))
-            .unwrap_or_default()
-            .to_string();
-        let mod_mismatch_checks = section
-            .and_then(|section| section.get(KEY_DISABLE_MOD_MISMATCH_CHECKS))
-            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
-                MOD_MISMATCH_CHECKS_ENABLED => Some(ModMismatchChecks::Enabled),
-                MOD_MISMATCH_CHECKS_DISABLED => Some(ModMismatchChecks::Disabled),
-                _ => None,
-            })
-            .unwrap_or_default();
-        let theme = section
-            .and_then(|section| section.get(KEY_THEME))
-            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
-                THEME_LIGHT => Some(ThemeChoice::Light),
-                THEME_DARK => Some(ThemeChoice::Dark),
-                _ => None,
-            })
-            .unwrap_or_default();
-
-        Ok(Config {
-            log_level,
-            branch,
-            use_battleye,
-            use_all_cores,
-            extra_args,
-            mod_mismatch_checks,
-            theme,
-            server_browser: load_server_browser_config(&ini),
-        })
+        let mut config = Config::default();
+        config.load_from_ini(&ini)?;
+        Ok(config)
     }
 
     fn save(&self, config: &Config) -> Result<()> {
         let mut ini = Ini::new();
-        let setter = &mut ini.with_general_section();
-        let setter = setter
-            .set(
-                KEY_LOG_LEVEL,
-                config.log_level.0.as_str().to_ascii_lowercase(),
-            )
-            .set(
-                KEY_BRANCH,
-                match config.branch {
-                    Branch::Main => BRANCH_MAIN,
-                    Branch::PublicBeta => BRANCH_PUBLIC_BETA,
-                },
-            )
-            .set(
-                KEY_USE_BATTLEYE,
-                match config.use_battleye {
-                    BattlEyeUsage::Auto => BATTLEYE_AUTO,
-                    BattlEyeUsage::Always(true) => BATTLEYE_ALWAYS,
-                    BattlEyeUsage::Always(false) => BATTLEYE_NEVER,
-                },
-            )
-            .set(KEY_USE_ALL_CORES, config.use_all_cores.to_string());
-        let setter = if config.extra_args.is_empty() {
-            setter
-        } else {
-            setter.set(KEY_EXTRA_ARGS, &config.extra_args)
-        };
-        setter
-            .set(
-                KEY_DISABLE_MOD_MISMATCH_CHECKS,
-                match config.mod_mismatch_checks {
-                    ModMismatchChecks::Enabled => MOD_MISMATCH_CHECKS_ENABLED,
-                    ModMismatchChecks::Disabled => MOD_MISMATCH_CHECKS_DISABLED,
-                },
-            )
-            .set(
-                KEY_THEME,
-                match config.theme {
-                    ThemeChoice::Light => THEME_LIGHT,
-                    ThemeChoice::Dark => THEME_DARK,
-                },
-            );
-        save_server_browser_config(&mut ini, &config.server_browser);
+        config.save_to_ini(&mut ini);
         save_ini(&ini, &self.config_path)
     }
 }
@@ -339,149 +321,6 @@ fn load_text_lossy(mut file: File) -> std::io::Result<String> {
     }
 }
 
-fn load_server_browser_config(ini: &Ini) -> ServerBrowserConfig {
-    use std::str::FromStr;
-
-    let section = ini.section(Some(SECTION_SERVER_BROWSER));
-    let name = section
-        .and_then(|section| section.get(KEY_NAME))
-        .unwrap_or_default()
-        .to_string();
-    let map = section
-        .and_then(|section| section.get(KEY_MAP))
-        .unwrap_or_default()
-        .to_string();
-    let type_filter = section
-        .and_then(|section| section.get(KEY_TYPE_FILTER))
-        .and_then(|s| TypeFilter::from_str(s).ok())
-        .unwrap_or_default();
-    let mode = section
-        .and_then(|section| section.get(KEY_MODE))
-        .and_then(|s| Mode::from_str(s).ok());
-    let region = section
-        .and_then(|section| section.get(KEY_REGION))
-        .and_then(|s| Region::from_str(s).ok());
-    let battleye_required = section
-        .and_then(|section| section.get(KEY_BATTLEYE_REQUIRED))
-        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok());
-    let include_invalid = section
-        .and_then(|section| section.get(KEY_INCLUDE_INVALID))
-        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
-        .unwrap_or_default();
-    let include_password_protected = section
-        .and_then(|section| section.get(KEY_INCLUDE_PASSWORD_PROTECTED))
-        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
-        .unwrap_or(true);
-    let mods = section
-        .and_then(|section| section.get(KEY_MODS))
-        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok());
-    let sort_criteria = section
-        .and_then(|section| section.get(KEY_SORT_CRITERIA))
-        .map(|s| if s.starts_with('-') { (false, &s[1..]) } else { (true, s) })
-        .and_then(|(ascending, s)| {
-            SortKey::from_str(s)
-                .ok()
-                .map(|key| SortCriteria { key, ascending })
-        })
-        .unwrap_or_default();
-    let scroll_lock = section
-        .and_then(|section| section.get(KEY_SCROLL_LOCK))
-        .and_then(|s| bool::from_str(&s.to_ascii_lowercase()).ok())
-        .unwrap_or(true);
-    ServerBrowserConfig {
-        filter: Filter {
-            name,
-            map,
-            type_filter,
-            mode,
-            region,
-            battleye_required,
-            include_invalid,
-            exclude_password_protected: !include_password_protected,
-            mods,
-        },
-        sort_criteria,
-        scroll_lock,
-    }
-}
-
-fn save_server_browser_config(ini: &mut Ini, config: &ServerBrowserConfig) {
-    let setter = &mut ini.with_section(Some(SECTION_SERVER_BROWSER));
-    let setter = if config.filter.name.is_empty() {
-        setter
-    } else {
-        setter.set(KEY_NAME, &config.filter.name)
-    };
-    let setter =
-        if config.filter.map.is_empty() { setter } else { setter.set(KEY_MAP, &config.filter.map) };
-    let setter = setter.set(KEY_TYPE_FILTER, config.filter.type_filter.as_ref());
-    let setter = match config.filter.mode {
-        Some(mode) => setter.set(KEY_MODE, mode.as_ref()),
-        None => setter,
-    };
-    let setter = match config.filter.region {
-        Some(region) => setter.set(KEY_REGION, region.as_ref()),
-        None => setter,
-    };
-    let setter = match config.filter.battleye_required {
-        Some(required) => setter.set(KEY_BATTLEYE_REQUIRED, required.to_string()),
-        None => setter,
-    };
-    let setter = match config.filter.mods {
-        Some(mods) => setter.set(KEY_MODS, mods.to_string()),
-        None => setter,
-    };
-    setter
-        .set(
-            KEY_INCLUDE_INVALID,
-            config.filter.include_invalid.to_string(),
-        )
-        .set(
-            KEY_INCLUDE_PASSWORD_PROTECTED,
-            (!config.filter.exclude_password_protected).to_string(),
-        )
-        .set(
-            KEY_SORT_CRITERIA,
-            sort_criteria_to_string(&config.sort_criteria),
-        )
-        .set(KEY_SCROLL_LOCK, config.scroll_lock.to_string());
-}
-
-fn sort_criteria_to_string(criteria: &SortCriteria) -> String {
-    let prefix = if criteria.ascending { "" } else { "-" };
-    format!("{}{}", prefix, criteria.key.as_ref())
-}
-
-const SECTION_SERVER_BROWSER: &str = "ServerBrowser";
-
-const KEY_LOG_LEVEL: &str = "LogLevel";
-const KEY_BRANCH: &str = "Branch";
-const KEY_USE_BATTLEYE: &str = "UseBattlEye";
-const KEY_USE_ALL_CORES: &str = "UseAllCores";
-const KEY_EXTRA_ARGS: &str = "ExtraArgs";
-const KEY_DISABLE_MOD_MISMATCH_CHECKS: &str = "DisableModMismatchChecks";
-const KEY_THEME: &str = "Theme";
-const KEY_NAME: &str = "Name";
-const KEY_MAP: &str = "Map";
-const KEY_TYPE_FILTER: &str = "Type";
-const KEY_MODE: &str = "Mode";
-const KEY_REGION: &str = "Region";
-const KEY_BATTLEYE_REQUIRED: &str = "BattlEyeRequired";
-const KEY_INCLUDE_INVALID: &str = "IncludeInvalid";
-const KEY_INCLUDE_PASSWORD_PROTECTED: &str = "IncludePasswordProtected";
-const KEY_MODS: &str = "Mods";
-const KEY_SORT_CRITERIA: &str = "SortBy";
-const KEY_SCROLL_LOCK: &str = "ScrollLock";
-
-const BRANCH_MAIN: &str = "live";
-const BRANCH_PUBLIC_BETA: &str = "testlive";
-
 const BATTLEYE_AUTO: &str = "auto";
 const BATTLEYE_ALWAYS: &str = "always";
 const BATTLEYE_NEVER: &str = "never";
-
-const MOD_MISMATCH_CHECKS_ENABLED: &str = "enabled";
-const MOD_MISMATCH_CHECKS_DISABLED: &str = "disabled";
-
-const THEME_LIGHT: &str = "light";
-const THEME_DARK: &str = "dark";

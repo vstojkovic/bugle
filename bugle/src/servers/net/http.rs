@@ -61,8 +61,8 @@ struct BucketList {
 
 fn directory_url(branch: Branch) -> &'static str {
     match branch {
-        Branch::Main => "https://ce-fcsd-winoff-ams.funcom.com",
-        Branch::PublicBeta => "https://ce-fcsd-winoff-wdc.funcom.com",
+        Branch::Live => "https://ce-fcsd-winoff-ams.funcom.com",
+        Branch::TestLive => "https://ce-fcsd-winoff-wdc.funcom.com",
     }
 }
 

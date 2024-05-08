@@ -154,8 +154,8 @@ impl ModInfo {
 
     pub fn steam_file_id(&self, branch: Branch) -> Option<u64> {
         let id_str = match branch {
-            Branch::Main => self.live_steam_file_id.as_ref()?,
-            Branch::PublicBeta => self.testlive_steam_file_id.as_ref()?,
+            Branch::Live => self.live_steam_file_id.as_ref()?,
+            Branch::TestLive => self.testlive_steam_file_id.as_ref()?,
         };
         id_str.parse().ok()
     }

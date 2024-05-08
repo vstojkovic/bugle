@@ -230,8 +230,8 @@ async fn main() {
     };
     let can_switch_branch = steam
         .locate_game(match config.get().branch {
-            Branch::Main => Branch::PublicBeta,
-            Branch::PublicBeta => Branch::Main,
+            Branch::Live => Branch::TestLive,
+            Branch::TestLive => Branch::Live,
         })
         .is_ok();
     let game = steam
@@ -243,8 +243,8 @@ async fn main() {
             error!(root_logger, "Error with Conan Exiles installation"; "error" => %err);
             if can_switch_branch {
                 let (this_name, other_name, other_branch) = match config.get().branch {
-                    Branch::Main => ("Live", "TestLive", Branch::PublicBeta),
-                    Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
+                    Branch::Live => ("Live", "TestLive", Branch::TestLive),
+                    Branch::TestLive => ("TestLive", "Live", Branch::Live),
                 };
                 let should_switch = gui::prompt_confirm(&format!(
                     "There was a problem with your {} installation of Conan Exiles.\nHowever, \

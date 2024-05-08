@@ -64,8 +64,8 @@ impl HomeTab {
         can_switch_branch: bool,
     ) -> Rc<Self> {
         let (branch_name, other_branch_name, other_branch) = match game.branch() {
-            Branch::Main => ("Live", "TestLive", Branch::PublicBeta),
-            Branch::PublicBeta => ("TestLive", "Live", Branch::Main),
+            Branch::Live => ("Live", "TestLive", Branch::TestLive),
+            Branch::TestLive => ("TestLive", "Live", Branch::Live),
         };
 
         let mut grid = Grid::builder_with_factory(wrapper_factory())
@@ -475,8 +475,8 @@ impl HomeTab {
                                 "error" => %err,
                             );
                             let err_msg = match branch {
-                                Branch::Main => ERR_SWITCHING_TO_MAIN,
-                                Branch::PublicBeta => ERR_SWITCHING_TO_PUBLIC_BETA,
+                                Branch::Live => ERR_SWITCHING_TO_MAIN,
+                                Branch::TestLive => ERR_SWITCHING_TO_PUBLIC_BETA,
                             };
                             alert_error(err_msg, &err);
                         }

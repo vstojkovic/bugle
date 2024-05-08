@@ -103,8 +103,8 @@ impl Steam {
 
 fn app_id(branch: Branch) -> u32 {
     match branch {
-        Branch::Main => 440900,
-        Branch::PublicBeta => 931180,
+        Branch::Live => 440900,
+        Branch::TestLive => 931180,
     }
 }
 

@@ -4,6 +4,8 @@ use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
 use bitflags::bitflags;
+use ini_persist::load::{LoadProperty, ParseProperty};
+use ini_persist::save::{DisplayProperty, SaveProperty};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
@@ -279,6 +281,8 @@ impl ServerData {
     Debug,
     Deserialize_repr,
     Serialize_repr,
+    LoadProperty,
+    SaveProperty,
     AsRefStr,
     EnumIter,
     EnumString,
@@ -291,6 +295,7 @@ impl ServerData {
 )]
 #[repr(u8)]
 #[strum(ascii_case_insensitive)]
+#[ini(ignore_case)]
 pub enum Region {
     EU,
     America,
@@ -308,9 +313,22 @@ pub enum Ownership {
 }
 
 #[derive(
-    Clone, Copy, Debug, AsRefStr, EnumIter, EnumString, FromRepr, PartialEq, Eq, PartialOrd, Ord,
+    Clone,
+    Copy,
+    Debug,
+    AsRefStr,
+    EnumIter,
+    EnumString,
+    FromRepr,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    LoadProperty,
+    SaveProperty,
 )]
 #[strum(ascii_case_insensitive)]
+#[ini(ignore_case)]
 pub enum Mode {
     PVE,
     PVEC,
@@ -333,9 +351,22 @@ impl Validity {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, AsRefStr, EnumIter, EnumString, FromRepr)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    AsRefStr,
+    EnumIter,
+    EnumString,
+    FromRepr,
+    LoadProperty,
+    SaveProperty,
+)]
 #[strum(ascii_case_insensitive)]
 #[repr(u8)]
+#[ini(ignore_case)]
 pub enum TypeFilter {
     All,
     Official,
@@ -360,16 +391,33 @@ impl TypeFilter {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, LoadProperty, SaveProperty)]
 pub struct Filter {
+    #[ini(rename = "Name", ignore_errors)]
     pub name: String,
+
+    #[ini(rename = "Map", ignore_errors)]
     pub map: String,
+
+    #[ini(rename = "Type", ignore_errors)]
     pub type_filter: TypeFilter,
+
+    #[ini(rename = "Mode", ignore_errors)]
     pub mode: Option<Mode>,
+
+    #[ini(rename = "Region", ignore_errors)]
     pub region: Option<Region>,
+
+    #[ini(rename = "BattlEyeRequired", ignore_errors)]
     pub battleye_required: Option<bool>,
+
+    #[ini(rename = "IncludeInvalid", ignore_errors)]
     pub include_invalid: bool,
-    pub exclude_password_protected: bool,
+
+    #[ini(rename = "IncludePasswordProtected", ignore_errors)]
+    pub include_password_protected: bool,
+
+    #[ini(rename = "Mods", ignore_errors)]
     pub mods: Option<bool>,
 }
 
@@ -406,5 +454,24 @@ impl SortCriteria {
             key: self.key,
             ascending: !self.ascending,
         }
+    }
+}
+
+impl ParseProperty for SortCriteria {
+    fn parse(text: &str) -> ini_persist::Result<Self> {
+        use std::str::FromStr;
+        let (ascending, key) =
+            if text.starts_with('-') { (false, &text[1..]) } else { (true, text) };
+        Ok(SortKey::from_str(key)
+            .ok()
+            .map(|key| SortCriteria { key, ascending })
+            .unwrap_or_default())
+    }
+}
+
+impl DisplayProperty for SortCriteria {
+    fn display(&self) -> String {
+        let prefix = if self.ascending { "" } else { "-" };
+        format!("{}{}", prefix, self.key.as_ref())
     }
 }

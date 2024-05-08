@@ -204,8 +204,8 @@ const SDK: &str = "UE4MKPL-1.31.200121";
 
 fn title_id(branch: Branch) -> &'static str {
     match branch {
-        Branch::Main => "A5B4F",
-        Branch::PublicBeta => "9A23E",
+        Branch::Live => "A5B4F",
+        Branch::TestLive => "9A23E",
     }
 }
 
