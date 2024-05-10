@@ -8,9 +8,10 @@ use fltk_float::LayoutElement;
 use num::ToPrimitive;
 
 use crate::game::settings::server::ChatSettings;
+use crate::gui::server_settings::{min_input_width, EditorBuilder, SliderInput};
 use crate::gui::wrapper_factory;
 
-use super::{min_input_width, EditorBuilder, SliderInput};
+use super::SettingsTab;
 
 pub struct ChatTab {
     root: Scrollable,
@@ -48,10 +49,6 @@ impl ChatTab {
         })
     }
 
-    pub fn root(&self) -> impl WidgetExt {
-        self.root.group()
-    }
-
     pub fn values(&self) -> ChatSettings {
         ChatSettings {
             local_radius: self.local_radius_prop.value(),
@@ -75,5 +72,11 @@ impl LayoutElement for ChatTab {
 
     fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
         self.root.layout(x, y, width, height)
+    }
+}
+
+impl SettingsTab for ChatTab {
+    fn root(&self) -> impl WidgetExt + 'static {
+        self.root.group()
     }
 }

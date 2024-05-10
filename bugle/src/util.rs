@@ -45,6 +45,12 @@ macro_rules! weak_cb {
             }
         }
     };
+    ([$this:ident = $from:expr] => || $($tail:tt)+) => {
+        weak_cb!(@expand [$this = $from] [] $($tail)+)
+    };
+    ([$this:ident] => || $($tail:tt)+) => {
+        weak_cb!([$this = &$this] => || $($tail)+)
+    };
     ([$this:ident = $from:expr] => |$($tail:tt)+) => {
         weak_cb!(@munch_args [$this = $from] [] $($tail)+)
     };

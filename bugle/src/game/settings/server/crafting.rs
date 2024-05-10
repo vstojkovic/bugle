@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::settings::Multiplier;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseCraftingSettings {
+pub struct PublicCraftingSettings {
     #[serde(rename = "S8")]
     #[ini(rename = "ItemConvertionMultiplier")]
     pub crafting_time_mult: Multiplier,
@@ -20,7 +20,7 @@ pub struct BaseCraftingSettings {
 #[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct CraftingSettings {
     #[ini(flatten)]
-    pub base: BaseCraftingSettings,
+    pub public: PublicCraftingSettings,
 
     #[ini(rename = "FuelBurnTimeMultiplier")]
     pub fuel_burn_time_mult: Multiplier,
@@ -30,14 +30,14 @@ pub struct CraftingSettings {
 }
 
 impl Deref for CraftingSettings {
-    type Target = BaseCraftingSettings;
+    type Target = PublicCraftingSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for CraftingSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }

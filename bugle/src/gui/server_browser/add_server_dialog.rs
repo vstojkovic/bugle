@@ -16,7 +16,7 @@ use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::LayoutElement;
 use strum::IntoEnumIterator;
 
-use crate::game::settings::server::{BaseGeneralSettings, CombatModeModifier};
+use crate::game::settings::server::{CombatModeModifier, PublicGeneralSettings};
 use crate::game::Game;
 use crate::gui::widgets::DropDownList;
 use crate::gui::{alert_error, wrapper_factory};
@@ -227,7 +227,7 @@ impl AddServerDialog {
             port: host.port() as _,
             build_id: self.build_id,
             mods: None,
-            general: BaseGeneralSettings {
+            general: PublicGeneralSettings {
                 battleye_required: self.battleye_check.is_checked(),
                 pvp_enabled: mode != Mode::PVE,
                 mode_modifier: kind,

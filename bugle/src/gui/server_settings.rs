@@ -1,15 +1,5 @@
-mod building;
-mod chat;
-mod combat;
-mod crafting;
-mod daylight;
 mod dialog;
-mod followers;
-mod general;
-mod harvesting;
-mod maelstrom;
-mod progression;
-mod survival;
+mod tabs;
 
 use std::borrow::Borrow;
 use std::cell::Cell;
@@ -248,7 +238,13 @@ fn make_label(text: &str) -> Frame {
 }
 
 trait EditorBuilder {
-    fn bool_prop(&mut self, label: &str) -> CheckButton;
+    type BoolProp;
+    type RangeProp;
+    type EnumProp;
+    type DailyHoursProp;
+    type WeeklyHoursProp;
+
+    fn bool_prop(&mut self, label: &str) -> Self::BoolProp;
     fn range_prop(
         &mut self,
         label: &str,
@@ -256,14 +252,20 @@ trait EditorBuilder {
         max: f64,
         step: f64,
         step_div: i32,
-    ) -> SliderInput;
-    fn enum_prop(&mut self, label: &str, values: &[&str]) -> DropDownList;
-    fn daily_hours_prop(&mut self, check_label: &str) -> DailyHoursInput;
-    fn weekly_hours_prop(&mut self) -> WeeklyHoursInput;
+    ) -> Self::RangeProp;
+    fn enum_prop(&mut self, label: &str, values: &[&str]) -> Self::EnumProp;
+    fn daily_hours_prop(&mut self, check_label: &str) -> Self::DailyHoursProp;
+    fn weekly_hours_prop(&mut self) -> Self::WeeklyHoursProp;
 }
 
 impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuilder<G, F> {
-    fn bool_prop(&mut self, label: &str) -> CheckButton {
+    type BoolProp = CheckButton;
+    type RangeProp = SliderInput;
+    type EnumProp = DropDownList;
+    type DailyHoursProp = DailyHoursInput;
+    type WeeklyHoursProp = WeeklyHoursInput;
+
+    fn bool_prop(&mut self, label: &str) -> Self::BoolProp {
         let span_cols = self.num_cols();
         self.row().add();
         let button = self
@@ -280,7 +282,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
         max: f64,
         step: f64,
         step_div: i32,
-    ) -> SliderInput {
+    ) -> Self::RangeProp {
         let span_cols = self.num_cols() - 2;
         self.row().add();
         let slider_input = SliderInput::new(min, max, step, step_div);
@@ -296,7 +298,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
         slider_input
     }
 
-    fn enum_prop(&mut self, label: &str, values: &[&str]) -> DropDownList {
+    fn enum_prop(&mut self, label: &str, values: &[&str]) -> Self::EnumProp {
         let span_cols = self.num_cols() - 1;
         self.row().add();
         self.cell().unwrap().wrap(make_label(label));
@@ -310,7 +312,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
         input
     }
 
-    fn daily_hours_prop(&mut self, check_label: &str) -> DailyHoursInput {
+    fn daily_hours_prop(&mut self, check_label: &str) -> Self::DailyHoursProp {
         let mut result = HashMap::with_capacity(7);
         for day in weekday_iter() {
             self.row().add();
@@ -338,7 +340,7 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
         DailyHoursInput(result)
     }
 
-    fn weekly_hours_prop(&mut self) -> WeeklyHoursInput {
+    fn weekly_hours_prop(&mut self) -> Self::WeeklyHoursProp {
         let input = WeeklyHoursInput::new();
 
         let span_cols = self.num_cols() - 4;
@@ -369,5 +371,61 @@ impl<G: GroupExt + Clone, F: Borrow<WrapperFactory>> EditorBuilder for GridBuild
         self.cell().unwrap().wrap(input.weekend.end_input.clone());
 
         input
+    }
+}
+
+struct PrivateBuilder<B: EditorBuilder> {
+    public: B,
+    build_private: bool,
+}
+
+impl<B: EditorBuilder> PrivateBuilder<B> {
+    fn new(public: B, build_private: bool) -> Self {
+        Self {
+            public,
+            build_private,
+        }
+    }
+
+    fn into_inner(self) -> B {
+        self.public
+    }
+}
+
+impl<B: EditorBuilder> EditorBuilder for PrivateBuilder<B> {
+    type BoolProp = Option<B::BoolProp>;
+    type RangeProp = Option<B::RangeProp>;
+    type EnumProp = Option<B::EnumProp>;
+    type DailyHoursProp = Option<B::DailyHoursProp>;
+    type WeeklyHoursProp = Option<B::WeeklyHoursProp>;
+
+    fn bool_prop(&mut self, label: &str) -> Self::BoolProp {
+        self.build_private.then(|| self.public.bool_prop(label))
+    }
+
+    fn range_prop(
+        &mut self,
+        label: &str,
+        min: f64,
+        max: f64,
+        step: f64,
+        step_div: i32,
+    ) -> Self::RangeProp {
+        self.build_private
+            .then(|| self.public.range_prop(label, min, max, step, step_div))
+    }
+
+    fn enum_prop(&mut self, label: &str, values: &[&str]) -> Self::EnumProp {
+        self.build_private
+            .then(|| self.public.enum_prop(label, values))
+    }
+
+    fn daily_hours_prop(&mut self, check_label: &str) -> Self::DailyHoursProp {
+        self.build_private
+            .then(|| self.public.daily_hours_prop(check_label))
+    }
+
+    fn weekly_hours_prop(&mut self) -> Self::WeeklyHoursProp {
+        self.build_private.then(|| self.public.weekly_hours_prop())
     }
 }

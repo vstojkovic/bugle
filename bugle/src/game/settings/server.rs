@@ -23,18 +23,18 @@ mod survival;
 
 pub use self::building::{BuildingSettings, CreativeMode};
 pub use self::chat::ChatSettings;
-pub use self::combat::{BaseCombatSettings, CombatSettings};
-pub use self::crafting::{BaseCraftingSettings, CraftingSettings};
-pub use self::daylight::{BaseDaylightSettings, DaylightSettings};
+pub use self::combat::{CombatSettings, PublicCombatSettings};
+pub use self::crafting::{CraftingSettings, PublicCraftingSettings};
+pub use self::daylight::{DaylightSettings, PublicDaylightSettings};
 pub use self::followers::FollowerSettings;
 pub use self::general::{
-    BaseGeneralSettings, CombatModeModifier, Community, EventLogPrivacy, GeneralSettings,
-    OnlinePlayerInfoVisibility,
+    CombatModeModifier, Community, EventLogPrivacy, GeneralSettings, OnlinePlayerInfoVisibility,
+    PublicGeneralSettings,
 };
-pub use self::harvesting::{BaseHarvestingSettings, HarvestingSettings};
+pub use self::harvesting::{HarvestingSettings, PublicHarvestingSettings};
 pub use self::maelstrom::MaelstromSettings;
-pub use self::progression::{BaseProgressionSettings, ProgressionSettings};
-pub use self::survival::{BaseSurvivalSettings, DropOnDeath, SurvivalSettings};
+pub use self::progression::{ProgressionSettings, PublicProgressionSettings};
+pub use self::survival::{DropOnDeath, PublicSurvivalSettings, SurvivalSettings};
 
 use super::Nudity;
 

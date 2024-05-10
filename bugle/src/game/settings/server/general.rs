@@ -11,7 +11,7 @@ use strum_macros::{EnumIter, FromRepr};
 use crate::game::settings::{display_seconds, parse_seconds, DailyHours, Nudity};
 
 #[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseGeneralSettings {
+pub struct PublicGeneralSettings {
     #[serde(rename = "S05")]
     #[ini(rename = "IsBattlEyeEnabled")]
     pub battleye_required: bool,
@@ -50,7 +50,7 @@ pub struct BaseGeneralSettings {
     pub raid_hours: DailyHours,
 }
 
-impl Default for BaseGeneralSettings {
+impl Default for PublicGeneralSettings {
     fn default() -> Self {
         Self {
             battleye_required: false,
@@ -69,7 +69,7 @@ impl Default for BaseGeneralSettings {
 #[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct GeneralSettings {
     #[ini(flatten)]
-    pub base: BaseGeneralSettings,
+    pub public: PublicGeneralSettings,
 
     #[ini(rename = "ServerMessageOfTheDay")]
     pub motd: String,
@@ -133,22 +133,22 @@ pub struct GeneralSettings {
 }
 
 impl Deref for GeneralSettings {
-    type Target = BaseGeneralSettings;
+    type Target = PublicGeneralSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for GeneralSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }
 
 impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
-            base: Default::default(),
+            public: Default::default(),
             motd: String::new(),
             server_password: String::new(),
             admin_password: String::new(),

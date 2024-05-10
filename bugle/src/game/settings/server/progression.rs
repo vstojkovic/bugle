@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::settings::Multiplier;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseProgressionSettings {
+pub struct PublicProgressionSettings {
     #[serde(rename = "Sz")]
     #[ini(rename = "PlayerXPRateMultiplier")]
     pub xp_rate_mult: Multiplier,
@@ -16,7 +16,7 @@ pub struct BaseProgressionSettings {
 #[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct ProgressionSettings {
     #[ini(flatten)]
-    pub base: BaseProgressionSettings,
+    pub public: PublicProgressionSettings,
 
     #[ini(rename = "PlayerXPTimeMultiplier")]
     pub xp_time_mult: Multiplier,
@@ -32,14 +32,14 @@ pub struct ProgressionSettings {
 }
 
 impl Deref for ProgressionSettings {
-    type Target = BaseProgressionSettings;
+    type Target = PublicProgressionSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for ProgressionSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }

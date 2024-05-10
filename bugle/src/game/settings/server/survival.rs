@@ -9,7 +9,7 @@ use strum_macros::FromRepr;
 use crate::game::settings::Multiplier;
 
 #[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseSurvivalSettings {
+pub struct PublicSurvivalSettings {
     #[serde(rename = "Sj", default)]
     #[ini(rename = "StaminaCostMultiplier")]
     pub stamina_cost_mult: Multiplier,
@@ -43,7 +43,7 @@ pub struct BaseSurvivalSettings {
     pub offline_chars_in_world: bool,
 }
 
-impl Default for BaseSurvivalSettings {
+impl Default for PublicSurvivalSettings {
     fn default() -> Self {
         Self {
             stamina_cost_mult: Default::default(),
@@ -61,7 +61,7 @@ impl Default for BaseSurvivalSettings {
 #[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct SurvivalSettings {
     #[ini(flatten)]
-    pub base: BaseSurvivalSettings,
+    pub public: PublicSurvivalSettings,
 
     #[ini(rename = "ThrallCorruptionRemovalMultiplier")]
     pub corruption_removal_mult: Multiplier,
@@ -74,15 +74,15 @@ pub struct SurvivalSettings {
 }
 
 impl Deref for SurvivalSettings {
-    type Target = BaseSurvivalSettings;
+    type Target = PublicSurvivalSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for SurvivalSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }
 

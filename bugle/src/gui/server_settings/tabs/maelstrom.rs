@@ -9,9 +9,10 @@ use fltk_float::LayoutElement;
 use num::ToPrimitive;
 
 use crate::game::settings::server::MaelstromSettings;
+use crate::gui::server_settings::{min_input_width, EditorBuilder, SliderInput, WeeklyHoursInput};
 use crate::gui::wrapper_factory;
 
-use super::{min_input_width, EditorBuilder, SliderInput, WeeklyHoursInput};
+use super::SettingsTab;
 
 pub struct MaelstromTab {
     root: Scrollable,
@@ -184,10 +185,6 @@ impl MaelstromTab {
         })
     }
 
-    pub fn root(&self) -> impl WidgetExt {
-        self.root.group()
-    }
-
     pub fn values(&self) -> MaelstromSettings {
         MaelstromSettings {
             storm_enabled: self.storm_enabled_prop.is_checked(),
@@ -313,5 +310,11 @@ impl LayoutElement for MaelstromTab {
 
     fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
         self.root.layout(x, y, width, height)
+    }
+}
+
+impl SettingsTab for MaelstromTab {
+    fn root(&self) -> impl WidgetExt + 'static {
+        self.root.group()
     }
 }

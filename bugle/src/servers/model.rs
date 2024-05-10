@@ -12,8 +12,9 @@ use strum_macros::{AsRefStr, EnumIter, EnumString, FromRepr};
 use uuid::Uuid;
 
 use crate::game::settings::server::{
-    BaseCombatSettings, BaseCraftingSettings, BaseDaylightSettings, BaseGeneralSettings,
-    BaseHarvestingSettings, BaseProgressionSettings, BaseSurvivalSettings, CombatModeModifier,
+    CombatModeModifier, PublicCombatSettings, PublicCraftingSettings, PublicDaylightSettings,
+    PublicGeneralSettings, PublicHarvestingSettings, PublicProgressionSettings,
+    PublicSurvivalSettings,
 };
 use crate::net::{is_valid_ip, is_valid_port};
 
@@ -75,25 +76,25 @@ pub struct ServerData {
     pub mods: Option<String>,
 
     #[serde(flatten)]
-    pub general: BaseGeneralSettings,
+    pub general: PublicGeneralSettings,
 
     #[serde(flatten)]
-    pub progression: BaseProgressionSettings,
+    pub progression: PublicProgressionSettings,
 
     #[serde(flatten)]
-    pub daylight: BaseDaylightSettings,
+    pub daylight: PublicDaylightSettings,
 
     #[serde(flatten)]
-    pub survival: BaseSurvivalSettings,
+    pub survival: PublicSurvivalSettings,
 
     #[serde(flatten)]
-    pub combat: BaseCombatSettings,
+    pub combat: PublicCombatSettings,
 
     #[serde(flatten)]
-    pub harvesting: BaseHarvestingSettings,
+    pub harvesting: PublicHarvestingSettings,
 
     #[serde(flatten)]
-    pub crafting: BaseCraftingSettings,
+    pub crafting: PublicCraftingSettings,
 }
 
 impl Deref for Server {

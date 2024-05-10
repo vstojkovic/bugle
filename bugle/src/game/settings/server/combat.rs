@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::settings::{display_seconds, parse_seconds, Multiplier, WeeklyHours};
 
 #[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseCombatSettings {
+pub struct PublicCombatSettings {
     #[serde(rename = "S6", default)]
     #[ini(rename = "DurabilityMultiplier")]
     pub durability_mult: Multiplier,
@@ -23,7 +23,7 @@ pub struct BaseCombatSettings {
     pub thrall_wakeup_time: TimeDelta,
 }
 
-impl Default for BaseCombatSettings {
+impl Default for PublicCombatSettings {
     fn default() -> Self {
         Self {
             durability_mult: Default::default(),
@@ -35,7 +35,7 @@ impl Default for BaseCombatSettings {
 #[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct CombatSettings {
     #[ini(flatten)]
-    pub base: BaseCombatSettings,
+    pub public: PublicCombatSettings,
 
     #[ini(rename = "PlayerDamageMultiplier")]
     pub player_dmg_mult: Multiplier,
@@ -78,22 +78,22 @@ pub struct CombatSettings {
 }
 
 impl Deref for CombatSettings {
-    type Target = BaseCombatSettings;
+    type Target = PublicCombatSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for CombatSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }
 
 impl Default for CombatSettings {
     fn default() -> Self {
         Self {
-            base: Default::default(),
+            public: Default::default(),
             player_dmg_mult: Multiplier(1.0),
             player_dmg_recv_mult: Multiplier(1.0),
             npc_dmg_mult: Multiplier(1.0),

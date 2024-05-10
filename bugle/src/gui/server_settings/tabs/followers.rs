@@ -9,9 +9,10 @@ use fltk_float::LayoutElement;
 use num::ToPrimitive;
 
 use crate::game::settings::server::FollowerSettings;
+use crate::gui::server_settings::{min_input_width, EditorBuilder, SliderInput};
 use crate::gui::wrapper_factory;
 
-use super::{min_input_width, EditorBuilder, SliderInput};
+use super::SettingsTab;
 
 pub struct FollowersTab {
     root: Scrollable,
@@ -67,10 +68,6 @@ impl FollowersTab {
         })
     }
 
-    pub fn root(&self) -> impl WidgetExt {
-        self.root.group()
-    }
-
     pub fn values(&self) -> FollowerSettings {
         FollowerSettings {
             pen_crafting_time_mult: self.pen_crafting_time_mult_prop.value().into(),
@@ -103,5 +100,11 @@ impl LayoutElement for FollowersTab {
 
     fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
         self.root.layout(x, y, width, height)
+    }
+}
+
+impl SettingsTab for FollowersTab {
+    fn root(&self) -> impl WidgetExt + 'static {
+        self.root.group()
     }
 }

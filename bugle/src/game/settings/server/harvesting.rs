@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::settings::Multiplier;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseHarvestingSettings {
+pub struct PublicHarvestingSettings {
     #[serde(rename = "Sl")]
     #[ini(rename = "HarvestAmountMultiplier")]
     pub harvest_amount_mult: Multiplier,
@@ -24,21 +24,21 @@ pub struct BaseHarvestingSettings {
 #[derive(Debug, Clone, Default, LoadProperty, SaveProperty)]
 pub struct HarvestingSettings {
     #[ini(flatten)]
-    pub base: BaseHarvestingSettings,
+    pub public: PublicHarvestingSettings,
 
     #[ini(rename = "LandClaimRadiusMultiplier")]
     pub claim_radius_mult: Multiplier,
 }
 
 impl Deref for HarvestingSettings {
-    type Target = BaseHarvestingSettings;
+    type Target = PublicHarvestingSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for HarvestingSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }

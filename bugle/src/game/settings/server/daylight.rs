@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::game::settings::Multiplier;
 
 #[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
-pub struct BaseDaylightSettings {
+pub struct PublicDaylightSettings {
     #[serde(rename = "Sb", default)]
     #[ini(rename = "DayCycleSpeedScale")]
     pub day_cycle_speed_mult: Multiplier,
@@ -21,7 +21,7 @@ pub struct BaseDaylightSettings {
     pub use_catch_up_time: bool,
 }
 
-impl Default for BaseDaylightSettings {
+impl Default for PublicDaylightSettings {
     fn default() -> Self {
         Self {
             day_cycle_speed_mult: Default::default(),
@@ -34,7 +34,7 @@ impl Default for BaseDaylightSettings {
 #[derive(Debug, Clone, LoadProperty, SaveProperty)]
 pub struct DaylightSettings {
     #[ini(flatten)]
-    pub base: BaseDaylightSettings,
+    pub public: PublicDaylightSettings,
 
     #[ini(rename = "DayTimeSpeedScale")]
     pub day_time_speed_mult: Multiplier,
@@ -47,22 +47,22 @@ pub struct DaylightSettings {
 }
 
 impl Deref for DaylightSettings {
-    type Target = BaseDaylightSettings;
+    type Target = PublicDaylightSettings;
     fn deref(&self) -> &Self::Target {
-        &self.base
+        &self.public
     }
 }
 
 impl DerefMut for DaylightSettings {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.base
+        &mut self.public
     }
 }
 
 impl Default for DaylightSettings {
     fn default() -> Self {
         Self {
-            base: Default::default(),
+            public: Default::default(),
             day_time_speed_mult: Multiplier(1.0),
             night_time_speed_mult: Multiplier(1.0),
             catch_up_time: 10.0,
