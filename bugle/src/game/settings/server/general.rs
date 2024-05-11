@@ -9,6 +9,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum_macros::{EnumIter, FromRepr};
 
 use crate::game::settings::{display_seconds, parse_seconds, DailyHours, Nudity};
+use crate::servers::Mode;
 
 #[derive(Clone, Debug, Deserialize, Serialize, LoadProperty, SaveProperty)]
 pub struct PublicGeneralSettings {
@@ -197,6 +198,13 @@ impl CombatModeModifier {
         match self {
             Self::Conflict => 1,
             Self::Other(repr) => repr,
+        }
+    }
+
+    pub fn for_mode(mode: Mode) -> Self {
+        match mode {
+            Mode::PVEC => Self::Conflict,
+            _ => Self::Other(0),
         }
     }
 }

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Result};
-use fltk::button::{Button, CheckButton, ReturnButton};
+use fltk::button::{Button, CheckButton, ReturnButton, ToggleButton};
 use fltk::frame::Frame;
 use fltk::group::Group;
 use fltk::input::Input;
@@ -16,8 +16,9 @@ use fltk_float::grid::{CellAlign, Grid};
 use fltk_float::LayoutElement;
 use strum::IntoEnumIterator;
 
-use crate::game::settings::server::{CombatModeModifier, PublicGeneralSettings};
+use crate::game::settings::server::CombatModeModifier;
 use crate::game::Game;
+use crate::gui::server_settings::tabs::SettingsTabs;
 use crate::gui::widgets::DropDownList;
 use crate::gui::{alert_error, wrapper_factory};
 use crate::servers::{Mode, Ownership, Region, Server, ServerData};
@@ -34,7 +35,7 @@ pub struct AddServerDialog {
     mode_input: DropDownList,
     region_input: DropDownList,
     pwd_prot_check: CheckButton,
-    battleye_check: CheckButton,
+    settings_tabs: SettingsTabs,
     result: RefCell<Option<Server>>,
 }
 
@@ -97,21 +98,42 @@ impl AddServerDialog {
         for region in Region::iter() {
             region_input.add(region_name(region));
         }
-        let battleye_check = root
+        let mut battleye_check = root
             .cell()
             .unwrap()
             .wrap(CheckButton::default())
             .with_label("Requires BattlEye");
 
-        root.row()
-            .with_default_align(CellAlign::End)
-            .with_stretch(1)
-            .add();
+        root.row().with_stretch(1).add();
+        let mut settings_grid = Grid::builder_with_factory(wrapper_factory());
+        let settings_tabs = SettingsTabs::new(
+            &mut settings_grid,
+            false,
+            &Default::default(),
+            &Default::default(),
+        );
+        let settings_grid = settings_grid.end();
+        let mut settings_group = settings_grid.group();
+        settings_group.hide();
+        let min_tabs_height = settings_grid.min_size().height;
+        root.span(1, 5)
+            .unwrap()
+            .with_horz_align(CellAlign::Stretch)
+            .with_vert_align(CellAlign::Stretch)
+            .add(CollapsibleWrapper::new(settings_grid, Default::default()));
+
+        root.row().add();
         let mut btn_grid = Grid::builder_with_factory(wrapper_factory()).with_col_spacing(10);
         btn_grid.row().add();
+        btn_grid.col().add();
         btn_grid.col().with_stretch(1).add();
         let btn_group = btn_grid.col_group().add();
         btn_grid.extend_group(btn_group).batch(2);
+        let mut settings_button = btn_grid
+            .cell()
+            .unwrap()
+            .wrap(ToggleButton::default())
+            .with_label(LABEL_EXPAND_SETTINGS);
         btn_grid.cell().unwrap().skip();
         let mut ok_button = btn_grid
             .cell()
@@ -138,21 +160,63 @@ impl AddServerDialog {
             parent.y() + (parent.h() - window.h()) / 2,
         );
 
+        settings_button.set_callback({
+            let width = window.w();
+            let collapsed_height = min_size.height;
+            let expanded_height = std::cmp::max(600, collapsed_height + min_tabs_height);
+            let mut window = window.clone();
+            move |settings_button| {
+                if settings_group.visible() {
+                    settings_button.set_label(LABEL_EXPAND_SETTINGS);
+                    settings_group.hide();
+                    window.set_size(width, collapsed_height);
+                    root.layout(0, 0, window.w(), window.h());
+                } else {
+                    settings_button.set_label(LABEL_COLLAPSE_SETTINGS);
+                    window.set_size(width, expanded_height);
+                    root.layout(0, 0, window.w(), window.h());
+                    settings_group.show();
+                }
+            }
+        });
+
         let this = Rc::new(Self {
             build_id: game.build_id(),
             window,
             name_input,
             host_input,
             map_input,
-            mode_input,
+            mode_input: mode_input.clone(),
             region_input,
             pwd_prot_check,
-            battleye_check,
+            settings_tabs,
             result: RefCell::new(None),
         });
 
         ok_button.set_callback(weak_cb!([this] => |_| this.ok_clicked()));
         cancel_button.set_callback(weak_cb!([this] => |_| this.cancel_clicked()));
+        mode_input.set_callback(weak_cb!([this] => |input| {
+            let Some(mode) = Mode::from_repr(input.value() as _) else {
+                return;
+            };
+            this.settings_tabs.general_tab.set_mode(mode);
+        }));
+        battleye_check.set_callback(weak_cb!([this] => |input| {
+            this.settings_tabs.general_tab.set_battleye_required(input.is_checked());
+        }));
+        this.settings_tabs
+            .general_tab
+            .set_pvp_enabled_callback(weak_cb!([this] => |enabled| {
+                let mode = if enabled {
+                    match this.settings_tabs.general_tab.mode_modifier() {
+                        CombatModeModifier::Conflict => Mode::PVEC,
+                        _ => Mode::PVP,
+                    }
+                } else {
+                    Mode::PVE
+                };
+                this.mode_input.clone().set_value(mode as u8);
+            }));
 
         this
     }
@@ -203,11 +267,6 @@ impl AddServerDialog {
         if self.mode_input.value() < 0 {
             bail!("Please select a mode.");
         }
-        let mode = Mode::from_repr(self.mode_input.value() as _).unwrap();
-        let kind = match mode {
-            Mode::PVEC => CombatModeModifier::Conflict,
-            _ => CombatModeModifier::Other(0),
-        };
 
         if self.region_input.value() < 0 {
             bail!("Please select a region.");
@@ -227,18 +286,13 @@ impl AddServerDialog {
             port: host.port() as _,
             build_id: self.build_id,
             mods: None,
-            general: PublicGeneralSettings {
-                battleye_required: self.battleye_check.is_checked(),
-                pvp_enabled: mode != Mode::PVE,
-                mode_modifier: kind,
-                ..Default::default()
-            },
-            progression: Default::default(),
-            daylight: Default::default(),
-            survival: Default::default(),
-            combat: Default::default(),
-            harvesting: Default::default(),
-            crafting: Default::default(),
+            general: self.settings_tabs.general_tab.public_values(),
+            progression: self.settings_tabs.progression_tab.public_values(),
+            daylight: self.settings_tabs.daylight_tab.public_values(),
+            survival: self.settings_tabs.survival_tab.public_values(),
+            combat: self.settings_tabs.combat_tab.public_values(),
+            harvesting: self.settings_tabs.harvesting_tab.public_values(),
+            crafting: self.settings_tabs.crafting_tab.public_values(),
         });
 
         Ok(server)
@@ -246,3 +300,30 @@ impl AddServerDialog {
 }
 
 const ERR_INVALID_SERVER_DATA: &str = "Invalid server data.";
+
+const LABEL_EXPAND_SETTINGS: &str = "Settings @2>>";
+const LABEL_COLLAPSE_SETTINGS: &str = "Settings @8>>";
+
+struct CollapsibleWrapper<E: LayoutElement> {
+    element: E,
+    collapsed_size: fltk_float::Size,
+}
+
+impl<E: LayoutElement> CollapsibleWrapper<E> {
+    pub fn new(element: E, collapsed_size: fltk_float::Size) -> Self {
+        Self {
+            element,
+            collapsed_size,
+        }
+    }
+}
+
+impl<E: LayoutElement> LayoutElement for CollapsibleWrapper<E> {
+    fn min_size(&self) -> fltk_float::Size {
+        self.collapsed_size
+    }
+
+    fn layout(&self, x: i32, y: i32, width: i32, height: i32) {
+        self.element.layout(x, y, width, height)
+    }
+}

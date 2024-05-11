@@ -62,6 +62,7 @@ impl DropDownList {
         self.text
             .clone()
             .set_label(&self.choice().unwrap_or_default());
+        self.button.clone().redraw();
     }
 
     pub fn set_callback<F: FnMut(&mut Self) + 'static>(&mut self, mut cb: F) {

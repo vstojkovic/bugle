@@ -23,17 +23,17 @@ mod survival;
 use crate::game::settings::server::{PublicGeneralSettings, PublicSurvivalSettings};
 use crate::gui::wrapper_factory;
 
-use self::building::BuildingTab;
-use self::chat::ChatTab;
-use self::combat::CombatTab;
-use self::crafting::CraftingTab;
-use self::daylight::DaylightTab;
-use self::followers::FollowersTab;
-use self::general::GeneralTab;
-use self::harvesting::HarvestingTab;
-use self::maelstrom::MaelstromTab;
-use self::progression::ProgressionTab;
-use self::survival::SurvivalTab;
+pub use self::building::BuildingTab;
+pub use self::chat::ChatTab;
+pub use self::combat::CombatTab;
+pub use self::crafting::CraftingTab;
+pub use self::daylight::DaylightTab;
+pub use self::followers::FollowersTab;
+pub use self::general::GeneralTab;
+pub use self::harvesting::HarvestingTab;
+pub use self::maelstrom::MaelstromTab;
+pub use self::progression::ProgressionTab;
+pub use self::survival::SurvivalTab;
 
 trait SettingsTab {
     fn root(&self) -> impl WidgetExt + 'static;

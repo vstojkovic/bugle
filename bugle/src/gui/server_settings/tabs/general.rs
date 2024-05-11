@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::rc::Rc;
 
 use chrono::TimeDelta;
@@ -19,13 +20,14 @@ use crate::gui::server_settings::{
 };
 use crate::gui::widgets::DropDownList;
 use crate::gui::wrapper_factory;
+use crate::servers::Mode;
 
 use super::SettingsTab;
 
 pub struct GeneralTab {
     root: Scrollable,
-    battleye_required: bool,
-    mode_modifier: CombatModeModifier,
+    battleye_required: Cell<bool>,
+    mode_modifier: Cell<CombatModeModifier>,
     community: Community,
     max_ping: Option<u32>,
     pvp_enabled_prop: CheckButton,
@@ -200,8 +202,8 @@ impl GeneralTab {
 
         Rc::new(Self {
             root,
-            battleye_required: settings.battleye_required,
-            mode_modifier: settings.mode_modifier,
+            battleye_required: Cell::new(settings.battleye_required),
+            mode_modifier: Cell::new(settings.mode_modifier),
             community: settings.community,
             max_ping: settings.max_ping,
             pvp_enabled_prop,
@@ -213,11 +215,32 @@ impl GeneralTab {
         })
     }
 
+    pub fn set_battleye_required(&self, value: bool) {
+        self.battleye_required.set(value);
+    }
+
+    pub fn set_mode(&self, value: Mode) {
+        self.pvp_enabled_prop
+            .clone()
+            .set_checked(value != Mode::PVE);
+        self.mode_modifier.set(CombatModeModifier::for_mode(value));
+    }
+
+    pub fn mode_modifier(&self) -> CombatModeModifier {
+        self.mode_modifier.get()
+    }
+
+    pub fn set_pvp_enabled_callback(&self, cb: impl Fn(bool) + 'static) {
+        self.pvp_enabled_prop
+            .clone()
+            .set_callback(move |prop| cb(prop.is_checked()));
+    }
+
     pub fn public_values(&self) -> PublicGeneralSettings {
         PublicGeneralSettings {
-            battleye_required: self.battleye_required,
+            battleye_required: self.battleye_required.get(),
             pvp_enabled: self.pvp_enabled_prop.is_checked(),
-            mode_modifier: self.mode_modifier,
+            mode_modifier: self.mode_modifier.get(),
             community: self.community,
             max_ping: self.max_ping,
             max_clan_size: self.max_clan_size_prop.value().to_u16().unwrap(),

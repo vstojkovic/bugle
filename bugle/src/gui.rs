@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use chrono::Weekday;
 use fltk::app;
-use fltk::button::{Button, CheckButton, LightButton, RadioButton, ReturnButton};
+use fltk::button::{Button, CheckButton, LightButton, RadioButton, ReturnButton, ToggleButton};
 use fltk::dialog as fltk_dialog;
 use fltk::enums::{Color, Event};
 use fltk::frame::Frame;
@@ -38,7 +38,6 @@ pub use self::home::{UpdateAuthState, UpdateLastSession};
 pub use self::launcher::LauncherWindow;
 pub use self::mod_update::{ModUpdateProgressDialog, ModUpdateSelectionDialog};
 pub use self::server_browser::{PopulateServers, ProcessPongs, RefreshServerDetails, UpdateServer};
-pub use self::server_settings::ServerSettingsDialog;
 pub use self::single_player::PopulateSinglePlayerGames;
 pub use self::task_progress_monitor::{TaskProgressMonitor, TaskProgressUpdate};
 
@@ -71,6 +70,7 @@ thread_local! {
         factory.set_wrapper::<ReadOnlyText, ReadOnlyTextElement>();
         factory.set_wrapper::<ReturnButton, ButtonElement<ReturnButton>>();
         factory.set_wrapper::<SecretInput, InputElement<SecretInput>>();
+        factory.set_wrapper::<ToggleButton, ButtonElement<ToggleButton>>();
         Rc::new(factory)
     }
 }

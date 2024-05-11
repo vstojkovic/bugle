@@ -1,5 +1,5 @@
-mod dialog;
-mod tabs;
+pub mod dialog;
+pub mod tabs;
 
 use std::borrow::Borrow;
 use std::cell::Cell;
@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use chrono::Weekday;
-pub use dialog::ServerSettingsDialog;
 use fltk::button::CheckButton;
 use fltk::enums::{Align, CallbackTrigger, Event};
 use fltk::frame::Frame;

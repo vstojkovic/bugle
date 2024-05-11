@@ -28,10 +28,9 @@ use crate::util::weak_cb;
 
 use super::data::{IterableTableSource, Reindex, RowComparator, RowFilter, RowOrder, TableView};
 use super::prelude::*;
+use super::server_settings::dialog::ServerSettingsDialog;
 use super::widgets::{DataTable, DataTableProperties, DataTableUpdate};
-use super::{
-    alert_error, is_table_nav_event, prompt_confirm, wrapper_factory, ServerSettingsDialog,
-};
+use super::{alert_error, is_table_nav_event, prompt_confirm, wrapper_factory};
 
 #[derive(dynabus::Event)]
 pub struct PopulateSinglePlayerGames(pub Result<Vec<GameDB>>);
