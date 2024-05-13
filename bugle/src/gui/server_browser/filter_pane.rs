@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use fltk::button::CheckButton;
+use fltk::button::{Button, CheckButton};
 use fltk::enums::{CallbackTrigger, Event};
 use fltk::frame::Frame;
 use fltk::input::Input;
@@ -17,12 +17,13 @@ use crate::gui::{glyph, wrapper_factory};
 use crate::servers::{Mode, Region, TypeFilter};
 use crate::util::weak_cb;
 
+use super::advanced_filter_dialog::AdvancedFilterDialog;
 use super::state::Filter;
 use super::{mode_name, region_name};
 
 pub(super) trait FilterHolder {
     fn access_filter(&self, accessor: impl FnOnce(&Filter));
-    fn mutate_filter(&self, mutator: impl FnMut(&mut Filter));
+    fn mutate_filter(&self, mutator: impl FnOnce(&mut Filter));
     fn persist_filter(&self);
 }
 
@@ -37,6 +38,7 @@ pub(super) struct FilterPane {
     invalid_check: CheckButton,
     pwd_prot_check: CheckButton,
     mods_input: DropDownList,
+    more_button: Button,
 }
 
 impl FilterPane {
@@ -51,6 +53,7 @@ impl FilterPane {
         grid.col().with_default_align(CellAlign::End).add();
         grid.col().with_stretch(1).add();
         grid.col().add();
+        grid.col().add();
 
         grid.row().add();
         grid.cell()
@@ -58,6 +61,11 @@ impl FilterPane {
             .wrap(Frame::default())
             .with_label("Server Name:");
         let name_input = grid.span(1, 6).unwrap().wrap(Input::default());
+        let more_button = grid
+            .cell()
+            .unwrap()
+            .wrap(Button::default())
+            .with_label("More Filters...");
 
         grid.row().add();
         grid.cell()
@@ -89,7 +97,7 @@ impl FilterPane {
         }
         mode_input.set_value(0);
         let invalid_check = grid
-            .cell()
+            .span(1, 2)
             .unwrap()
             .wrap(CheckButton::default())
             .with_label(&format!("{} Show invalid servers", glyph::ERROR));
@@ -124,7 +132,7 @@ impl FilterPane {
         battleye_input.add("Not Required");
         battleye_input.set_value(0);
         let pwd_prot_check = grid
-            .cell()
+            .span(1, 2)
             .unwrap()
             .wrap(CheckButton::default())
             .with_label(&format!("{} Show password protected servers", glyph::LOCK));
@@ -142,42 +150,51 @@ impl FilterPane {
             invalid_check,
             pwd_prot_check,
             mods_input,
+            more_button,
         })
     }
 
     pub fn set_filter_holder(&self, filter_holder: Rc<impl FilterHolder + 'static>) {
         filter_holder.access_filter(|filter| self.populate(filter));
-        self.set_callbacks(filter_holder);
+        self.set_callbacks(Rc::clone(&filter_holder));
+        self.more_button.clone().set_callback({
+            let filter_holder = Rc::clone(&filter_holder);
+            move |_| {
+                let dialog = AdvancedFilterDialog::new(
+                    fltk::app::first_window().as_ref().unwrap(),
+                    Rc::clone(&filter_holder),
+                );
+                dialog.run();
+            }
+        });
     }
 
     fn populate(&self, filter: &Filter) {
         self.name_input.clone().set_value(filter.name());
         self.map_input.clone().set_value(filter.map());
-        self.type_input
-            .clone()
-            .set_value(filter.type_filter() as u8);
-        self.mode_input.clone().set_value(match filter.mode() {
+        self.type_input.clone().set_value(filter.type_filter as u8);
+        self.mode_input.clone().set_value(match filter.mode {
             Some(mode) => (mode as i32) + 1,
             None => 0,
         });
-        self.region_input.clone().set_value(match filter.region() {
+        self.region_input.clone().set_value(match filter.region {
             Some(region) => (region as i32) + 1,
             None => 0,
         });
         self.battleye_input
             .clone()
-            .set_value(match filter.battleye_required() {
+            .set_value(match filter.battleye_required {
                 None => 0,
                 Some(true) => 1,
                 Some(false) => 2,
             });
         self.invalid_check
             .clone()
-            .set_checked(filter.include_invalid());
+            .set_checked(filter.include_invalid);
         self.pwd_prot_check
             .clone()
-            .set_checked(filter.include_password_protected());
-        self.mods_input.clone().set_value(match filter.mods() {
+            .set_checked(filter.include_password_protected);
+        self.mods_input.clone().set_value(match filter.mods {
             None => 0,
             Some(false) => 1,
             Some(true) => 2,
@@ -216,7 +233,7 @@ impl FilterPane {
             [filter_holder] => |input| {
                 let repr = input.value();
                 let type_filter = TypeFilter::from_repr(repr as _).unwrap();
-                filter_holder.mutate_filter(|filter| filter.set_type_filter(type_filter));
+                filter_holder.mutate_filter(|filter| filter.type_filter = type_filter);
                 filter_holder.persist_filter();
             }
         ));
@@ -232,7 +249,7 @@ impl FilterPane {
                         Mode::from_repr(repr as _)
                     }
                 };
-                filter_holder.mutate_filter(|filter| filter.set_mode(mode));
+                filter_holder.mutate_filter(|filter| filter.mode = mode);
                 filter_holder.persist_filter();
             }
         ));
@@ -248,7 +265,7 @@ impl FilterPane {
                         Region::from_repr(repr as _)
                     }
                 };
-                filter_holder.mutate_filter(|filter| filter.set_region(region));
+                filter_holder.mutate_filter(|filter| filter.region = region);
                 filter_holder.persist_filter();
             }
         ));
@@ -261,7 +278,7 @@ impl FilterPane {
                     2 => Some(false),
                     _ => None,
                 };
-                filter_holder.mutate_filter(|filter| filter.set_battleye_required(required));
+                filter_holder.mutate_filter(|filter| filter.battleye_required = required);
                 filter_holder.persist_filter();
             }
         ));
@@ -271,7 +288,7 @@ impl FilterPane {
         invalid_check.set_callback(weak_cb!(
             [filter_holder] => |input| {
                 filter_holder
-                    .mutate_filter(|filter| filter.set_include_invalid(input.is_checked()));
+                    .mutate_filter(|filter| filter.include_invalid = input.is_checked());
                 filter_holder.persist_filter();
             }
         ));
@@ -281,7 +298,7 @@ impl FilterPane {
         pwd_prot_check.set_callback(weak_cb!(
             [filter_holder] => |input| {
                 filter_holder.mutate_filter(|filter| {
-                    filter.set_include_password_protected(input.is_checked())
+                    filter.include_password_protected = input.is_checked()
                 });
                 filter_holder.persist_filter();
             }
@@ -295,7 +312,7 @@ impl FilterPane {
                     2 => Some(true),
                     _ => None,
                 };
-                filter_holder.mutate_filter(|filter| filter.set_mods(mods));
+                filter_holder.mutate_filter(|filter| filter.mods = mods);
                 filter_holder.persist_filter();
             }
         ));

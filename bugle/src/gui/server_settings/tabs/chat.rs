@@ -8,8 +8,8 @@ use fltk_float::LayoutElement;
 use num::ToPrimitive;
 
 use crate::game::settings::server::ChatSettings;
-use crate::gui::server_settings::{min_input_width, EditorBuilder, SliderInput};
-use crate::gui::wrapper_factory;
+use crate::gui::server_settings::{EditorBuilder, SliderInput};
+use crate::gui::{min_input_width, wrapper_factory};
 
 use super::SettingsTab;
 

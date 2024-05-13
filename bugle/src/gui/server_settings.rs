@@ -221,15 +221,6 @@ impl WeeklyHoursInput {
     }
 }
 
-fn min_input_width(samples: &[&str]) -> i32 {
-    fltk::draw::set_font(fltk::enums::Font::Helvetica, fltk::app::font_size());
-    samples
-        .into_iter()
-        .map(|text| fltk::draw::measure(&format!("#{}#", text), false).0)
-        .max()
-        .unwrap_or_default()
-}
-
 fn make_label(text: &str) -> Frame {
     Frame::default()
         .with_label(text)

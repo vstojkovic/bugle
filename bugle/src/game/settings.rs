@@ -15,7 +15,7 @@ use crate::util::weekday_iter;
 
 pub mod server;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct Multiplier(pub f64);
 

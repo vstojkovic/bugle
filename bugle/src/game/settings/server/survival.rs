@@ -4,7 +4,7 @@ use ini_persist::load::LoadProperty;
 use ini_persist::save::SaveProperty;
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use strum_macros::FromRepr;
+use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 use crate::game::settings::Multiplier;
 
@@ -86,7 +86,20 @@ impl DerefMut for SurvivalSettings {
     }
 }
 
-#[derive(Clone, Copy, Debug, FromRepr, Serialize_repr, LoadProperty, SaveProperty)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    FromRepr,
+    IntoStaticStr,
+    EnumString,
+    EnumIter,
+    Serialize_repr,
+    LoadProperty,
+    SaveProperty,
+)]
 #[repr(u8)]
 #[ini(repr)]
 pub enum DropOnDeath {

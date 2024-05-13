@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use fltk::button::Button;
 use fltk::enums::{Align, Color, FrameType};
 use fltk::frame::Frame;
@@ -17,6 +20,7 @@ pub struct DropDownList {
     text: Frame,
     menu: MenuButton,
     button: Button,
+    value: Rc<Cell<i32>>,
 }
 
 // Explanation for posterity: why do we need a Button and a MenuButton? In FLTK, menus are arrays
@@ -41,6 +45,7 @@ impl DropDownList {
             text,
             button,
             menu,
+            value: Rc::new(Cell::new(-1)),
         }
         .init_children()
     }
@@ -49,16 +54,29 @@ impl DropDownList {
         self.menu.add_choice(option);
     }
 
+    pub fn set_activated(&mut self, activated: bool) {
+        self.text.set_activated(activated);
+        self.button.set_activated(activated);
+    }
+
     pub fn choice(&self) -> Option<String> {
-        self.menu.choice()
+        if self.value() >= 0 {
+            self.menu.choice()
+        } else {
+            None
+        }
     }
 
     pub fn value(&self) -> i32 {
-        self.menu.value()
+        self.value.get()
     }
 
     pub fn set_value<V: Into<i32>>(&self, value: V) {
-        self.menu.clone().set_value(value.into());
+        let value = value.into();
+        self.value.set(value);
+        if value >= 0 {
+            self.menu.clone().set_value(value);
+        }
         self.text
             .clone()
             .set_label(&self.choice().unwrap_or_default());
@@ -80,6 +98,7 @@ impl DropDownList {
                 );
                 if picked.is_some() {
                     this.menu.set_item(&picked.unwrap());
+                    this.value.set(this.menu.value());
                 }
                 let text = this.choice().unwrap_or_default();
                 this.text.set_label(&text);
@@ -141,6 +160,7 @@ impl Default for DropDownList {
             text,
             button,
             menu,
+            value: Rc::new(Cell::new(-1)),
         }
         .init_children()
     }

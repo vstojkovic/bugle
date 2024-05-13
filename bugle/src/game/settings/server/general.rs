@@ -6,7 +6,7 @@ use ini_persist::load::{LoadProperty, ParseProperty};
 use ini_persist::save::{default_remove, DisplayProperty, SaveProperty};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use strum_macros::{EnumIter, FromRepr};
+use strum_macros::{EnumIter, EnumString, FromRepr, IntoStaticStr};
 
 use crate::game::settings::{display_seconds, parse_seconds, DailyHours, Nudity};
 use crate::servers::Mode;
@@ -238,6 +238,9 @@ impl DisplayProperty for CombatModeModifier {
     Clone,
     Copy,
     Debug,
+    IntoStaticStr,
+    EnumString,
+    EnumIter,
     Deserialize_repr,
     Serialize_repr,
     LoadProperty,

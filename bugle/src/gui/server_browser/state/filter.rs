@@ -1,8 +1,13 @@
+use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
+
+use ini_persist::load::ParseProperty;
+use ini_persist::save::DisplayProperty;
 use regex::{Regex, RegexBuilder};
 
 use crate::config::ServerBrowserConfig;
 use crate::gui::data::RowFilter;
-use crate::servers::{Mode, Region, Server, TypeFilter};
+use crate::servers::{EnumFilter, RangeFilter, Server};
 
 #[derive(Clone, Debug)]
 pub struct Filter {
@@ -38,62 +43,6 @@ impl Filter {
         self.values.map = map;
     }
 
-    pub fn type_filter(&self) -> TypeFilter {
-        self.values.type_filter
-    }
-
-    pub fn set_type_filter(&mut self, type_filter: TypeFilter) {
-        self.values.type_filter = type_filter;
-    }
-
-    pub fn mode(&self) -> Option<Mode> {
-        self.values.mode
-    }
-
-    pub fn set_mode(&mut self, mode: impl Into<Option<Mode>>) {
-        self.values.mode = mode.into();
-    }
-
-    pub fn region(&self) -> Option<Region> {
-        self.values.region
-    }
-
-    pub fn set_region(&mut self, region: impl Into<Option<Region>>) {
-        self.values.region = region.into();
-    }
-
-    pub fn battleye_required(&self) -> Option<bool> {
-        self.values.battleye_required
-    }
-
-    pub fn set_battleye_required(&mut self, battleye_required: impl Into<Option<bool>>) {
-        self.values.battleye_required = battleye_required.into();
-    }
-
-    pub fn include_invalid(&self) -> bool {
-        self.values.include_invalid
-    }
-
-    pub fn set_include_invalid(&mut self, include_invalid: bool) {
-        self.values.include_invalid = include_invalid;
-    }
-
-    pub fn include_password_protected(&self) -> bool {
-        self.values.include_password_protected
-    }
-
-    pub fn set_include_password_protected(&mut self, include_password_protected: bool) {
-        self.values.include_password_protected = include_password_protected;
-    }
-
-    pub fn mods(&self) -> Option<bool> {
-        self.values.mods
-    }
-
-    pub fn set_mods(&mut self, mods: impl Into<Option<bool>>) {
-        self.values.mods = mods.into();
-    }
-
     fn regex(text: &str) -> Regex {
         RegexBuilder::new(&regex::escape(&text))
             .case_insensitive(true)
@@ -102,9 +51,50 @@ impl Filter {
     }
 }
 
+impl Deref for Filter {
+    type Target = crate::servers::Filter;
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl DerefMut for Filter {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
+    }
+}
+
 impl AsRef<crate::servers::Filter> for Filter {
     fn as_ref(&self) -> &crate::servers::Filter {
         &self.values
+    }
+}
+
+trait PropertyFilter<T> {
+    fn matches(&self, getter: impl FnOnce() -> T) -> bool;
+}
+
+impl<T, F: PropertyFilter<T>> PropertyFilter<T> for Option<F> {
+    fn matches(&self, getter: impl FnOnce() -> T) -> bool {
+        self.as_ref().map_or(true, |filter| filter.matches(getter))
+    }
+}
+
+impl PropertyFilter<bool> for bool {
+    fn matches(&self, getter: impl FnOnce() -> bool) -> bool {
+        *self == getter()
+    }
+}
+
+impl<T: ParseProperty + DisplayProperty + Copy + PartialOrd> PropertyFilter<T> for RangeFilter<T> {
+    fn matches(&self, getter: impl FnOnce() -> T) -> bool {
+        self.matches(getter())
+    }
+}
+
+impl<T: FromStr + Into<&'static str> + Copy + Eq> PropertyFilter<T> for EnumFilter<T> {
+    fn matches(&self, getter: impl FnOnce() -> T) -> bool {
+        self.matches(getter())
     }
 }
 
@@ -128,5 +118,94 @@ impl RowFilter<Server> for Filter {
                 .values
                 .mods
                 .map_or(true, |mods| server.is_modded() == mods)
+            && self.values.community.matches(|| server.general.community)
+            && self
+                .values
+                .max_clan_size
+                .matches(|| server.general.max_clan_size)
+            && self
+                .values
+                .raid_enabled
+                .matches(|| server.general.raid_enabled)
+            && self
+                .values
+                .raid_restricted
+                .matches(|| server.general.raid_restricted)
+            && self
+                .values
+                .xp_rate_mult
+                .matches(|| server.progression.xp_rate_mult)
+            && self
+                .values
+                .day_cycle_speed_mult
+                .matches(|| server.daylight.day_cycle_speed_mult)
+            && self
+                .values
+                .dawn_dusk_speed_mult
+                .matches(|| server.daylight.dawn_dusk_speed_mult)
+            && self
+                .values
+                .use_catch_up_time
+                .matches(|| server.daylight.use_catch_up_time)
+            && self
+                .values
+                .stamina_cost_mult
+                .matches(|| server.survival.stamina_cost_mult)
+            && self
+                .values
+                .idle_thirst_mult
+                .matches(|| server.survival.idle_thirst_mult)
+            && self
+                .values
+                .active_thirst_mult
+                .matches(|| server.survival.active_thirst_mult)
+            && self
+                .values
+                .idle_hunger_mult
+                .matches(|| server.survival.idle_hunger_mult)
+            && self
+                .values
+                .active_hunger_mult
+                .matches(|| server.survival.active_hunger_mult)
+            && self
+                .values
+                .drop_items_on_death
+                .matches(|| server.survival.drop_items_on_death)
+            && self
+                .values
+                .anyone_can_loot_corpse
+                .matches(|| server.survival.anyone_can_loot_corpse)
+            && self
+                .values
+                .offline_chars_in_world
+                .matches(|| server.survival.offline_chars_in_world)
+            && self
+                .values
+                .durability_mult
+                .matches(|| server.combat.durability_mult)
+            && self
+                .values
+                .thrall_wakeup_time_secs
+                .matches(|| server.combat.thrall_wakeup_time.num_seconds())
+            && self
+                .values
+                .harvest_amount_mult
+                .matches(|| server.harvesting.harvest_amount_mult)
+            && self
+                .values
+                .item_spoil_rate_mult
+                .matches(|| server.harvesting.item_spoil_rate_mult)
+            && self
+                .values
+                .rsrc_respawn_speed_mult
+                .matches(|| server.harvesting.rsrc_respawn_speed_mult)
+            && self
+                .values
+                .crafting_time_mult
+                .matches(|| server.crafting.crafting_time_mult)
+            && self
+                .values
+                .thrall_crafting_time_mult
+                .matches(|| server.crafting.thrall_crafting_time_mult)
     }
 }

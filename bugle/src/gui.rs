@@ -87,6 +87,15 @@ fn is_table_nav_event() -> bool {
     }
 }
 
+fn min_input_width(samples: &[&str]) -> i32 {
+    fltk::draw::set_font(fltk::enums::Font::Helvetica, fltk::app::font_size());
+    samples
+        .into_iter()
+        .map(|text| fltk::draw::measure(&format!("#{}#", text), false).0)
+        .max()
+        .unwrap_or_default()
+}
+
 fn color_rgb(color: Color) -> u32 {
     let (r, g, b) = color.to_rgb();
     ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)

@@ -8,9 +8,9 @@ use fltk_float::scroll::Scrollable;
 use fltk_float::LayoutElement;
 
 use crate::game::settings::server::{BuildingSettings, CreativeMode};
-use crate::gui::server_settings::{min_input_width, EditorBuilder, SliderInput};
+use crate::gui::server_settings::{EditorBuilder, SliderInput};
 use crate::gui::widgets::DropDownList;
-use crate::gui::wrapper_factory;
+use crate::gui::{min_input_width, wrapper_factory};
 
 use super::SettingsTab;
 

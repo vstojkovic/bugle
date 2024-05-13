@@ -34,6 +34,7 @@ use super::{alert_error, glyph, wrapper_factory};
 
 mod actions_pane;
 mod add_server_dialog;
+mod advanced_filter_dialog;
 mod connect_dialog;
 mod details_pane;
 mod filter_pane;
@@ -404,7 +405,7 @@ impl ServerBrowserTab {
             self.update_servers(1, |all_servers, updated_indices, filter, _| {
                 all_servers[src_idx].favorite = !all_servers[src_idx].favorite;
                 updated_indices.push(src_idx);
-                Reindex::Order.filter_if(filter.type_filter() == TypeFilter::Favorite)
+                Reindex::Order.filter_if(filter.type_filter == TypeFilter::Favorite)
             });
             let state = self.state.borrow_mut();
             let favorites = state.source().iter().filter_map(|server| {
@@ -720,7 +721,7 @@ impl LayoutElement for ServerBrowserTab {
 
 impl FilterHolder for ServerBrowserTab {
     fn access_filter(&self, accessor: impl FnOnce(&Filter)) {
-        accessor(self.state.borrow().filter());
+        accessor(self.state.borrow().filter())
     }
 
     fn mutate_filter(&self, mutator: impl FnOnce(&mut Filter)) {
@@ -888,7 +889,7 @@ fn region_sort_order() -> HashMap<Region, usize> {
 
 fn community_name(community: Community) -> &'static str {
     match community {
-        Community::Unspecified => "",
+        Community::Unspecified => "Unspecified",
         Community::Purist => "Purist",
         Community::Relaxed => "Relaxed",
         Community::Hardcore => "Hardcore",

@@ -16,10 +16,10 @@ use crate::game::settings::server::{
 };
 use crate::game::settings::Nudity;
 use crate::gui::server_settings::{
-    make_label, min_input_width, DailyHoursInput, EditorBuilder, PrivateBuilder, SliderInput,
+    make_label, DailyHoursInput, EditorBuilder, PrivateBuilder, SliderInput,
 };
 use crate::gui::widgets::DropDownList;
-use crate::gui::wrapper_factory;
+use crate::gui::{min_input_width, wrapper_factory};
 use crate::servers::Mode;
 
 use super::SettingsTab;
