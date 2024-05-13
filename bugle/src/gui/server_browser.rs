@@ -11,7 +11,7 @@ use fltk::group::{Group, Tile};
 use fltk::prelude::*;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 use fltk_float::overlay::Overlay;
-use fltk_float::{LayoutElement, SimpleWrapper};
+use fltk_float::{LayoutElement, SimpleWrapper, WrapperFactory};
 use slog::{error, warn, Logger};
 use strum::IntoEnumIterator;
 
@@ -19,6 +19,7 @@ use crate::bus::AppBus;
 use crate::config::{ConfigManager, ServerBrowserConfig};
 use crate::game::settings::server::Community;
 use crate::game::Game;
+use crate::gui::data::TableSource;
 use crate::launcher::{ConnectionInfo, Launcher};
 use crate::mod_manager::ModManager;
 use crate::server_manager::ServerManager;
@@ -79,14 +80,24 @@ pub(super) struct ServerBrowserTab {
     list_pane: Rc<ListPane>,
     details_pane: DetailsPane,
     actions_pane: Rc<ActionsPane>,
-    stats_group: Group,
-    total_players: Cell<usize>,
-    total_players_text: Frame,
+    stats: BrowserStats,
     loading_label: Frame,
     state: Rc<RefCell<ServerBrowserState>>,
     deferred_action: Cell<Option<DeferredAction>>,
     filter_dirty: Cell<bool>,
     refreshing: Cell<bool>,
+}
+
+struct BrowserStats {
+    group: Group,
+    total_servers_text: Frame,
+    total_players_text: Frame,
+    matching_servers_text: Frame,
+    matching_players_text: Frame,
+    total_servers: Cell<usize>,
+    total_players: Cell<usize>,
+    matching_servers: Cell<usize>,
+    matching_players: Cell<usize>,
 }
 
 enum DeferredAction {
@@ -125,36 +136,7 @@ impl ServerBrowserTab {
 
         grid.row().add();
         let mut status_overlay = Overlay::builder_with_factory(wrapper_factory());
-        let mut stats_grid = Grid::builder_with_factory(wrapper_factory())
-            .with_col_spacing(10)
-            .with_row_spacing(10)
-            .with_padding(2, 2, 2, 2);
-        stats_grid.row().add();
-        stats_grid
-            .col()
-            .with_default_align(CellAlign::End)
-            .with_stretch(1)
-            .add();
-        stats_grid
-            .cell()
-            .unwrap()
-            .wrap(Frame::default())
-            .with_label("Total Players Online:");
-        stats_grid
-            .col()
-            .with_default_align(CellAlign::Stretch)
-            .with_stretch(1)
-            .add();
-        let total_players_text = stats_grid
-            .cell()
-            .unwrap()
-            .wrap(Frame::default())
-            .with_label("?")
-            .with_align(Align::Left | Align::Inside);
-        let stats_grid = stats_grid.end();
-        let mut stats_group = stats_grid.group();
-        stats_group.set_frame(fltk::enums::FrameType::EngravedBox);
-        stats_group.hide();
+        let (stats, stats_grid) = BrowserStats::new();
         status_overlay.add(stats_grid);
         let mut loading_label = status_overlay
             .wrap(Frame::default())
@@ -222,9 +204,7 @@ impl ServerBrowserTab {
             list_pane: Rc::clone(&list_pane),
             details_pane,
             actions_pane: Rc::clone(&actions_pane),
-            stats_group,
-            total_players: Cell::new(0),
-            total_players_text,
+            stats,
             loading_label,
             state: Rc::clone(&state),
             deferred_action: Cell::new(Some(DeferredAction::Refresh)),
@@ -413,10 +393,7 @@ impl ServerBrowserTab {
         self.list_pane.mark_refreshing();
         self.list_pane.set_selected_index(None, false);
         self.loading_label.clone().show();
-        self.stats_group.clone().hide();
-        let mut total_players_text = self.total_players_text.clone();
-        total_players_text.set_label("?");
-        total_players_text.redraw();
+        self.stats.hide();
         self.server_mgr.load_server_list();
     }
 
@@ -490,7 +467,7 @@ impl ServerBrowserTab {
         if done {
             self.refreshing.set(false);
             self.loading_label.clone().hide();
-            self.stats_group.clone().show();
+            self.stats.show();
         }
 
         let all_servers = match payload {
@@ -506,6 +483,7 @@ impl ServerBrowserTab {
                 return;
             }
         };
+        self.stats.set_total_servers(all_servers.len());
 
         {
             let mut state = self.state.borrow_mut();
@@ -514,6 +492,7 @@ impl ServerBrowserTab {
                 Reindex::all()
             });
         }
+        self.stats.set_matching_servers(self.state.borrow().len());
 
         let state = Rc::clone(&self.state);
         self.list_pane.populate(state);
@@ -548,7 +527,8 @@ impl ServerBrowserTab {
             requests
         };
 
-        self.set_total_player_count(0);
+        self.stats.set_total_players(0);
+        self.stats.set_matching_players(0);
 
         if let Err(err) = self.server_mgr.ping_servers(ping_requests) {
             error!(self.logger, "Error pinging server list"; "error" => %err);
@@ -566,7 +546,8 @@ impl ServerBrowserTab {
             ProcessPongs::Many(pongs) => &pongs[..],
         };
 
-        let mut total_players = self.total_players.get();
+        let mut total_players = self.stats.total_players();
+        let mut matching_players = self.stats.matching_players();
         self.update_servers(
             updates.len(),
             |all_servers, updated_indices, filter, sort_criteria| {
@@ -576,7 +557,13 @@ impl ServerBrowserTab {
                         continue;
                     };
                     updated_indices.push(update.server_idx);
-                    if Self::update_pinged_server(server, update, filter, &mut total_players) {
+                    if Self::update_pinged_server(
+                        server,
+                        update,
+                        filter,
+                        &mut total_players,
+                        &mut matching_players,
+                    ) {
                         reindex = Reindex::Filter;
                     }
                 }
@@ -587,7 +574,8 @@ impl ServerBrowserTab {
                 )
             },
         );
-        self.set_total_player_count(total_players);
+        self.stats.set_total_players(total_players);
+        self.stats.set_matching_players(matching_players);
     }
 
     fn update_server(&self, idx: Option<usize>, server: Server) {
@@ -658,9 +646,14 @@ impl ServerBrowserTab {
         update: &PingResponse,
         filter: &Filter,
         total_players: &mut usize,
+        matching_players: &mut usize,
     ) -> bool {
-        *total_players -= server.connected_players.unwrap_or_default();
         let matched_before = filter.matches(server);
+        *total_players -= server.connected_players.unwrap_or_default();
+        if matched_before {
+            *matching_players -= server.connected_players.unwrap_or_default();
+        }
+
         match update.result {
             PingResult::Pong {
                 connected_players,
@@ -670,7 +663,6 @@ impl ServerBrowserTab {
                 server.connected_players = Some(connected_players);
                 server.age = Some(age);
                 server.ping = Some(round_trip);
-                *total_players += connected_players;
             }
             PingResult::Timeout => {
                 server.connected_players = None;
@@ -679,14 +671,14 @@ impl ServerBrowserTab {
             }
         };
         server.waiting_for_pong = false;
-        filter.matches(server) != matched_before
-    }
 
-    fn set_total_player_count(&self, count: usize) {
-        self.total_players.set(count);
-        let mut total_players_text = self.total_players_text.clone();
-        total_players_text.set_label(&count.to_string());
-        total_players_text.redraw();
+        let matches_after = filter.matches(server);
+        *total_players += server.connected_players.unwrap_or_default();
+        if matched_before {
+            *matching_players += server.connected_players.unwrap_or_default();
+        }
+
+        matches_after != matched_before
     }
 
     fn selected_server_index(&self) -> Option<usize> {
@@ -737,6 +729,14 @@ impl FilterHolder for ServerBrowserTab {
         self.list_pane.populate(self.state.clone());
         self.set_selected_server_index(selected_idx, false);
         self.filter_dirty.set(true);
+
+        let state = self.state.borrow();
+        let matching_players = state
+            .iter()
+            .map(|server| server.connected_players.unwrap_or_default())
+            .sum();
+        self.stats.set_matching_servers(state.len());
+        self.stats.set_matching_players(matching_players);
     }
 
     fn persist_filter(&self) {
@@ -746,11 +746,115 @@ impl FilterHolder for ServerBrowserTab {
     }
 }
 
+impl BrowserStats {
+    fn new() -> (Self, Grid) {
+        let mut grid = Grid::builder_with_factory(wrapper_factory())
+            .with_col_spacing(10)
+            .with_row_spacing(10)
+            .with_padding(2, 2, 2, 2);
+        grid.row().add();
+
+        let total_servers_text = browser_stat(&mut grid, "Total Servers:");
+        let total_players_text = browser_stat(&mut grid, "Total Players Online:");
+        let matching_servers_text = browser_stat(&mut grid, "Matching Servers:");
+        let matching_players_text = browser_stat(&mut grid, "Players on Matching Servers:");
+
+        let grid = grid.end();
+        let mut group = grid.group();
+        group.set_frame(fltk::enums::FrameType::EngravedBox);
+        group.hide();
+
+        let this = Self {
+            group,
+            total_servers_text,
+            total_players_text,
+            matching_servers_text,
+            matching_players_text,
+            total_servers: Cell::new(0),
+            total_players: Cell::new(0),
+            matching_servers: Cell::new(0),
+            matching_players: Cell::new(0),
+        };
+
+        (this, grid)
+    }
+
+    fn show(&self) {
+        self.group.clone().show()
+    }
+
+    fn hide(&self) {
+        let mut group = self.group.clone();
+        group.hide();
+        self.total_servers_text.clone().set_label("?");
+        self.total_players_text.clone().set_label("?");
+        self.matching_servers_text.clone().set_label("?");
+        self.matching_players_text.clone().set_label("?");
+        group.redraw();
+    }
+
+    fn total_players(&self) -> usize {
+        self.total_players.get()
+    }
+
+    fn matching_players(&self) -> usize {
+        self.matching_players.get()
+    }
+
+    fn set_total_servers(&self, count: usize) {
+        self.total_servers.set(count);
+        let mut total_servers_text = self.total_servers_text.clone();
+        total_servers_text.set_label(&count.to_string());
+        total_servers_text.redraw();
+    }
+
+    fn set_total_players(&self, count: usize) {
+        self.total_players.set(count);
+        let mut total_players_text = self.total_players_text.clone();
+        total_players_text.set_label(&count.to_string());
+        total_players_text.redraw();
+    }
+
+    fn set_matching_servers(&self, count: usize) {
+        self.matching_servers.set(count);
+        let mut matching_servers_text = self.matching_servers_text.clone();
+        matching_servers_text.set_label(&count.to_string());
+        matching_servers_text.redraw();
+    }
+
+    fn set_matching_players(&self, count: usize) {
+        self.matching_players.set(count);
+        let mut matching_players_text = self.matching_players_text.clone();
+        matching_players_text.set_label(&count.to_string());
+        matching_players_text.redraw();
+    }
+}
+
 const ERR_LOADING_SERVERS: &str = "Error while loading the server list.";
 const ERR_PINGING_SERVERS: &str = "Error while pinging servers.";
 const ERR_JOINING_SERVER: &str = "Error while trying to launch the game to join the server.";
 const ERR_UPDATING_FAVORITES: &str = "Error while updating favorites.";
 const ERR_UPDATING_SAVED_SERVERS: &str = "Error while updating saved servers.";
+
+fn browser_stat(grid: &mut GridBuilder<Group, Rc<WrapperFactory>>, label: &str) -> Frame {
+    grid.col()
+        .with_default_align(CellAlign::End)
+        .with_stretch(1)
+        .add();
+    grid.cell()
+        .unwrap()
+        .wrap(Frame::default())
+        .with_label(label);
+    grid.col()
+        .with_default_align(CellAlign::Stretch)
+        .with_stretch(1)
+        .add();
+    grid.cell()
+        .unwrap()
+        .wrap(Frame::default())
+        .with_label("?")
+        .with_align(Align::Left | Align::Inside)
+}
 
 fn mode_name(mode: Mode) -> &'static str {
     match mode {
