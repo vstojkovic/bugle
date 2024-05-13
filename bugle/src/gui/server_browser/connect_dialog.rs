@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
 
-use fltk::button::{Button, ReturnButton};
+use fltk::button::{Button, CheckButton, ReturnButton};
 use fltk::enums::Align;
 use fltk::frame::Frame;
 use fltk::group::Group;
@@ -18,13 +18,18 @@ use crate::servers::Server;
 
 pub struct ConnectDialog {
     window: Window,
-    result: Rc<RefCell<Option<ConnectionInfo>>>,
+    result: Rc<RefCell<Option<ConnectDialogResult>>>,
+}
+
+pub struct ConnectDialogResult {
+    pub connection: ConnectionInfo,
+    pub save_password: bool,
 }
 
 impl ConnectDialog {
     pub fn direct_connect(parent: &Group) -> Self {
-        let (window, mut server_text, password_text, mut ok_button) =
-            Self::create_gui(parent, "Direct Connect", Input::default);
+        let (window, mut server_text, password_text, _, mut ok_button) =
+            Self::create_gui(parent, "Direct Connect", None, Input::default);
 
         let result = Rc::new(RefCell::new(None));
 
@@ -42,10 +47,13 @@ impl ConnectDialog {
                     Ok(addr) => {
                         let password = password_text.value();
                         let password = if password.is_empty() { None } else { Some(password) };
-                        *result.borrow_mut() = Some(ConnectionInfo {
-                            addr,
-                            password,
-                            battleye_required: None,
+                        *result.borrow_mut() = Some(ConnectDialogResult {
+                            connection: ConnectionInfo {
+                                addr,
+                                password,
+                                battleye_required: None,
+                            },
+                            save_password: false,
                         });
                         window.hide();
                     }
@@ -56,13 +64,14 @@ impl ConnectDialog {
         Self { window, result }
     }
 
-    pub fn server_password(parent: &Group, server: &Server) -> Self {
-        let (window, _, password_text, mut ok_button) =
-            Self::create_gui(parent, "Enter Server Password", || {
+    pub fn server_password(parent: &Group, server: &Server, password: &str) -> Self {
+        let (window, _, password_text, save_password_check, mut ok_button) =
+            Self::create_gui(parent, "Enter Server Password", Some(password), || {
                 Frame::default()
                     .with_label(&server.name)
                     .with_align(Align::Left | Align::Inside)
             });
+        let save_password_check = save_password_check.unwrap();
 
         let result = Rc::new(RefCell::new(None));
 
@@ -74,11 +83,15 @@ impl ConnectDialog {
             let mut window = window.clone();
             move |_| {
                 let password = password_text.value();
+                let save_password = save_password_check.is_checked() && !password.is_empty();
                 let password = if password.is_empty() { None } else { Some(password) };
-                *result.borrow_mut() = Some(ConnectionInfo {
-                    addr,
-                    password,
-                    battleye_required,
+                *result.borrow_mut() = Some(ConnectDialogResult {
+                    connection: ConnectionInfo {
+                        addr,
+                        password,
+                        battleye_required,
+                    },
+                    save_password,
                 });
                 window.hide();
             }
@@ -87,7 +100,7 @@ impl ConnectDialog {
         Self { window, result }
     }
 
-    pub fn run(&self) -> Option<ConnectionInfo> {
+    pub fn run(&self) -> Option<ConnectDialogResult> {
         let mut window = self.window.clone();
         window.make_modal(true);
         window.show();
@@ -102,10 +115,11 @@ impl ConnectDialog {
     fn create_gui<T: WidgetExt + Clone + 'static>(
         parent: &Group,
         title: &'static str,
+        password: Option<&str>,
         make_server_text_widget: impl FnOnce() -> T,
-    ) -> (Window, T, SecretInput, ReturnButton) {
+    ) -> (Window, T, SecretInput, Option<CheckButton>, ReturnButton) {
         let mut window = GridBuilder::with_factory(
-            Window::default().with_size(480, 135).with_label(title),
+            Window::default().with_size(480, 160).with_label(title),
             wrapper_factory(),
         )
         .with_col_spacing(10)
@@ -130,7 +144,22 @@ impl ConnectDialog {
             .unwrap()
             .wrap(Frame::default())
             .with_label("Password:");
-        let password_text = window.span(1, 3).unwrap().wrap(SecretInput::default());
+        let mut password_text = window.span(1, 3).unwrap().wrap(SecretInput::default());
+
+        let save_password_check = password.map(|password| {
+            password_text.set_value(password);
+
+            window.row().add();
+            window.cell().unwrap().skip();
+            let check = window
+                .span(1, 3)
+                .unwrap()
+                .with_horz_align(CellAlign::Start)
+                .wrap(CheckButton::default())
+                .with_label("Save password");
+            check.set_checked(!password.is_empty());
+            check
+        });
 
         window
             .row()
@@ -163,7 +192,13 @@ impl ConnectDialog {
             move |_| window.hide()
         });
 
-        (window, server_text, password_text, ok_button)
+        (
+            window,
+            server_text,
+            password_text,
+            save_password_check,
+            ok_button,
+        )
     }
 }
 

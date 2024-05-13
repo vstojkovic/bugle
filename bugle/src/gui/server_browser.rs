@@ -12,7 +12,7 @@ use fltk::prelude::*;
 use fltk_float::grid::{CellAlign, Grid, GridBuilder};
 use fltk_float::overlay::Overlay;
 use fltk_float::{LayoutElement, SimpleWrapper};
-use slog::{error, Logger};
+use slog::{error, warn, Logger};
 use strum::IntoEnumIterator;
 
 use crate::bus::AppBus;
@@ -259,147 +259,13 @@ impl ServerBrowserTab {
         actions_pane.set_on_action(weak_cb!(
             [this] => |action| {
                 match action {
-                    Action::Join => {
-                        if let Some(server_idx) = this.list_pane.selected_index() {
-                            let conn_info = {
-                                let state = this.state.borrow();
-                                let server = &state[server_idx];
-                                if server.password_protected {
-                                    let dialog = ConnectDialog::server_password(&this.root, server);
-
-                                    // The following line is necessary, otherwise the incoming
-                                    // server list updates panic because the state remains
-                                    // borrowed while the dialog is displayed. ¯\_(ツ)_/¯
-                                    drop(state);
-
-                                    match dialog.run() {
-                                        Some(conn_info) => conn_info,
-                                        None => return,
-                                    }
-                                } else {
-                                    ConnectionInfo {
-                                        addr: server.game_addr().unwrap(),
-                                        password: None,
-                                        battleye_required: Some(server.general.battleye_required),
-                                    }
-                                }
-                            };
-                            if let Err(err) = this.launcher.join_server(conn_info) {
-                                error!(this.logger, "Error joining server"; "error" => %err);
-                                alert_error(ERR_JOINING_SERVER, &err);
-                            }
-                        }
-                    }
-                    Action::Ping => {
-                        if let Some(server_idx) = this.list_pane.selected_index() {
-                            let state = this.state.borrow();
-                            let server = &state[server_idx];
-                            let source_idx = state.to_source_index(server_idx);
-                            let request = PingRequest::for_server(source_idx, server).unwrap();
-                            drop(state);
-
-                            this.update_servers(1, |all_servers, updated_indices, _, _| {
-                                all_servers[source_idx].waiting_for_pong = true;
-                                updated_indices.push(source_idx);
-                                Reindex::Nothing
-                            });
-
-                            if let Err(err) = this.server_mgr.ping_server(request) {
-                                error!(this.logger, "Error pinging server"; "error" => %err);
-                                alert_error(ERR_PINGING_SERVERS, &err);
-                            }
-                        }
-                    }
-                    Action::ToggleSaved => {
-                        if let Some(server_idx) = this.list_pane.selected_index() {
-                            let state = this.state.borrow();
-                            let src_idx = state.to_source_index(server_idx);
-                            let mut server = state[server_idx].clone();
-                            if !server.is_saved() {
-                                server.merged = true;
-                            }
-                            let result = if server.is_saved() {
-                                this.server_mgr.unsave_server(server, Some(src_idx))
-                            } else {
-                                this.server_mgr.save_server(server, Some(src_idx))
-                            };
-                            if let Err(err) = result {
-                                error!(
-                                    this.logger,
-                                    "Error updating saved servers";
-                                    "error" => %err,
-                                );
-                                alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
-                            }
-                        }
-                    }
-                    Action::ToggleFavorite => {
-                        if let Some(server_idx) = this.list_pane.selected_index() {
-                            // TODO: Only update if action was performed without error
-                            let src_idx = this.state.borrow().to_source_index(server_idx);
-                            this.update_servers(1, |all_servers, updated_indices, filter, _| {
-                                all_servers[src_idx].favorite = !all_servers[src_idx].favorite;
-                                updated_indices.push(src_idx);
-                                Reindex::Order
-                                    .filter_if(filter.type_filter() == TypeFilter::Favorite)
-                            });
-                            let state = this.state.borrow_mut();
-                            let favorites = state
-                                .source()
-                                .iter()
-                                .filter_map(|server| {
-                                    if server.favorite {
-                                        Some(FavoriteServer::from_server(server))
-                                    } else {
-                                        None
-                                    }
-                                });
-
-                            if let Err(err) = this.game.save_favorites(favorites) {
-                                error!(
-                                    this.logger,
-                                    "Error updating favorites";
-                                    "error" => %err,
-                                );
-                                alert_error(ERR_UPDATING_FAVORITES, &err);
-                            }
-                        }
-                    }
-                    Action::Refresh => {
-                        this.refreshing.set(true);
-                        {
-                            let mut state = this.state.borrow_mut();
-                            state.update_source(Vec::clear);
-                        }
-                        this.list_pane.mark_refreshing();
-                        this.list_pane.set_selected_index(None, false);
-                        this.loading_label.clone().show();
-                        this.stats_group.clone().hide();
-                        let mut total_players_text = this.total_players_text.clone();
-                        total_players_text.set_label("?");
-                        total_players_text.redraw();
-                        this.server_mgr.load_server_list();
-                    }
-                    Action::DirectConnect => {
-                        let dialog = ConnectDialog::direct_connect(&this.root);
-                        let Some(conn_info) = dialog.run() else {
-                            return;
-                        };
-                        if let Err(err) = this.launcher.join_server(conn_info) {
-                            error!(this.logger, "Error on direct connect"; "error" => %err);
-                            alert_error(ERR_JOINING_SERVER, &err);
-                        }
-                    }
-                    Action::AddSaved => {
-                        let dialog = AddServerDialog::new(&this.root, Arc::clone(&this.game));
-                        let Some(server) = dialog.run() else {
-                            return;
-                        };
-                        if let Err(err) = this.server_mgr.save_server(server, None) {
-                            error!(this.logger, "Error on adding saved server"; "error" => %err);
-                            alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
-                        }
-                    }
+                    Action::Join => this.on_join(),
+                    Action::DirectConnect => this.on_direct_connect(),
+                    Action::Ping => this.on_ping(),
+                    Action::Refresh => this.on_refresh(),
+                    Action::ToggleFavorite => this.on_toggle_favorite(),
+                    Action::ToggleSaved => this.on_toggle_saved(),
+                    Action::AddSaved => this.on_add_saved(),
                     Action::ScrollLock(scroll_lock) => {
                         this.list_pane.set_scroll_lock(scroll_lock);
                         this.update_config();
@@ -441,6 +307,180 @@ impl ServerBrowserTab {
                 alert_error(msg, &err);
             }
             Some(DeferredAction::PingServers) => self.ping_servers(),
+        }
+    }
+
+    fn on_join(&self) {
+        if let Some(server_idx) = self.list_pane.selected_index() {
+            let conn_info = {
+                let state = self.state.borrow();
+                let server = &state[server_idx];
+                if server.password_protected {
+                    let password = match self.game.load_server_password(&server.name) {
+                        Ok(password) => password.unwrap_or_default(),
+                        Err(err) => {
+                            warn!(
+                                self.logger,
+                                "Error loading saved password for server";
+                                "server" => &server.name,
+                                "error" => %err,
+                            );
+                            "".to_string()
+                        }
+                    };
+
+                    let dialog = ConnectDialog::server_password(&self.root, server, &password);
+
+                    // The following line is necessary, otherwise the incoming
+                    // server list updates panic because the state remains
+                    // borrowed while the dialog is displayed. ¯\_(ツ)_/¯
+                    drop(state);
+
+                    let dlg_result = match dialog.run() {
+                        Some(dlg_result) => dlg_result,
+                        None => return,
+                    };
+
+                    if dlg_result.save_password {
+                        let state = self.state.borrow();
+                        let server = &state[server_idx];
+                        if let Err(err) = self.game.save_server_password(
+                            &server.name,
+                            dlg_result.connection.password.as_ref().unwrap(),
+                        ) {
+                            warn!(
+                                self.logger,
+                                "Error loading saved password for server";
+                                "server" => &server.name,
+                                "error" => %err,
+                            );
+                        }
+                    }
+                    dlg_result.connection
+                } else {
+                    ConnectionInfo {
+                        addr: server.game_addr().unwrap(),
+                        password: None,
+                        battleye_required: Some(server.general.battleye_required),
+                    }
+                }
+            };
+            if let Err(err) = self.launcher.join_server(conn_info) {
+                error!(self.logger, "Error joining server"; "error" => %err);
+                alert_error(ERR_JOINING_SERVER, &err);
+            }
+        }
+    }
+
+    fn on_direct_connect(&self) {
+        let dialog = ConnectDialog::direct_connect(&self.root);
+        let Some(dlg_result) = dialog.run() else {
+            return;
+        };
+        if let Err(err) = self.launcher.join_server(dlg_result.connection) {
+            error!(self.logger, "Error on direct connect"; "error" => %err);
+            alert_error(ERR_JOINING_SERVER, &err);
+        }
+    }
+
+    fn on_ping(&self) {
+        if let Some(server_idx) = self.list_pane.selected_index() {
+            let state = self.state.borrow();
+            let server = &state[server_idx];
+            let source_idx = state.to_source_index(server_idx);
+            let request = PingRequest::for_server(source_idx, server).unwrap();
+            drop(state);
+
+            self.update_servers(1, |all_servers, updated_indices, _, _| {
+                all_servers[source_idx].waiting_for_pong = true;
+                updated_indices.push(source_idx);
+                Reindex::Nothing
+            });
+
+            if let Err(err) = self.server_mgr.ping_server(request) {
+                error!(self.logger, "Error pinging server"; "error" => %err);
+                alert_error(ERR_PINGING_SERVERS, &err);
+            }
+        }
+    }
+
+    fn on_refresh(&self) {
+        self.refreshing.set(true);
+        {
+            let mut state = self.state.borrow_mut();
+            state.update_source(Vec::clear);
+        }
+        self.list_pane.mark_refreshing();
+        self.list_pane.set_selected_index(None, false);
+        self.loading_label.clone().show();
+        self.stats_group.clone().hide();
+        let mut total_players_text = self.total_players_text.clone();
+        total_players_text.set_label("?");
+        total_players_text.redraw();
+        self.server_mgr.load_server_list();
+    }
+
+    fn on_toggle_favorite(&self) {
+        if let Some(server_idx) = self.list_pane.selected_index() {
+            // TODO: Only update if action was performed without error
+            let src_idx = self.state.borrow().to_source_index(server_idx);
+            self.update_servers(1, |all_servers, updated_indices, filter, _| {
+                all_servers[src_idx].favorite = !all_servers[src_idx].favorite;
+                updated_indices.push(src_idx);
+                Reindex::Order.filter_if(filter.type_filter() == TypeFilter::Favorite)
+            });
+            let state = self.state.borrow_mut();
+            let favorites = state.source().iter().filter_map(|server| {
+                if server.favorite {
+                    Some(FavoriteServer::from_server(server))
+                } else {
+                    None
+                }
+            });
+
+            if let Err(err) = self.game.save_favorites(favorites) {
+                error!(
+                    self.logger,
+                    "Error updating favorites";
+                    "error" => %err,
+                );
+                alert_error(ERR_UPDATING_FAVORITES, &err);
+            }
+        }
+    }
+
+    fn on_toggle_saved(&self) {
+        if let Some(server_idx) = self.list_pane.selected_index() {
+            let state = self.state.borrow();
+            let src_idx = state.to_source_index(server_idx);
+            let mut server = state[server_idx].clone();
+            if !server.is_saved() {
+                server.merged = true;
+            }
+            let result = if server.is_saved() {
+                self.server_mgr.unsave_server(server, Some(src_idx))
+            } else {
+                self.server_mgr.save_server(server, Some(src_idx))
+            };
+            if let Err(err) = result {
+                error!(
+                    self.logger,
+                    "Error updating saved servers";
+                    "error" => %err,
+                );
+                alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
+            }
+        }
+    }
+
+    fn on_add_saved(&self) {
+        let dialog = AddServerDialog::new(&self.root, Arc::clone(&self.game));
+        let Some(server) = dialog.run() else {
+            return;
+        };
+        if let Err(err) = self.server_mgr.save_server(server, None) {
+            error!(self.logger, "Error on adding saved server"; "error" => %err);
+            alert_error(ERR_UPDATING_SAVED_SERVERS, &err);
         }
     }
 

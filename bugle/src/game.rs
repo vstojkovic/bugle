@@ -348,6 +348,41 @@ impl Game {
         config::save_ini(&game_ini, &self.game_ini_path)
     }
 
+    pub fn load_server_password(&self, server_name: &str) -> Result<Option<String>> {
+        debug!(self.logger, "Loading server password"; "server" => server_name);
+
+        let game_ini = config::load_ini(&self.game_ini_path)?;
+
+        let Some(section) = game_ini.section(Some(SECTION_SAVED_SERVERS)) else {
+            return Ok(None);
+        };
+
+        Ok(section.get(server_name).map(|s| s.to_string()))
+    }
+
+    pub fn save_server_password(&self, server_name: &str, password: &str) -> Result<()> {
+        debug!(self.logger, "Saving server password"; "server" => server_name);
+
+        if server_name == KEY_LAST_CONNECTED || server_name == KEY_LAST_PASSWORD {
+            warn!(
+                self.logger,
+                "Cannot save server password because the server name is a reserved key";
+                "key" => server_name,
+            );
+            return Ok(());
+        }
+
+        let mut game_ini = config::load_ini(&self.game_ini_path)?;
+
+        let section = game_ini
+            .entry(Some(SECTION_SAVED_SERVERS.to_string()))
+            .or_insert_with(Properties::new);
+        let _ = section.remove_all(server_name);
+        section.append(server_name, password);
+
+        config::save_ini(&game_ini, &self.game_ini_path)
+    }
+
     pub fn load_mod_list(&self) -> Result<Vec<ModRef>> {
         if !self.mod_list_path.exists() {
             debug!(self.logger, "No modlist file"; "path" => self.mod_list_path.display());
