@@ -11,6 +11,7 @@ use fltk::input::{Input, SecretInput};
 use fltk::prelude::*;
 use fltk::window::Window;
 use fltk_float::grid::{CellAlign, GridBuilder};
+use fltk_float::LayoutElement;
 
 use crate::gui::{alert_error, wrapper_factory};
 use crate::launcher::ConnectionInfo;
@@ -178,10 +179,15 @@ impl ConnectDialog {
             .wrap(Button::default())
             .with_label("Cancel");
 
-        let window = window.end();
-        window.layout_children();
+        let window_grid = window.end();
+        let mut window = window_grid.group();
+        let window_size = window_grid.min_size();
+        window.set_size(
+            std::cmp::max(window.w(), window_size.width),
+            window_size.height,
+        );
+        window_grid.layout_children();
 
-        let mut window = window.group();
         window.set_pos(
             parent.x() + (parent.w() - window.w()) / 2,
             parent.y() + (parent.h() - window.h()) / 2,
