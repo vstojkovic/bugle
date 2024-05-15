@@ -12,7 +12,7 @@ that isn't there, feel free to open a GitHub issue about it, or contact me on Fu
 
 ## Installation
 
-Go to the v1.3.0 release and download the `bugle-v1.3.0-x86_64-pc-windows-msvc.zip` file. Unpack it
+Go to the v1.4.0 release and download the `bugle-v1.4.0-x86_64-pc-windows-msvc.zip` file. Unpack it
 into a directory where you're allowed to write files. It's a good idea to put it in its own
 directory, because it will write a couple of files there (`bugle.ini` and `bugle.log`).
 
@@ -35,8 +35,12 @@ without having to restart the whole server browser.
 * **Single-player game list.** For each map you have installed, you can see when was the last time
 you played it in single-player, the name of your character and clan, and what level your character
 is.
+* **Single-player settings editor.** You can edit the single-player game settings from BUGLE, before
+launching your game. You can also import and export the settings, to manage different configurations
+for different saved games.
 * **Back up and restore single-player games.** You can create backups for your single-player games,
-and restore them whenever you want.
+and restore them whenever you want. You can also export any of those backups to a file on your drive
+and import a backup file into the game.
 * **Mod list management.** You can not only activate and deactivate mods, and change their order,
 but you can also save a mod list and open it again later. This should make it easier to switch
 between the mods you use in your single-player game and those on your favorite server; or you can

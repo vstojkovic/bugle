@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.4.0 (2024-05-14)
+
+### Added
+
+- You can now edit the settings for your single-player game.
+- Single-player backup can now be exported to or imported from a file anywhere on the filesystem.
+- BUGLE now lets you save the password when joining a password-protected server. It can also use the
+password you've previously saved inside the game.
+- Server browser now shows how many servers there are in total, how many servers fit your current
+filter, how many players are connected to all servers, and how many players are connected to the
+servers that match the current filter.
+- More criteria can now be configured in the server browser filter.
+- You can now save server information from the server browser to your local BUGLE installation. This
+allows you to connect to a server after it reboots even if Funcom's server list doesn't show it yet.
+- You can also manually add servers to the saved servers list, so you don't have to use the "Direct
+Connect" option when you want to connect to an unlisted server.
+
+### Changed
+
+- You now have to pick a difficulty when starting a new single-player game. You can either choose
+one of the three preset difficulties (civilized, decadent, or barbaric) or configure your own custom
+settings.
+
+### Fixed
+
+- If the `Mods` directory is missing, BUGLE will try to create it.
+
 ## 1.3.2 (2024-03-07)
 
 Hotfix for a mod library bug.
