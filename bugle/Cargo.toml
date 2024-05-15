@@ -69,7 +69,5 @@ resvg = "0.38.0"
 
 # Config for 'cargo dist'
 [package.metadata.dist]
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-pc-windows-msvc"]
 # Include the redistributable
 include = ["redist/steam_api64.dll"]
