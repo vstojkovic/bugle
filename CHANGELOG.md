@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## 1.4.0 (2024-05-14)
 
+Settings editor, saved servers, more stats and filters.
+
 ### Added
 
 - You can now edit the settings for your single-player game.
