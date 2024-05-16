@@ -41,9 +41,6 @@ pub use self::server_browser::{PopulateServers, ProcessPongs, RefreshServerDetai
 pub use self::single_player::PopulateSinglePlayerGames;
 pub use self::task_progress_monitor::{TaskProgressMonitor, TaskProgressUpdate};
 
-pub trait Handler<A>: Fn(A) -> anyhow::Result<()> {}
-impl<A, F: Fn(A) -> anyhow::Result<()>> Handler<A> for F {}
-
 pub fn alert_error(message: &str, err: &anyhow::Error) {
     fltk_dialog::alert_default(&format!("{}\n{}", message, err));
 }
